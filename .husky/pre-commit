@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# Run lint and tests for the backend before committing
+cd smart-task-manager/backend
+
+echo "Running lint check..."
+npx lint-staged || exit 1
+
+echo "Running unit tests..."
+npx jest --config jest.config.ts --passWithNoTests || exit 1
+
+echo "All checks passed!"

@@ -23,7 +23,7 @@ export class ProjectMember {
   @Column()
   userId: string;
 
-  @Column({ type: 'enum', enum: ProjectRole, default: ProjectRole.MEMBER })
+  @Column({ type: 'simple-enum', enum: ProjectRole, default: ProjectRole.MEMBER })
   role: ProjectRole;
 
   @ManyToOne(() => Project, (project) => project.members, {

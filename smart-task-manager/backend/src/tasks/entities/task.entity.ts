@@ -22,13 +22,13 @@ export class Task {
   @Column({ type: 'text', nullable: true })
   description: string;
 
-  @Column({ type: 'enum', enum: TaskStatus, default: TaskStatus.TODO })
+  @Column({ type: 'simple-enum', enum: TaskStatus, default: TaskStatus.TODO })
   status: TaskStatus;
 
-  @Column({ type: 'enum', enum: TaskPriority, default: TaskPriority.MEDIUM })
+  @Column({ type: 'simple-enum', enum: TaskPriority, default: TaskPriority.MEDIUM })
   priority: TaskPriority;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'datetime', nullable: true })
   dueDate: Date;
 
   @Column()

@@ -9,12 +9,7 @@ import {
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiBearerAuth,
-  ApiOperation,
-  ApiParam,
-} from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
@@ -45,10 +40,7 @@ export class TasksController {
   @Get('project/:projectId')
   @ApiOperation({ summary: 'Get all tasks for a project' })
   @ApiParam({ name: 'projectId', type: 'string' })
-  findByProject(
-    @Param('projectId', ParseUUIDPipe) projectId: string,
-    @CurrentUser() user: User,
-  ) {
+  findByProject(@Param('projectId', ParseUUIDPipe) projectId: string, @CurrentUser() user: User) {
     return this.tasksService.findAllByProject(projectId, user);
   }
 
@@ -60,7 +52,9 @@ export class TasksController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update a task (title, description, status, priority, due date, assignee)' })
+  @ApiOperation({
+    summary: 'Update a task (title, description, status, priority, due date, assignee)',
+  })
   @ApiParam({ name: 'id', type: 'string' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -85,10 +79,7 @@ export class TasksController {
   @Patch(':id/unassign')
   @ApiOperation({ summary: 'Unassign a task' })
   @ApiParam({ name: 'id', type: 'string' })
-  unassign(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: User,
-  ) {
+  unassign(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     return this.tasksService.unassign(id, user);
   }
 

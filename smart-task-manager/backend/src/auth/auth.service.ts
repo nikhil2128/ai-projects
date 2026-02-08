@@ -29,10 +29,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const isPasswordValid = await this.usersService.validatePassword(
-      user,
-      dto.password,
-    );
+    const isPasswordValid = await this.usersService.validatePassword(user, dto.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }

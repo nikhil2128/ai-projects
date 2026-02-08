@@ -20,9 +20,7 @@ async function bootstrap() {
   );
 
   // Exclude sensitive fields from responses (e.g., password)
-  app.useGlobalInterceptors(
-    new ClassSerializerInterceptor(app.get(Reflector)),
-  );
+  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
   // CORS
   app.enableCors({

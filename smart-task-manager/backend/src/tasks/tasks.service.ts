@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Task } from './entities/task.entity';
@@ -28,10 +24,7 @@ export class TasksService {
 
     // If assigning to someone, verify assignee has access to the project
     if (dto.assigneeId) {
-      await this.projectsService.assertUserHasAccess(
-        dto.projectId,
-        dto.assigneeId,
-      );
+      await this.projectsService.assertUserHasAccess(dto.projectId, dto.assigneeId);
     }
 
     const task = this.tasksRepository.create({
@@ -83,10 +76,7 @@ export class TasksService {
 
     // Verify user has access to the task's project
     if (user.role !== Role.ADMIN) {
-      await this.projectsService.assertUserHasAccess(
-        task.projectId,
-        user.id,
-      );
+      await this.projectsService.assertUserHasAccess(task.projectId, user.id);
     }
 
     return task;
@@ -97,10 +87,7 @@ export class TasksService {
 
     // If reassigning, verify new assignee has access to the project
     if (dto.assigneeId && dto.assigneeId !== task.assigneeId) {
-      await this.projectsService.assertUserHasAccess(
-        task.projectId,
-        dto.assigneeId,
-      );
+      await this.projectsService.assertUserHasAccess(task.projectId, dto.assigneeId);
     }
 
     if (dto.dueDate) {
@@ -117,37 +104,22 @@ export class TasksService {
     const task = await this.findOne(id, user);
 
     // Only creator, project owner, or admin can delete
-    if (
-      task.creatorId !== user.id &&
-      user.role !== Role.ADMIN
-    ) {
+    if (task.creatorId !== user.id && user.role !== Role.ADMIN) {
       // Check if user is project owner
-      const project = await this.projectsService.findOne(
-        task.projectId,
-        user,
-      );
+      const project = await this.projectsService.findOne(task.projectId, user);
       if (project.ownerId !== user.id) {
-        throw new ForbiddenException(
-          'Only the task creator or project owner can delete this task',
-        );
+        throw new ForbiddenException('Only the task creator or project owner can delete this task');
       }
     }
 
     await this.tasksRepository.remove(task);
   }
 
-  async assign(
-    id: string,
-    assigneeId: string,
-    user: User,
-  ): Promise<Task> {
+  async assign(id: string, assigneeId: string, user: User): Promise<Task> {
     const task = await this.findOne(id, user);
 
     // Verify assignee has access to the project
-    await this.projectsService.assertUserHasAccess(
-      task.projectId,
-      assigneeId,
-    );
+    await this.projectsService.assertUserHasAccess(task.projectId, assigneeId);
 
     task.assigneeId = assigneeId;
     await this.tasksRepository.save(task);

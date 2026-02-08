@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Project } from './entities/project.entity';
@@ -80,11 +76,7 @@ export class ProjectsService {
     return project;
   }
 
-  async update(
-    id: string,
-    dto: UpdateProjectDto,
-    user: User,
-  ): Promise<Project> {
+  async update(id: string, dto: UpdateProjectDto, user: User): Promise<Project> {
     const project = await this.findOne(id, user);
 
     if (project.ownerId !== user.id && user.role !== Role.ADMIN) {
@@ -106,11 +98,7 @@ export class ProjectsService {
     await this.projectsRepository.remove(project);
   }
 
-  async addMember(
-    projectId: string,
-    dto: AddMemberDto,
-    user: User,
-  ): Promise<ProjectMember> {
+  async addMember(projectId: string, dto: AddMemberDto, user: User): Promise<ProjectMember> {
     const project = await this.findOne(projectId, user);
 
     if (project.ownerId !== user.id && user.role !== Role.ADMIN) {
@@ -134,17 +122,11 @@ export class ProjectsService {
     return this.membersRepository.save(member);
   }
 
-  async removeMember(
-    projectId: string,
-    userId: string,
-    user: User,
-  ): Promise<void> {
+  async removeMember(projectId: string, userId: string, user: User): Promise<void> {
     const project = await this.findOne(projectId, user);
 
     if (project.ownerId !== user.id && user.role !== Role.ADMIN) {
-      throw new ForbiddenException(
-        'Only the project owner can remove members',
-      );
+      throw new ForbiddenException('Only the project owner can remove members');
     }
 
     if (userId === project.ownerId) {
@@ -168,9 +150,7 @@ export class ProjectsService {
     });
 
     if (!membership) {
-      throw new ForbiddenException(
-        'You do not have access to this project',
-      );
+      throw new ForbiddenException('You do not have access to this project');
     }
   }
 }

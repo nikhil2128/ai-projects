@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  ENGINEER
+  PROCUREMENT
+  FACTORY_WORKER
+}
+
+enum AnnotationStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  password    String
+  name        String
+  role        UserRole @default(FACTORY_WORKER)
+  department  String?
+  avatarUrl   String?  @map("avatar_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  images      Image[]
+  annotations Annotation[]
+  comments    Comment[]
+
+  @@map("users")
+}
+
+model Image {
+  id           String   @id @default(uuid())
+  title        String
+  description  String?
+  filename     String
+  originalName String   @map("original_name")
+  mimeType     String   @map("mime_type")
+  fileSize     Int      @map("file_size")
+  width        Int
+  height       Int
+  storageKey   String   @map("storage_key")
+  thumbnailKey String   @map("thumbnail_key")
+  uploaderId   String   @map("uploader_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  uploader    User         @relation(fields: [uploaderId], references: [id])
+  annotations Annotation[]
+
+  @@index([uploaderId])
+  @@map("images")
+}
+
+model Annotation {
+  id        String           @id @default(uuid())
+  imageId   String           @map("image_id")
+  authorId  String           @map("author_id")
+  centerX   Float            @map("center_x")
+  centerY   Float            @map("center_y")
+  radius    Float
+  color     String           @default("#FF0000")
+  label     String?
+  status    AnnotationStatus @default(OPEN)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  image    Image     @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id])
+  comments Comment[]
+
+  @@index([imageId])
+  @@map("annotations")
+}
+
+model Comment {
+  id           String   @id @default(uuid())
+  annotationId String   @map("annotation_id")
+  authorId     String   @map("author_id")
+  body         String
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  annotation Annotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  author     User       @relation(fields: [authorId], references: [id])
+
+  @@index([annotationId])
+  @@map("comments")
+}

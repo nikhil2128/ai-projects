@@ -19,12 +19,19 @@ declare global {
 export function authenticate(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Missing or invalid authorization header' });
-    return;
+  // Support token from Authorization header or query parameter (for <img> src, etc.)
+  let token: string | undefined;
+
+  if (authHeader?.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  } else if (typeof req.query.token === 'string') {
+    token = req.query.token;
   }
 
-  const token = authHeader.substring(7);
+  if (!token) {
+    res.status(401).json({ error: 'Missing or invalid authorization' });
+    return;
+  }
 
   try {
     const decoded = jwt.verify(token, config.jwtSecret) as JwtPayload;

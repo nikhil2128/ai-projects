@@ -65,7 +65,7 @@ export default function ThreadPanel({
         <MessageCircle className="mb-3 h-10 w-10 text-gray-300" />
         <h3 className="text-sm font-medium text-gray-900">No annotations yet</h3>
         <p className="mt-1 text-xs text-gray-500">
-          Click "Annotate" to draw a circle and start a discussion
+          Click "Annotate" to draw on the image and start a discussion
         </p>
       </div>
     );

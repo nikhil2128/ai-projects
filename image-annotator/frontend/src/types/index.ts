@@ -1,5 +1,19 @@
 export type UserRole = 'ADMIN' | 'ENGINEER' | 'PROCUREMENT' | 'FACTORY_WORKER';
 export type AnnotationStatus = 'OPEN' | 'RESOLVED' | 'DISMISSED';
+export type ShapeType = 'CIRCLE' | 'RECTANGLE' | 'FREEHAND';
+
+export interface RectangleData {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface FreehandData {
+  points: Array<{ x: number; y: number }>;
+}
+
+export type ShapeData = RectangleData | FreehandData;
 
 export interface User {
   id: string;
@@ -48,6 +62,8 @@ export interface Annotation {
   centerX: number;
   centerY: number;
   radius: number;
+  shapeType: ShapeType;
+  shapeData?: ShapeData | null;
   color: string;
   label?: string;
   status: AnnotationStatus;

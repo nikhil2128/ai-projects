@@ -1,24 +1,72 @@
-import { PrismaClient, AnnotationStatus } from '@prisma/client';
+import { PrismaClient, AnnotationStatus, ShapeType } from '@prisma/client';
 import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
-export const createAnnotationSchema = z.object({
-  centerX: z.number().min(0).max(100),
-  centerY: z.number().min(0).max(100),
-  radius: z.number().min(0.5).max(50),
-  color: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid hex color')
-    .optional()
-    .default('#FF0000'),
-  label: z.string().max(200).optional(),
+const rectangleDataSchema = z.object({
+  x: z.number().min(0).max(100),
+  y: z.number().min(0).max(100),
+  width: z.number().min(0.5).max(100),
+  height: z.number().min(0.5).max(100),
 });
+
+const freehandDataSchema = z.object({
+  points: z
+    .array(
+      z.object({
+        x: z.number().min(0).max(100),
+        y: z.number().min(0).max(100),
+      })
+    )
+    .min(3)
+    .max(2000),
+});
+
+export const createAnnotationSchema = z
+  .object({
+    shapeType: z.nativeEnum(ShapeType).optional().default('CIRCLE'),
+    centerX: z.number().min(0).max(100),
+    centerY: z.number().min(0).max(100),
+    radius: z.number().min(0).max(50).optional().default(0),
+    shapeData: z.any().optional(),
+    color: z
+      .string()
+      .regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid hex color')
+      .optional()
+      .default('#FF0000'),
+    label: z.string().max(200).optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.shapeType === 'CIRCLE') return (data.radius ?? 0) >= 0.5;
+      return true;
+    },
+    { message: 'Circle annotations require radius >= 0.5', path: ['radius'] }
+  )
+  .refine(
+    (data) => {
+      if (data.shapeType === 'RECTANGLE') {
+        return rectangleDataSchema.safeParse(data.shapeData).success;
+      }
+      return true;
+    },
+    { message: 'Rectangle annotations require valid shapeData with x, y, width, height', path: ['shapeData'] }
+  )
+  .refine(
+    (data) => {
+      if (data.shapeType === 'FREEHAND') {
+        return freehandDataSchema.safeParse(data.shapeData).success;
+      }
+      return true;
+    },
+    { message: 'Freehand annotations require valid shapeData with points array', path: ['shapeData'] }
+  );
 
 export const updateAnnotationSchema = z.object({
   centerX: z.number().min(0).max(100).optional(),
   centerY: z.number().min(0).max(100).optional(),
-  radius: z.number().min(0.5).max(50).optional(),
+  radius: z.number().min(0).max(50).optional(),
+  shapeData: z.any().optional(),
   color: z
     .string()
     .regex(/^#[0-9A-Fa-f]{6}$/)
@@ -59,6 +107,8 @@ export class AnnotationService {
         centerX: input.centerX,
         centerY: input.centerY,
         radius: input.radius,
+        shapeType: input.shapeType,
+        shapeData: input.shapeData ?? undefined,
         color: input.color,
         label: input.label,
       },

@@ -1,4 +1,4 @@
-import type { AuthResponse, ImagesResponse, ImageDetail, Annotation, Comment } from '../types';
+import type { AuthResponse, ImagesResponse, ImageDetail, Annotation, Comment, ShapeData } from '../types';
 
 const BASE_URL = '/api';
 
@@ -108,9 +108,11 @@ export function getThumbnailUrl(id: string): string {
 export async function createAnnotation(
   imageId: string,
   data: {
+    shapeType?: string;
     centerX: number;
     centerY: number;
-    radius: number;
+    radius?: number;
+    shapeData?: ShapeData;
     color?: string;
     label?: string;
   }
@@ -127,6 +129,7 @@ export async function updateAnnotation(
     centerX: number;
     centerY: number;
     radius: number;
+    shapeData: ShapeData;
     color: string;
     label: string;
     status: string;

@@ -3,13 +3,13 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../hooks/useSocket';
 import * as api from '../api/client';
-import type { ImageDetail, Annotation, Comment as CommentType } from '../types';
+import type { ImageDetail, Annotation, Comment as CommentType, ShapeType, RectangleData, FreehandData } from '../types';
 import AnnotationCanvas from '../components/AnnotationCanvas';
 import ThreadPanel from '../components/ThreadPanel';
 import {
   ArrowLeft,
   Trash2,
-  CircleDot,
+  PenLine,
   MousePointer,
   Loader2,
 } from 'lucide-react';
@@ -126,9 +126,11 @@ export default function ImageDetailPage() {
   }, [onEvent]);
 
   const handleCreateAnnotation = async (data: {
+    shapeType: ShapeType;
     centerX: number;
     centerY: number;
     radius: number;
+    shapeData?: RectangleData | FreehandData;
   }) => {
     if (!id) return;
     try {
@@ -296,7 +298,7 @@ export default function ImageDetailPage() {
               </>
             ) : (
               <>
-                <CircleDot className="h-4 w-4" />
+                <PenLine className="h-4 w-4" />
                 Annotate
               </>
             )}
@@ -317,7 +319,7 @@ export default function ImageDetailPage() {
       {/* Annotation hint */}
       {annotationMode && (
         <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
-          Click and drag on the image to draw a circle annotation. Release to place it.
+          Pick a shape from the toolbar above the image, then click and drag to draw your annotation.
         </div>
       )}
 

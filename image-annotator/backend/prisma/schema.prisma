@@ -20,6 +20,12 @@ enum AnnotationStatus {
   DISMISSED
 }
 
+enum ShapeType {
+  CIRCLE
+  RECTANGLE
+  FREEHAND
+}
+
 model User {
   id          String   @id @default(uuid())
   email       String   @unique
@@ -67,7 +73,9 @@ model Annotation {
   authorId  String           @map("author_id")
   centerX   Float            @map("center_x")
   centerY   Float            @map("center_y")
-  radius    Float
+  radius    Float            @default(0)
+  shapeType ShapeType        @default(CIRCLE) @map("shape_type")
+  shapeData Json?            @map("shape_data")
   color     String           @default("#FF0000")
   label     String?
   status    AnnotationStatus @default(OPEN)

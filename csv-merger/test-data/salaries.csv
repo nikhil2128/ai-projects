@@ -1,0 +1,6 @@
+Employee ID,Salary Amount,Department,Is Active
+E001,"75,000",Engineering,Yes
+E002,"82,000",Marketing,Yes
+E003,"68,000",Engineering,No
+E004,"91,500",Management,Yes
+E005,"55,000",Support,Yes

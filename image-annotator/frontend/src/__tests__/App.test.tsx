@@ -24,6 +24,6 @@ describe('App', () => {
     );
 
     // When not authenticated, should show the login page
-    expect(screen.getByText(/sign in/i)).toBeInTheDocument();
+    expect(screen.getByText(/sign in to your account/i)).toBeInTheDocument();
   });
 });

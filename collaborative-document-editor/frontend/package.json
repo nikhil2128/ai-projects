@@ -1,0 +1,21 @@
+{
+  "name": "collaborative-document-editor-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "diff-match-patch": "^1.0.5",
+    "y-websocket": "^1.5.4",
+    "yjs": "^13.6.24"
+  },
+  "devDependencies": {
+    "@types/diff-match-patch": "^1.0.36",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.1"
+  }
+}

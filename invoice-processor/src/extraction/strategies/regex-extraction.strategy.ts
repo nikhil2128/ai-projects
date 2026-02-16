@@ -41,8 +41,8 @@ export class RegexExtractionStrategy implements ExtractionStrategy {
     // Common patterns: "From: Vendor Name", "Vendor: Name", "Bill From: Name"
     // Also try: "Company Name" at the top of the document
     const patterns = [
-      /(?:from|vendor|supplier|bill\s*from|sold\s*by|company)\s*[:\-]\s*(.+)/i,
-      /(?:invoice\s+from)\s*[:\-]?\s*(.+)/i,
+      /(?:from|vendor|supplier|bill\s*from|sold\s*by|company)\s*[:-]\s*(.+)/i,
+      /(?:invoice\s+from)\s*[:-]?\s*(.+)/i,
     ];
 
     for (const pattern of patterns) {
@@ -68,8 +68,8 @@ export class RegexExtractionStrategy implements ExtractionStrategy {
     // Look for "Total", "Amount Due", "Grand Total", "Balance Due"
     // Use negative lookbehind to exclude "Subtotal"
     const patterns = [
-      /(?:(?:total\s*amount\s*due|amount\s*due|grand\s*total|balance\s*due|total\s*payable))\s*[:\-]?\s*\$?\s*([\d,]+\.?\d*)/i,
-      /(?<!sub)total\s*[:\-]\s*\$?\s*([\d,]+\.?\d*)/i,
+      /(?:(?:total\s*amount\s*due|amount\s*due|grand\s*total|balance\s*due|total\s*payable))\s*[:-]?\s*\$?\s*([\d,]+\.?\d*)/i,
+      /(?<!sub)total\s*[:-]\s*\$?\s*([\d,]+\.?\d*)/i,
       /\$\s*([\d,]+\.\d{2})\s*$/m, // Dollar amount at end of a line
     ];
 
@@ -88,7 +88,7 @@ export class RegexExtractionStrategy implements ExtractionStrategy {
 
   private extractTax(text: string): number | null {
     const patterns = [
-      /(?:tax|vat|gst|sales\s*tax|hst)\s*(?:\(?\d+%?\)?)?\s*[:\-]?\s*\$?\s*([\d,]+\.?\d*)/i,
+      /(?:tax|vat|gst|sales\s*tax|hst)\s*(?:\(?\d+%?\)?)?\s*[:-]?\s*\$?\s*([\d,]+\.?\d*)/i,
     ];
 
     for (const pattern of patterns) {
@@ -107,9 +107,9 @@ export class RegexExtractionStrategy implements ExtractionStrategy {
   private extractDueDate(text: string): string | null {
     // Look for "Due Date", "Payment Due", "Due By" followed by a date
     const patterns = [
-      /(?:due\s*date|payment\s*due|due\s*by|pay\s*by|date\s*due)\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
-      /(?:due\s*date|payment\s*due|due\s*by|pay\s*by|date\s*due)\s*[:\-]?\s*(\w+\s+\d{1,2},?\s+\d{4})/i,
-      /(?:due\s*date|payment\s*due|due\s*by|pay\s*by|date\s*due)\s*[:\-]?\s*(\d{4}-\d{2}-\d{2})/i,
+      /(?:due\s*date|payment\s*due|due\s*by|pay\s*by|date\s*due)\s*[:-]?\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})/i,
+      /(?:due\s*date|payment\s*due|due\s*by|pay\s*by|date\s*due)\s*[:-]?\s*(\w+\s+\d{1,2},?\s+\d{4})/i,
+      /(?:due\s*date|payment\s*due|due\s*by|pay\s*by|date\s*due)\s*[:-]?\s*(\d{4}-\d{2}-\d{2})/i,
     ];
 
     for (const pattern of patterns) {
@@ -135,10 +135,10 @@ export class RegexExtractionStrategy implements ExtractionStrategy {
     }
 
     // MM/DD/YYYY or MM-DD-YYYY or MM.DD.YYYY
-    const slashMatch = cleaned.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+    const slashMatch = cleaned.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
     if (slashMatch) {
-      let [, month, day, year] = slashMatch;
-      if (year.length === 2) year = `20${year}`;
+      const [, month, day, yearRaw] = slashMatch;
+      const year = yearRaw.length === 2 ? `20${yearRaw}` : yearRaw;
       return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
     }
 

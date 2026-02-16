@@ -1,12 +1,72 @@
 #!/bin/sh
 
-# Run lint and tests for the backend before committing
-cd smart-task-manager/backend
+# ============================================================
+# Project-aware pre-commit hook
+# Detects which projects have staged changes and runs
+# lint + test only for those projects.
+# ============================================================
 
-echo "Running lint check..."
-npx lint-staged || exit 1
+# Get list of staged files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
 
-echo "Running unit tests..."
-npx jest --config jest.config.ts --passWithNoTests || exit 1
+if [ -z "$STAGED_FILES" ]; then
+  exit 0
+fi
 
-echo "All checks passed!"
+FAILED=0
+
+# ── Helper: run checks for a project ──────────────────────
+run_checks() {
+  local project_dir="$1"
+  local project_name="$2"
+
+  if ! echo "$STAGED_FILES" | grep -q "^${project_dir}/"; then
+    return 0
+  fi
+
+  echo ""
+  echo "══ Checking ${project_name} ══"
+
+  # Check if node_modules exists
+  if [ ! -d "${project_dir}/node_modules" ]; then
+    echo "  ⚠ Skipping ${project_name} (node_modules not installed, run: npm install)"
+    return 0
+  fi
+
+  # Check if lint script exists in package.json
+  if ! cd "$project_dir" || ! node -e "const p=require('./package.json'); if(!p.scripts||!p.scripts.lint) process.exit(1)" 2>/dev/null; then
+    echo "  ⚠ Skipping ${project_name} (no lint script)"
+    cd "$OLDPWD" 2>/dev/null
+    return 0
+  fi
+
+  # Run lint
+  if npm run lint; then
+    echo "  ✔ Lint passed"
+  else
+    echo "  ✘ Lint failed"
+    FAILED=1
+  fi
+
+  cd "$OLDPWD"
+}
+
+# ── Check each project ────────────────────────────────────
+run_checks "buggy-task-system" "buggy-task-system"
+run_checks "csv-merger/backend" "csv-merger/backend"
+run_checks "csv-merger/frontend" "csv-merger/frontend"
+run_checks "image-annotator/backend" "image-annotator/backend"
+run_checks "image-annotator/frontend" "image-annotator/frontend"
+run_checks "invoice-processor" "invoice-processor"
+run_checks "invoice-processor/ui" "invoice-processor/ui"
+run_checks "smart-task-manager/backend" "smart-task-manager/backend"
+run_checks "smart-task-manager/frontend" "smart-task-manager/frontend"
+
+if [ "$FAILED" -ne 0 ]; then
+  echo ""
+  echo "✘ Pre-commit checks failed. Fix the issues above and try again."
+  exit 1
+fi
+
+echo ""
+echo "✔ All pre-commit checks passed!"

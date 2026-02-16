@@ -16,7 +16,7 @@ export function normalizeHeader(header: string): string {
   return header
     .trim()
     .toLowerCase()
-    .replace(/[\s\-]+/g, "_")
+    .replace(/[\s-]+/g, "_")
     .replace(/[^a-z0-9_]/g, "");
 }
 
@@ -48,8 +48,8 @@ export function detectColumnType(values: string[]): ColumnType {
 
     // Number check — handles currency, commas, percentages
     const cleaned = trimmed
-      .replace(/^[\$€£¥₹]/, "")
-      .replace(/[\$€£¥₹]$/, "")
+      .replace(/^[$€£¥₹]/, "")
+      .replace(/[$€£¥₹]$/, "")
       .replace(/,/g, "")
       .replace(/%$/, "")
       .trim();
@@ -88,7 +88,7 @@ function isDateLike(value: string): boolean {
 
   const parsed = Date.parse(value);
   if (!isNaN(parsed) && value.length > 6) {
-    if (/[a-zA-Z\-\/]/.test(value)) return true;
+    if (/[a-zA-Z\-/]/.test(value)) return true;
   }
 
   return false;
@@ -109,8 +109,8 @@ export function transformValue(value: string, type: ColumnType): unknown {
   switch (type) {
     case "number": {
       const cleaned = trimmed
-        .replace(/^[\$€£¥₹]/, "")
-        .replace(/[\$€£¥₹]$/, "")
+        .replace(/^[$€£¥₹]/, "")
+        .replace(/[$€£¥₹]$/, "")
         .replace(/,/g, "")
         .replace(/%$/, "")
         .trim();

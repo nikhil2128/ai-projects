@@ -1,0 +1,153 @@
+# ============================================================
+# Reusable CI Workflow — Lint, Type-check, Test, Build
+# ============================================================
+# Called by per-project CI workflows. Accepts parameters to
+# handle different project structures (Express, NestJS, Vite, etc.)
+# ============================================================
+name: "_Node.js CI"
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Path to the project directory (e.g., csv-merger/backend)"
+        required: true
+        type: string
+      node-version:
+        description: "Node.js version to use"
+        required: false
+        type: string
+        default: "20"
+      pre-install-command:
+        description: "Command to run after npm ci (e.g., npx prisma generate)"
+        required: false
+        type: string
+        default: ""
+      run-lint:
+        description: "Whether to run the lint step"
+        required: false
+        type: boolean
+        default: true
+      run-typecheck:
+        description: "Whether to run the typecheck step"
+        required: false
+        type: boolean
+        default: true
+      run-tests:
+        description: "Whether to run the test step"
+        required: false
+        type: boolean
+        default: true
+      run-build:
+        description: "Whether to run the build step"
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  lint:
+    name: "Lint"
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-lint }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pre-install command
+        if: ${{ inputs.pre-install-command != '' }}
+        run: ${{ inputs.pre-install-command }}
+
+      - name: Run ESLint
+        run: npm run lint
+
+  typecheck:
+    name: "Type Check"
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-typecheck }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pre-install command
+        if: ${{ inputs.pre-install-command != '' }}
+        run: ${{ inputs.pre-install-command }}
+
+      - name: TypeScript type check
+        run: npm run typecheck
+
+  test:
+    name: "Test"
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-tests }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pre-install command
+        if: ${{ inputs.pre-install-command != '' }}
+        run: ${{ inputs.pre-install-command }}
+
+      - name: Run tests
+        run: npm test
+
+  build:
+    name: "Build"
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run-build }}
+    needs: [lint, typecheck, test]
+    # Allow build to run even if optional jobs were skipped
+    # but fail if any required job actually failed
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: "npm"
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pre-install command
+        if: ${{ inputs.pre-install-command != '' }}
+        run: ${{ inputs.pre-install-command }}
+
+      - name: Build
+        run: npm run build

@@ -1,0 +1,35 @@
+# ============================================================
+# CI — csv-merger (backend + frontend)
+# ============================================================
+name: "CI: csv-merger"
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "csv-merger/**"
+      - ".github/workflows/ci-csv-merger.yml"
+      - ".github/workflows/_reusable-node-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "csv-merger/**"
+      - ".github/workflows/ci-csv-merger.yml"
+      - ".github/workflows/_reusable-node-ci.yml"
+
+concurrency:
+  group: ci-csv-merger-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: "Backend"
+    uses: ./.github/workflows/_reusable-node-ci.yml
+    with:
+      working-directory: csv-merger/backend
+
+  frontend:
+    name: "Frontend"
+    uses: ./.github/workflows/_reusable-node-ci.yml
+    with:
+      working-directory: csv-merger/frontend

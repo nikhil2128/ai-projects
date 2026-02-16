@@ -1,5 +1,5 @@
 # ============================================================
-# Deploy Pipeline — Build & Deploy to Test / Prod
+# Deploy — image-annotator (AWS ECS + S3/CloudFront + Terraform)
 # ============================================================
 #
 # Trigger rules:
@@ -8,20 +8,20 @@
 #   - Manual trigger → choose environment
 #
 # Security:
-#   - Uses OIDC (OpenID Connect) to authenticate with AWS — no long-lived secrets
+#   - Uses OIDC (OpenID Connect) to authenticate with AWS
 #   - Sensitive values stored in GitHub Environment secrets
 #   - Separate GitHub Environments for test/prod with protection rules
 # ============================================================
-name: Deploy
+name: "Deploy: image-annotator"
 
 on:
   push:
     branches: [main]
     paths:
       - "image-annotator/**"
-      - ".github/workflows/deploy.yml"
+      - ".github/workflows/deploy-image-annotator.yml"
     tags:
-      - "v*"
+      - "image-annotator-v*"
   workflow_dispatch:
     inputs:
       environment:
@@ -32,19 +32,16 @@ on:
           - test
           - prod
 
-# Only one deploy at a time per environment
 concurrency:
-  group: deploy-${{ github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'prod' || 'test') }}
+  group: deploy-image-annotator-${{ github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/image-annotator-v') && 'prod' || 'test') }}
   cancel-in-progress: false
 
 permissions:
-  id-token: write   # Required for OIDC
+  id-token: write
   contents: read
 
 jobs:
-  # ────────────────────────────────────────────
-  # Determine target environment
-  # ────────────────────────────────────────────
+  # ── Determine target environment ───────────────────────────
   resolve-env:
     name: "Resolve Environment"
     runs-on: ubuntu-latest
@@ -56,22 +53,18 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          elif [[ "${{ github.ref }}" == refs/tags/image-annotator-v* ]]; then
             echo "environment=prod" >> $GITHUB_OUTPUT
           else
             echo "environment=test" >> $GITHUB_OUTPUT
           fi
 
-  # ────────────────────────────────────────────
-  # Run full CI checks before deploying
-  # ────────────────────────────────────────────
+  # ── Run CI checks before deploying ─────────────────────────
   ci:
     name: "CI Checks"
-    uses: ./.github/workflows/ci.yml
+    uses: ./.github/workflows/ci-image-annotator.yml
 
-  # ────────────────────────────────────────────
-  # Deploy Backend (Docker → ECR → ECS)
-  # ────────────────────────────────────────────
+  # ── Deploy Backend (Docker → ECR → ECS) ────────────────────
   deploy-backend:
     name: "Deploy Backend — ${{ needs.resolve-env.outputs.environment }}"
     runs-on: ubuntu-latest
@@ -130,9 +123,7 @@ jobs:
           wait-for-service-stability: true
           wait-for-minutes: 10
 
-  # ────────────────────────────────────────────
-  # Deploy Frontend (Build → S3 → CloudFront Invalidation)
-  # ────────────────────────────────────────────
+  # ── Deploy Frontend (Build → S3 → CloudFront) ──────────────
   deploy-frontend:
     name: "Deploy Frontend — ${{ needs.resolve-env.outputs.environment }}"
     runs-on: ubuntu-latest
@@ -174,7 +165,6 @@ jobs:
             --exclude "index.html" \
             --exclude "*.json"
 
-          # Upload index.html and manifests with no-cache
           aws s3 cp image-annotator/frontend/dist/index.html \
             s3://image-annotator-${{ env.ENV }}-frontend/index.html \
             --cache-control "no-cache, no-store, must-revalidate"
@@ -185,15 +175,12 @@ jobs:
             --distribution-id ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }} \
             --paths "/*"
 
-  # ────────────────────────────────────────────
-  # Deploy Infrastructure (Terraform)
-  # ────────────────────────────────────────────
+  # ── Deploy Infrastructure (Terraform) ───────────────────────
   deploy-infra:
     name: "Infrastructure — ${{ needs.resolve-env.outputs.environment }}"
     runs-on: ubuntu-latest
     needs: [resolve-env]
     environment: ${{ needs.resolve-env.outputs.environment }}
-    # Only run infra changes when infra files changed or manually triggered
     if: >
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.head_commit.modified, 'image-annotator/infra/')
@@ -230,5 +217,5 @@ jobs:
             -out=tfplan
 
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/image-annotator-v') || github.event_name == 'workflow_dispatch'
         run: terraform apply -auto-approve tfplan

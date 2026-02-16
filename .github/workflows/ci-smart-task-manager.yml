@@ -1,0 +1,35 @@
+# ============================================================
+# CI — smart-task-manager (backend + frontend)
+# ============================================================
+name: "CI: smart-task-manager"
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "smart-task-manager/**"
+      - ".github/workflows/ci-smart-task-manager.yml"
+      - ".github/workflows/_reusable-node-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "smart-task-manager/**"
+      - ".github/workflows/ci-smart-task-manager.yml"
+      - ".github/workflows/_reusable-node-ci.yml"
+
+concurrency:
+  group: ci-smart-task-manager-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: "Backend"
+    uses: ./.github/workflows/_reusable-node-ci.yml
+    with:
+      working-directory: smart-task-manager/backend
+
+  frontend:
+    name: "Frontend"
+    uses: ./.github/workflows/_reusable-node-ci.yml
+    with:
+      working-directory: smart-task-manager/frontend

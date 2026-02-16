@@ -65,6 +65,7 @@ describe('InvoicesProcessor', () => {
     mockExtractionService.extractFromPdf.mockRejectedValue(new Error('PDF corrupt'));
 
     // Mock fs.readFile
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     jest.spyOn(require('fs/promises'), 'readFile').mockResolvedValue(Buffer.from('fake'));
 
     const job = {

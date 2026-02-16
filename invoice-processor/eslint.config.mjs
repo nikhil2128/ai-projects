@@ -10,9 +10,6 @@ export default tseslint.config(
       globals: {
         ...globals.node,
       },
-      parserOptions: {
-        project: './tsconfig.json',
-      },
     },
     rules: {
       '@typescript-eslint/no-unused-vars': [
@@ -20,12 +17,10 @@ export default tseslint.config(
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-namespace': ['error', { allowDeclarations: true }],
-      '@typescript-eslint/consistent-type-imports': 'warn',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', 'prisma/', '**/*.test.ts'],
+    ignores: ['dist/', 'node_modules/', 'coverage/'],
   }
 );

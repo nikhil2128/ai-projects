@@ -1,0 +1,29 @@
+# ============================================================
+# CI — buggy-task-system
+# ============================================================
+name: "CI: buggy-task-system"
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "buggy-task-system/**"
+      - ".github/workflows/ci-buggy-task-system.yml"
+      - ".github/workflows/_reusable-node-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "buggy-task-system/**"
+      - ".github/workflows/ci-buggy-task-system.yml"
+      - ".github/workflows/_reusable-node-ci.yml"
+
+concurrency:
+  group: ci-buggy-task-system-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: "Backend"
+    uses: ./.github/workflows/_reusable-node-ci.yml
+    with:
+      working-directory: buggy-task-system

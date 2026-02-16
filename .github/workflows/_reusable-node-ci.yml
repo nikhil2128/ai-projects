@@ -126,10 +126,8 @@ jobs:
   build:
     name: "Build"
     runs-on: ubuntu-latest
-    if: ${{ inputs.run-build }}
+    if: ${{ inputs.run-build && !failure() && !cancelled() }}
     needs: [lint, typecheck, test]
-    # Allow build to run even if optional jobs were skipped
-    # but fail if any required job actually failed
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}

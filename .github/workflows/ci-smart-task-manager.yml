@@ -4,6 +4,7 @@
 name: "CI: smart-task-manager"
 
 on:
+  workflow_call:
   pull_request:
     branches: [main, develop]
     paths:

@@ -4,6 +4,7 @@
 name: "CI: invoice-processor"
 
 on:
+  workflow_call:
   pull_request:
     branches: [main, develop]
     paths:

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "727aed02-f8d5-4dc0-8e88-7c5db3ae09c7",
+    "email": "u1@b.com",
+    "name": "Nikhil",
+    "passwordHash": "$2b$10$Wl2PcCxnl1EqBTiZeGO5PeQjJQ9QWO4D5NDp81y1ZTso2K7XP7TUu",
+    "createdAt": "2026-02-16T15:59:24.869Z"
+  },
+  {
+    "id": "f9100dea-3c60-435c-86ac-5a7e01ab5b4c",
+    "email": "u2@b.com",
+    "name": "Nikhil B",
+    "passwordHash": "$2b$10$jDBlRZxOoqulT635oYppRuI3mTR6d.AZM1jVpZ.Ig7emGRVzufDb2",
+    "createdAt": "2026-02-16T16:00:40.743Z"
+  },
+  {
+    "id": "9301fe17-1a56-49cb-aa10-ed8670841ae1",
+    "email": "u3@b.com",
+    "name": "Nikhil",
+    "passwordHash": "3dd8d309a4573f6824ac3b9176ffb03b:03ff545487dbb1ee49e374642f50b70450c187219438a205a310ce08518939b26357473941e558e27bc2fa4c0e26f377ae17a3e8a0dcf20618c4955038926349",
+    "createdAt": "2026-02-16T16:08:54.281Z"
+  },
+  {
+    "id": "6d08dfc9-e322-4c51-a161-a2542226405f",
+    "email": "u4@b.com",
+    "name": "Nikhil B",
+    "passwordHash": "73c30618304486549a758820b410db4d:e5fb3dd1f0c21bc6b62fd5aa921023ebb1a6dc0e7dbe78008f8a4e8ea73c6adae405c4cb182ee3a7a527b3bce287e07d127550a1b79e838c6379d110dfc88cb5",
+    "createdAt": "2026-02-16T16:09:47.065Z"
+  }
+]

@@ -4,7 +4,10 @@ import cors from 'cors';
 import http from 'http';
 import { setupWSConnection } from './ws-server';
 import { documentsRouter } from './routes/documents';
+import { authRouter } from './routes/auth';
 import { documentStore } from './store/document-store';
+import { userStore } from './store/user-store';
+import { verifyToken } from './middleware/auth';
 import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage } from 'http';
 import url from 'url';
@@ -16,6 +19,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use('/api/auth', authRouter);
 app.use('/api/documents', documentsRouter);
 
 app.get('/api/health', (_req, res) => {
@@ -27,11 +31,39 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
 server.on('upgrade', (request: IncomingMessage, socket, head) => {
-  const pathname = url.parse(request.url || '').pathname || '';
+  const parsedUrl = url.parse(request.url || '', true);
+  const pathname = parsedUrl.pathname || '';
 
   if (pathname.startsWith('/collaboration/')) {
     const docId = pathname.split('/collaboration/')[1];
     if (!docId) {
+      socket.destroy();
+      return;
+    }
+
+    const token = parsedUrl.query.token as string;
+    if (!token) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    const payload = verifyToken(token);
+    if (!payload) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    const user = userStore.findById(payload.userId);
+    if (!user) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    if (!documentStore.canAccess(docId, payload.userId)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();
       return;
     }
@@ -48,7 +80,7 @@ wss.on('connection', (ws: WebSocket, _request: IncomingMessage, docId: string) =
   setupWSConnection(ws, docId);
 });
 
-documentStore.init().then(() => {
+Promise.all([documentStore.init(), userStore.init()]).then(() => {
   server.listen(PORT, HOST, () => {
     console.log(`Server running at http://${HOST}:${PORT}`);
     console.log(`WebSocket server ready for collaboration`);

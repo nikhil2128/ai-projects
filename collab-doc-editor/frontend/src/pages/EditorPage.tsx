@@ -1,32 +1,50 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, DocumentMeta } from '../services/api';
+import { api, DocumentDetail } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import { useCollaboration } from '../hooks/useCollaboration';
 import { CollaborativeEditor } from '../components/CollaborativeEditor';
 import { UserPresence } from '../components/UserPresence';
 import { ConnectionStatus } from '../components/ConnectionStatus';
-import { ArrowLeft, FileEdit } from 'lucide-react';
+import { ShareDialog } from '../components/ShareDialog';
+import { ArrowLeft, FileEdit, Share2, Lock } from 'lucide-react';
 
 export function EditorPage() {
   const { docId } = useParams<{ docId: string }>();
   const navigate = useNavigate();
-  const [docMeta, setDocMeta] = useState<DocumentMeta | null>(null);
+  const { token } = useAuth();
+  const [docMeta, setDocMeta] = useState<DocumentDetail | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState('');
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
 
-  const collab = useCollaboration(docId);
+  const collab = useCollaboration(docId, token);
+
+  const loadDocument = useCallback(() => {
+    if (!docId) return;
+    api
+      .getDocument(docId)
+      .then(setDocMeta)
+      .catch((err) => {
+        if (err.message.includes('403') || err.message.includes('access')) {
+          setAccessDenied(true);
+        } else {
+          navigate('/');
+        }
+      });
+  }, [docId, navigate]);
 
   useEffect(() => {
-    if (!docId) return;
-    api.getDocument(docId).then(setDocMeta).catch(() => navigate('/'));
-  }, [docId, navigate]);
+    loadDocument();
+  }, [loadDocument]);
 
   const handleTitleSave = useCallback(async () => {
     if (!docId || !titleValue.trim()) return;
     setEditingTitle(false);
     try {
       const updated = await api.updateDocument(docId, titleValue.trim());
-      setDocMeta(updated);
+      setDocMeta((prev) => (prev ? { ...prev, ...updated } : prev));
     } catch (err) {
       console.error('Failed to update title:', err);
     }
@@ -41,6 +59,19 @@ export function EditorPage() {
       setTitleValue(docMeta?.title || '');
     }
   };
+
+  if (accessDenied) {
+    return (
+      <div className="access-denied-page">
+        <Lock size={48} strokeWidth={1.5} />
+        <h2>Access Denied</h2>
+        <p>You do not have permission to view this document.</p>
+        <button className="btn btn-primary" onClick={() => navigate('/')}>
+          Go to Dashboard
+        </button>
+      </div>
+    );
+  }
 
   if (!docMeta) {
     return (
@@ -83,6 +114,14 @@ export function EditorPage() {
         </div>
         <div className="editor-header-right">
           <ConnectionStatus connected={collab.connected} synced={collab.synced} />
+          <button
+            className="btn btn-ghost share-btn"
+            onClick={() => setShowShareDialog(true)}
+            title="Share document"
+          >
+            <Share2 size={16} />
+            Share
+          </button>
           <UserPresence
             connectedUsers={collab.connectedUsers}
             currentUser={collab.user}
@@ -98,6 +137,17 @@ export function EditorPage() {
           user={collab.user}
         />
       </div>
+
+      {showShareDialog && (
+        <ShareDialog
+          docId={docMeta.id}
+          isAuthor={docMeta.isAuthor}
+          author={docMeta.author}
+          sharedWithUsers={docMeta.sharedWithUsers}
+          onClose={() => setShowShareDialog(false)}
+          onUpdated={loadDocument}
+        />
+      )}
     </div>
   );
 }

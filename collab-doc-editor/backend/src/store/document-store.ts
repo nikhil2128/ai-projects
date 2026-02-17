@@ -5,6 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 export interface DocumentMeta {
   id: string;
   title: string;
+  authorId: string;
+  sharedWith: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -27,7 +29,11 @@ class DocumentStore {
     if (fs.existsSync(META_FILE)) {
       const raw = fs.readFileSync(META_FILE, 'utf-8');
       const docs: DocumentMeta[] = JSON.parse(raw);
-      docs.forEach((doc) => this.documents.set(doc.id, doc));
+      docs.forEach((doc) => {
+        if (!doc.authorId) doc.authorId = '';
+        if (!doc.sharedWith) doc.sharedWith = [];
+        this.documents.set(doc.id, doc);
+      });
     }
   }
 
@@ -42,15 +48,35 @@ class DocumentStore {
     );
   }
 
+  listDocumentsForUser(userId: string): DocumentMeta[] {
+    return this.listDocuments().filter(
+      (doc) => doc.authorId === userId || doc.sharedWith.includes(userId)
+    );
+  }
+
   getDocument(id: string): DocumentMeta | undefined {
     return this.documents.get(id);
   }
 
-  createDocument(title: string): DocumentMeta {
+  canAccess(docId: string, userId: string): boolean {
+    const doc = this.documents.get(docId);
+    if (!doc) return false;
+    return doc.authorId === userId || doc.sharedWith.includes(userId);
+  }
+
+  isAuthor(docId: string, userId: string): boolean {
+    const doc = this.documents.get(docId);
+    if (!doc) return false;
+    return doc.authorId === userId;
+  }
+
+  createDocument(title: string, authorId: string): DocumentMeta {
     const now = new Date().toISOString();
     const doc: DocumentMeta = {
       id: uuidv4(),
       title: title || 'Untitled Document',
+      authorId,
+      sharedWith: [],
       createdAt: now,
       updatedAt: now,
     };
@@ -68,6 +94,28 @@ class DocumentStore {
     }
     doc.updatedAt = new Date().toISOString();
     this.documents.set(id, doc);
+    this.persist();
+    return doc;
+  }
+
+  shareDocument(docId: string, userId: string): DocumentMeta | null {
+    const doc = this.documents.get(docId);
+    if (!doc) return null;
+    if (!doc.sharedWith.includes(userId)) {
+      doc.sharedWith.push(userId);
+      doc.updatedAt = new Date().toISOString();
+      this.documents.set(docId, doc);
+      this.persist();
+    }
+    return doc;
+  }
+
+  unshareDocument(docId: string, userId: string): DocumentMeta | null {
+    const doc = this.documents.get(docId);
+    if (!doc) return null;
+    doc.sharedWith = doc.sharedWith.filter((id) => id !== userId);
+    doc.updatedAt = new Date().toISOString();
+    this.documents.set(docId, doc);
     this.persist();
     return doc;
   }

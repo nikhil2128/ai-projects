@@ -1,0 +1,32 @@
+[
+  {
+    "id": "8af004e8-5a6e-4b7b-8462-76c7340edce9",
+    "title": "D1",
+    "authorId": "727aed02-f8d5-4dc0-8e88-7c5db3ae09c7",
+    "sharedUserIds": [
+      "f9100dea-3c60-435c-86ac-5a7e01ab5b4c"
+    ],
+    "createdAt": "2026-02-16T15:59:58.142Z",
+    "updatedAt": "2026-02-16T16:03:49.922Z",
+    "sharedWith": []
+  },
+  {
+    "id": "2342fbc0-9912-4065-b092-5a1fe6e20616",
+    "title": "Untitled Document",
+    "authorId": "f9100dea-3c60-435c-86ac-5a7e01ab5b4c",
+    "sharedUserIds": [],
+    "createdAt": "2026-02-16T16:00:43.448Z",
+    "updatedAt": "2026-02-16T16:01:01.204Z",
+    "sharedWith": []
+  },
+  {
+    "id": "3cca5f73-551c-4d93-ab98-d02b20142cfa",
+    "title": "Untitled Document",
+    "authorId": "9301fe17-1a56-49cb-aa10-ed8670841ae1",
+    "sharedWith": [
+      "6d08dfc9-e322-4c51-a161-a2542226405f"
+    ],
+    "createdAt": "2026-02-16T16:09:05.176Z",
+    "updatedAt": "2026-02-17T03:36:00.586Z"
+  }
+]

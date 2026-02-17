@@ -39,7 +39,7 @@ export interface CollaborationState {
   connectedUsers: Array<{ name: string; color: string; clientId: number }>;
 }
 
-export function useCollaboration(docId: string | undefined): CollaborationState {
+export function useCollaboration(docId: string | undefined, token: string | null): CollaborationState {
   const ydocRef = useRef(new Y.Doc());
   const providerRef = useRef<WebsocketProvider | null>(null);
   const [connected, setConnected] = useState(false);
@@ -66,7 +66,7 @@ export function useCollaboration(docId: string | undefined): CollaborationState 
   );
 
   useEffect(() => {
-    if (!docId) return;
+    if (!docId || !token) return;
 
     const ydoc = ydocRef.current;
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -74,6 +74,7 @@ export function useCollaboration(docId: string | undefined): CollaborationState 
 
     const provider = new WebsocketProvider(wsUrl, docId, ydoc, {
       connect: true,
+      params: { token },
     });
 
     providerRef.current = provider;
@@ -114,7 +115,7 @@ export function useCollaboration(docId: string | undefined): CollaborationState 
       provider.destroy();
       providerRef.current = null;
     };
-  }, [docId]);
+  }, [docId, token]);
 
   return {
     ydoc: ydocRef.current,

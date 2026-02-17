@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { api, DocumentMeta } from '../services/api';
 import {
   Plus,
@@ -8,6 +9,9 @@ import {
   Clock,
   Search,
   FileEdit,
+  LogOut,
+  Crown,
+  Users,
 } from 'lucide-react';
 
 export function HomePage() {
@@ -16,6 +20,7 @@ export function HomePage() {
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const loadDocuments = async () => {
     try {
@@ -74,6 +79,8 @@ export function HomePage() {
     d.title.toLowerCase().includes(search.toLowerCase())
   );
 
+  const isOwner = (doc: DocumentMeta) => doc.authorId === user?.id;
+
   return (
     <div className="home-page">
       <header className="home-header">
@@ -84,6 +91,17 @@ export function HomePage() {
               <h1>CollabDocs</h1>
               <p className="brand-tagline">Real-time collaborative document editing</p>
             </div>
+          </div>
+          <div className="home-header-user">
+            <div className="user-info-chip">
+              <div className="user-avatar-sm" style={{ backgroundColor: '#4f6ef7' }}>
+                {user?.name.charAt(0).toUpperCase()}
+              </div>
+              <span className="user-name-text">{user?.name}</span>
+            </div>
+            <button className="btn btn-ghost" onClick={logout} title="Sign out">
+              <LogOut size={16} />
+            </button>
           </div>
         </div>
       </header>
@@ -147,14 +165,35 @@ export function HomePage() {
                     <Clock size={14} />
                     <span>Edited {formatDate(doc.updatedAt)}</span>
                   </div>
+                  <div className="document-badges">
+                    {isOwner(doc) ? (
+                      <span className="doc-badge owner-badge">
+                        <Crown size={11} />
+                        Owner
+                      </span>
+                    ) : (
+                      <span className="doc-badge shared-badge">
+                        <Users size={11} />
+                        Shared
+                      </span>
+                    )}
+                    {doc.sharedWith.length > 0 && isOwner(doc) && (
+                      <span className="doc-badge collab-count-badge">
+                        <Users size={11} />
+                        {doc.sharedWith.length}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <button
-                  className="document-delete"
-                  onClick={(e) => handleDelete(e, doc.id)}
-                  title="Delete document"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {isOwner(doc) && (
+                  <button
+                    className="document-delete"
+                    onClick={(e) => handleDelete(e, doc.id)}
+                    title="Delete document"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             ))}
           </div>

@@ -1,0 +1,36 @@
+# ============================================================
+# CI — collab-doc-editor (backend + frontend)
+# ============================================================
+name: "CI: collab-doc-editor"
+
+on:
+  workflow_call:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "collab-doc-editor/**"
+      - ".github/workflows/ci-collab-doc-editor.yml"
+      - ".github/workflows/_reusable-node-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "collab-doc-editor/**"
+      - ".github/workflows/ci-collab-doc-editor.yml"
+      - ".github/workflows/_reusable-node-ci.yml"
+
+concurrency:
+  group: ci-collab-doc-editor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: "Backend"
+    uses: ./.github/workflows/_reusable-node-ci.yml
+    with:
+      working-directory: collab-doc-editor/backend
+
+  frontend:
+    name: "Frontend"
+    uses: ./.github/workflows/_reusable-node-ci.yml
+    with:
+      working-directory: collab-doc-editor/frontend

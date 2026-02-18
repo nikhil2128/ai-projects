@@ -21,7 +21,8 @@ PROJECTS := \
 	invoice-processor \
 	invoice-processor/ui \
 	smart-task-manager/backend \
-	smart-task-manager/frontend
+	smart-task-manager/frontend \
+	video-merger
 
 .PHONY: install lint test build typecheck dev lint-all test-all build-all typecheck-all docker-build help
 

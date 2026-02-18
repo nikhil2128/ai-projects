@@ -1,0 +1,74 @@
+# ============================================================
+# Deploy — video-merger (Render)
+# ============================================================
+#
+# Trigger rules:
+#   - Push to main   → auto-deploy to TEST
+#   - Push tag       → auto-deploy to PROD
+#   - Manual trigger → choose environment
+#
+# Required GitHub secrets (per Environment: test / prod):
+#   - VIDEO_MERGER_RENDER_DEPLOY_HOOK_URL  → Render deploy hook for the service
+# ============================================================
+name: "Deploy: video-merger"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "video-merger/**"
+      - ".github/workflows/deploy-video-merger.yml"
+    tags:
+      - "video-merger-v*"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        type: choice
+        options:
+          - test
+          - prod
+
+concurrency:
+  group: deploy-video-merger-${{ github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/video-merger-v') && 'prod' || 'test') }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Determine target environment ───────────────────────────
+  resolve-env:
+    name: "Resolve Environment"
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+    steps:
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/video-merger-v* ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          else
+            echo "environment=test" >> $GITHUB_OUTPUT
+          fi
+
+  # ── Run CI checks before deploying ─────────────────────────
+  ci:
+    name: "CI Checks"
+    uses: ./.github/workflows/ci-video-merger.yml
+
+  # ── Deploy to Render ───────────────────────────────────────
+  deploy:
+    name: "Deploy (Render) — ${{ needs.resolve-env.outputs.environment }}"
+    runs-on: ubuntu-latest
+    needs: [resolve-env, ci]
+    environment: ${{ needs.resolve-env.outputs.environment }}
+    env:
+      ENV: ${{ needs.resolve-env.outputs.environment }}
+    steps:
+      - name: Trigger Render deploy
+        run: |
+          echo "Triggering Render deploy for video-merger (${{ env.ENV }})..."
+          RESPONSE=$(curl -sf "${{ secrets.VIDEO_MERGER_RENDER_DEPLOY_HOOK_URL }}")
+          echo "Render deploy triggered successfully."

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { SQSEvent } from '../types';
 
 vi.mock('../config', () => ({
   config: {
@@ -17,83 +18,96 @@ vi.mock('../services/processing.service', () => ({
 
 import { handler } from '../handlers/process-emails.handler';
 
-describe('process-emails handler', () => {
+function makeSQSRecord(
+  sqsMessageId: string,
+  bucket: string,
+  key: string,
+  receiveCount = 1
+) {
+  return {
+    messageId: sqsMessageId,
+    receiptHandle: `handle-${sqsMessageId}`,
+    body: JSON.stringify({
+      Records: [{ s3: { bucket: { name: bucket }, object: { key } } }],
+    }),
+    attributes: {
+      ApproximateReceiveCount: String(receiveCount),
+      SentTimestamp: '1234567890',
+      SenderId: 'sender',
+      ApproximateFirstReceiveTimestamp: '1234567890',
+    },
+    messageAttributes: {},
+    md5OfBody: '',
+    eventSource: 'aws:sqs',
+    eventSourceARN: 'arn:aws:sqs:us-east-1:123456789:queue',
+    awsRegion: 'us-east-1',
+  };
+}
+
+describe('process-emails handler (SQS)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('processes a single S3 event record and returns 200', async () => {
+  it('processes a single SQS record and returns no failures', async () => {
     mockProcessEmailFromS3.mockResolvedValue({
       success: true,
       messageId: 'msg-1',
       employeeName: 'John',
     });
 
-    const event = {
-      Records: [
-        { s3: { bucket: { name: 'my-bucket' }, object: { key: 'incoming/001' } } },
-      ],
+    const event: SQSEvent = {
+      Records: [makeSQSRecord('sqs-1', 'my-bucket', 'incoming/001')],
     };
 
     const response = await handler(event);
 
-    expect(response.statusCode).toBe(200);
-    const body = JSON.parse(response.body);
-    expect(body.total).toBe(1);
-    expect(body.succeeded).toBe(1);
-    expect(body.failed).toBe(0);
-    expect(body.duration).toMatch(/^\d+ms$/);
+    expect(response.batchItemFailures).toEqual([]);
     expect(mockProcessEmailFromS3).toHaveBeenCalledWith('my-bucket', 'incoming/001');
   });
 
-  it('processes multiple records', async () => {
+  it('processes multiple records successfully', async () => {
     mockProcessEmailFromS3
       .mockResolvedValueOnce({ success: true, messageId: 'msg-1' })
       .mockResolvedValueOnce({ success: true, messageId: 'msg-2' })
       .mockResolvedValueOnce({ success: true, messageId: 'msg-3' });
 
-    const event = {
+    const event: SQSEvent = {
       Records: [
-        { s3: { bucket: { name: 'b' }, object: { key: 'k1' } } },
-        { s3: { bucket: { name: 'b' }, object: { key: 'k2' } } },
-        { s3: { bucket: { name: 'b' }, object: { key: 'k3' } } },
+        makeSQSRecord('sqs-1', 'b', 'k1'),
+        makeSQSRecord('sqs-2', 'b', 'k2'),
+        makeSQSRecord('sqs-3', 'b', 'k3'),
       ],
     };
 
     const response = await handler(event);
-    const body = JSON.parse(response.body);
-
-    expect(body.total).toBe(3);
-    expect(body.succeeded).toBe(3);
-    expect(body.failed).toBe(0);
-    expect(response.statusCode).toBe(200);
+    expect(response.batchItemFailures).toEqual([]);
   });
 
-  it('returns 207 when some records fail', async () => {
+  it('reports only failed records in batchItemFailures', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     mockProcessEmailFromS3
       .mockResolvedValueOnce({ success: true, messageId: 'msg-1' })
       .mockResolvedValueOnce({ success: false, messageId: 'msg-2', error: 'fail' });
 
-    const event = {
+    const event: SQSEvent = {
       Records: [
-        { s3: { bucket: { name: 'b' }, object: { key: 'k1' } } },
-        { s3: { bucket: { name: 'b' }, object: { key: 'k2' } } },
+        makeSQSRecord('sqs-1', 'b', 'k1'),
+        makeSQSRecord('sqs-2', 'b', 'k2'),
       ],
     };
 
     const response = await handler(event);
-    const body = JSON.parse(response.body);
 
-    expect(response.statusCode).toBe(207);
-    expect(body.succeeded).toBe(1);
-    expect(body.failed).toBe(1);
+    expect(response.batchItemFailures).toEqual([
+      { itemIdentifier: 'sqs-2' },
+    ]);
     expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
 
-  it('returns 207 when all records fail', async () => {
+  it('reports all records as failed when all processing fails', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     mockProcessEmailFromS3.mockResolvedValue({
@@ -102,37 +116,56 @@ describe('process-emails handler', () => {
       error: 'boom',
     });
 
-    const event = {
+    const event: SQSEvent = {
       Records: [
-        { s3: { bucket: { name: 'b' }, object: { key: 'k1' } } },
+        makeSQSRecord('sqs-1', 'b', 'k1'),
+        makeSQSRecord('sqs-2', 'b', 'k2'),
       ],
     };
 
     const response = await handler(event);
 
-    expect(response.statusCode).toBe(207);
+    expect(response.batchItemFailures).toHaveLength(2);
+    expect(response.batchItemFailures).toEqual([
+      { itemIdentifier: 'sqs-1' },
+      { itemIdentifier: 'sqs-2' },
+    ]);
     consoleSpy.mockRestore();
   });
 
-  it('includes results array in response body', async () => {
-    mockProcessEmailFromS3.mockResolvedValue({
-      success: true,
-      messageId: 'msg-1',
-      employeeName: 'Alice',
-      folderUrl: 'https://link',
-      documentsUploaded: ['doc.pdf'],
-    });
+  it('catches thrown errors and reports them as batch failures', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const event = {
-      Records: [
-        { s3: { bucket: { name: 'b' }, object: { key: 'k1' } } },
-      ],
+    mockProcessEmailFromS3.mockRejectedValue(new Error('unexpected crash'));
+
+    const event: SQSEvent = {
+      Records: [makeSQSRecord('sqs-1', 'b', 'k1')],
     };
 
     const response = await handler(event);
-    const body = JSON.parse(response.body);
 
-    expect(body.results).toHaveLength(1);
-    expect(body.results[0].employeeName).toBe('Alice');
+    expect(response.batchItemFailures).toEqual([
+      { itemIdentifier: 'sqs-1' },
+    ]);
+    consoleSpy.mockRestore();
+  });
+
+  it('logs a warning on retry attempts', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockProcessEmailFromS3.mockResolvedValue({
+      success: true,
+      messageId: 'msg-1',
+    });
+
+    const event: SQSEvent = {
+      Records: [makeSQSRecord('sqs-1', 'b', 'k1', 3)],
+    };
+
+    await handler(event);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Retry attempt 3')
+    );
+    warnSpy.mockRestore();
   });
 });

@@ -31,6 +31,31 @@ export interface S3Event {
   Records: S3EventRecord[];
 }
 
+export interface SQSRecord {
+  messageId: string;
+  receiptHandle: string;
+  body: string;
+  attributes: {
+    ApproximateReceiveCount: string;
+    SentTimestamp: string;
+    SenderId: string;
+    ApproximateFirstReceiveTimestamp: string;
+  };
+  messageAttributes: Record<string, unknown>;
+  md5OfBody: string;
+  eventSource: string;
+  eventSourceARN: string;
+  awsRegion: string;
+}
+
+export interface SQSEvent {
+  Records: SQSRecord[];
+}
+
+export interface SQSBatchResponse {
+  batchItemFailures: Array<{ itemIdentifier: string }>;
+}
+
 export interface EmployeeSubmission {
   messageId: string;
   employeeName: string;

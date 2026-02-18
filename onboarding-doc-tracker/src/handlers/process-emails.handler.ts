@@ -1,69 +1,60 @@
-import { S3Event } from '../types';
-import { config } from '../config';
-import { processEmailFromS3, ProcessingRunResult } from '../services/processing.service';
-import { mapWithConcurrency } from '../utils/resilience';
-
-interface LambdaResponse {
-  statusCode: number;
-  body: string;
-}
+import { SQSEvent, SQSBatchResponse, S3Event } from '../types';
+import { processEmailFromS3 } from '../services/processing.service';
 
 /**
- * AWS Lambda handler triggered by S3 PutObject events.
- * SES deposits raw emails into S3, which triggers this function
- * to parse, upload documents to OneDrive, and notify HR.
+ * AWS Lambda handler triggered by SQS messages.
  *
- * Records are processed concurrently (bounded by EMAIL_CONCURRENCY)
- * to handle bursts when many employees submit documents simultaneously.
+ * Flow: SES → S3 → SQS → this Lambda
+ *
+ * Each SQS message wraps an S3 event notification. The handler processes
+ * messages concurrently and reports individual failures via batchItemFailures,
+ * so SQS only retries the specific messages that failed. Messages that
+ * exhaust their maxReceiveCount land in the dead-letter queue.
  */
-export async function handler(event: S3Event): Promise<LambdaResponse> {
-  const startTime = Date.now();
+export async function handler(event: SQSEvent): Promise<SQSBatchResponse> {
+  const batchItemFailures: SQSBatchResponse['batchItemFailures'] = [];
 
-  const settled = await mapWithConcurrency(
-    event.Records,
-    config.processing.emailConcurrency,
-    async (record) => {
-      const { bucket, object } = record.s3;
-      return processEmailFromS3(bucket.name, object.key);
-    }
+  const outcomes = await Promise.allSettled(
+    event.Records.map(async (sqsRecord) => {
+      const receiveCount = parseInt(sqsRecord.attributes.ApproximateReceiveCount, 10);
+      if (receiveCount > 1) {
+        console.warn(
+          `Retry attempt ${receiveCount} for SQS message ${sqsRecord.messageId}`
+        );
+      }
+
+      const s3Event: S3Event = JSON.parse(sqsRecord.body);
+      const s3Record = s3Event.Records[0];
+      const { bucket, object } = s3Record.s3;
+
+      const result = await processEmailFromS3(bucket.name, object.key);
+
+      if (!result.success) {
+        throw new Error(result.error ?? `Processing failed for ${object.key}`);
+      }
+
+      return result;
+    })
   );
 
-  const results: ProcessingRunResult[] = [];
-  for (const outcome of settled) {
-    if (outcome.status === 'fulfilled') {
-      results.push(outcome.value);
-    } else {
-      const errorMessage = outcome.reason instanceof Error
+  for (let i = 0; i < outcomes.length; i++) {
+    const outcome = outcomes[i];
+    if (outcome.status === 'rejected') {
+      const error = outcome.reason instanceof Error
         ? outcome.reason.message
         : String(outcome.reason);
-      results.push({ success: false, messageId: 'unknown', error: errorMessage });
+      console.error(
+        `SQS message ${event.Records[i].messageId} failed: ${error}`
+      );
+      batchItemFailures.push({ itemIdentifier: event.Records[i].messageId });
     }
   }
 
-  const succeeded = results.filter((r) => r.success).length;
-  const failed = results.filter((r) => !r.success).length;
+  console.log(JSON.stringify({
+    total: event.Records.length,
+    succeeded: event.Records.length - batchItemFailures.length,
+    failed: batchItemFailures.length,
+  }));
 
-  const summary = {
-    duration: `${Date.now() - startTime}ms`,
-    total: results.length,
-    succeeded,
-    failed,
-    results,
-  };
-
-  if (failed > 0) {
-    console.error('Some emails failed processing:', JSON.stringify(summary));
-  }
-
-  if (failed === results.length && results.length > 0) {
-    throw new Error(
-      `All ${failed} email(s) failed processing. ` +
-      `Throwing to trigger Lambda retry. Errors: ${results.map((r) => r.error).join('; ')}`
-    );
-  }
-
-  return {
-    statusCode: failed > 0 ? 207 : 200,
-    body: JSON.stringify(summary, null, 2),
-  };
+  return { batchItemFailures };
 }

@@ -2,8 +2,8 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
   Onboarding Document Tracker — SES receives employee emails with documents,
-  stores in S3, triggers Lambda to parse attachments, upload to OneDrive,
-  and notify HR via SES.
+  stores in S3, S3 notifies SQS, Lambda processes from SQS to parse
+  attachments, upload to OneDrive, and notify HR via SES.
 
 Parameters:
   AzureTenantId:
@@ -35,6 +35,10 @@ Parameters:
     Type: String
     Default: onboarding@company.com
     Description: Email address that employees reply to (must match SES verified domain)
+  MaxRetries:
+    Type: Number
+    Default: 3
+    Description: Number of times SQS retries a failed message before sending to DLQ
 
 Globals:
   Function:
@@ -50,6 +54,7 @@ Resources:
   # ── S3 Bucket: stores raw emails deposited by SES ──
   EmailBucket:
     Type: AWS::S3::Bucket
+    DependsOn: EmailQueuePolicy
     Properties:
       BucketName: !Sub '${AWS::StackName}-emails'
       LifecycleConfiguration:
@@ -57,6 +62,15 @@ Resources:
           - Id: ExpireProcessedEmails
             Status: Enabled
             ExpirationInDays: 90
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue: !GetAtt EmailProcessingQueue.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: incoming/
 
   EmailBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -75,12 +89,48 @@ Resources:
               StringEquals:
                 'AWS:SourceAccount': !Ref 'AWS::AccountId'
 
-  # ── Lambda: processes emails from S3 ──
+  # ── SQS: buffers S3 event notifications with retry + DLQ ──
+  EmailProcessingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-email-dlq'
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  EmailProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-email-queue'
+      VisibilityTimeout: 360  # 6× Lambda timeout for safety margin
+      MessageRetentionPeriod: 345600  # 4 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EmailProcessingDLQ.Arn
+        maxReceiveCount: !Ref MaxRetries
+
+  EmailQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref EmailProcessingQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowS3SendMessage
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt EmailProcessingQueue.Arn
+            Condition:
+              ArnLike:
+                'aws:SourceArn': !Sub 'arn:aws:s3:::${AWS::StackName}-emails'
+
+  # ── Lambda: processes emails from SQS ──
   ProcessEmailFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: dist/handlers/process-emails.handler.handler
-      Description: Parses onboarding emails from S3, uploads documents to OneDrive, notifies HR
+      Description: Parses onboarding emails from S3 (via SQS), uploads documents to OneDrive, notifies HR
+      ReservedConcurrentExecutions: 5
       Environment:
         Variables:
           AZURE_TENANT_ID: !Ref AzureTenantId
@@ -93,21 +143,20 @@ Resources:
           DYNAMODB_TABLE: !Ref ProcessedEmailsTable
           EMAIL_BUCKET: !Ref EmailBucket
       Events:
-        S3EmailReceived:
-          Type: S3
+        SQSEmailReceived:
+          Type: SQS
           Properties:
-            Bucket: !Ref EmailBucket
-            Events: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: prefix
-                    Value: incoming/
+            Queue: !GetAtt EmailProcessingQueue.Arn
+            BatchSize: 5
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ProcessedEmailsTable
         - S3ReadPolicy:
             BucketName: !Ref EmailBucket
+        - SQSPollerPolicy:
+            QueueName: !GetAtt EmailProcessingQueue.QueueName
         - Version: '2012-10-17'
           Statement:
             - Effect: Allow
@@ -162,6 +211,12 @@ Outputs:
   EmailBucketName:
     Description: S3 bucket receiving emails from SES
     Value: !Ref EmailBucket
+  EmailProcessingQueueUrl:
+    Description: SQS queue URL for email processing
+    Value: !Ref EmailProcessingQueue
+  EmailProcessingDLQUrl:
+    Description: Dead-letter queue URL for failed email processing
+    Value: !Ref EmailProcessingDLQ
   DynamoDBTableName:
     Description: DynamoDB table tracking processed emails
     Value: !Ref ProcessedEmailsTable

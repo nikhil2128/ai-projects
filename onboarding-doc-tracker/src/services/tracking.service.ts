@@ -2,6 +2,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   PutCommand,
+  GetCommand,
   BatchGetCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from '../config';
@@ -38,7 +39,10 @@ export async function saveProcessingRecord(
         new PutCommand({
           TableName: TABLE,
           Item: record,
-          ConditionExpression: 'attribute_not_exists(messageId)',
+          ConditionExpression:
+            'attribute_not_exists(messageId) OR #s = :failed',
+          ExpressionAttributeNames: { '#s': 'status' },
+          ExpressionAttributeValues: { ':failed': 'failed' },
         })
       ),
     dynamoRetryOpts
@@ -85,8 +89,19 @@ export async function getProcessedMessageIds(
 export async function isAlreadyProcessed(
   messageId: string
 ): Promise<boolean> {
-  const result = await getProcessedMessageIds([messageId]);
-  return result.has(messageId);
+  const response = await withRetry(
+    () =>
+      docClient.send(
+        new GetCommand({
+          TableName: TABLE,
+          Key: { messageId },
+          ProjectionExpression: '#s',
+          ExpressionAttributeNames: { '#s': 'status' },
+        })
+      ),
+    dynamoRetryOpts
+  );
+  return response.Item?.status === 'processed';
 }
 
 export async function recordFailure(

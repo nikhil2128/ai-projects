@@ -3,6 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../config', () => ({
   config: {
     aws: { region: 'us-east-1', dynamoTable: 'test-tracking-table' },
+    processing: {
+      retryMaxAttempts: 3,
+      retryBaseDelayMs: 10,
+      retryMaxDelayMs: 100,
+    },
   },
 }));
 
@@ -15,6 +20,7 @@ vi.mock('@aws-sdk/lib-dynamodb', () => ({
     from: vi.fn(() => ({ send: mockDocClientSend })),
   },
   PutCommand: vi.fn((input: unknown) => ({ _type: 'PutCommand', ...input as object })),
+  GetCommand: vi.fn((input: unknown) => ({ _type: 'GetCommand', ...input as object })),
   BatchGetCommand: vi.fn((input: unknown) => ({ _type: 'BatchGetCommand', ...input as object })),
 }));
 
@@ -43,7 +49,7 @@ describe('tracking.service', () => {
   };
 
   describe('saveProcessingRecord', () => {
-    it('puts the record into DynamoDB with condition expression', async () => {
+    it('puts the record into DynamoDB with condition that allows overwriting failed records', async () => {
       await saveProcessingRecord(sampleRecord);
 
       expect(mockDocClientSend).toHaveBeenCalledOnce();
@@ -51,8 +57,10 @@ describe('tracking.service', () => {
       expect(command.TableName).toBe('test-tracking-table');
       expect(command.Item).toEqual(sampleRecord);
       expect(command.ConditionExpression).toBe(
-        'attribute_not_exists(messageId)'
+        'attribute_not_exists(messageId) OR #s = :failed'
       );
+      expect(command.ExpressionAttributeNames).toEqual({ '#s': 'status' });
+      expect(command.ExpressionAttributeValues).toEqual({ ':failed': 'failed' });
     });
 
     it('propagates DynamoDB errors', async () => {
@@ -147,23 +155,30 @@ describe('tracking.service', () => {
   });
 
   describe('isAlreadyProcessed', () => {
-    it('returns true when the message has been processed', async () => {
+    it('returns true when status is processed', async () => {
       mockDocClientSend.mockResolvedValue({
-        Responses: {
-          'test-tracking-table': [{ messageId: 'existing-msg' }],
-        },
+        Item: { status: 'processed' },
       });
 
       const result = await isAlreadyProcessed('existing-msg');
       expect(result).toBe(true);
+
+      const command = mockDocClientSend.mock.calls[0][0];
+      expect(command._type).toBe('GetCommand');
+      expect(command.Key).toEqual({ messageId: 'existing-msg' });
     });
 
-    it('returns false when the message has not been processed', async () => {
+    it('returns false when status is failed (allows retry)', async () => {
       mockDocClientSend.mockResolvedValue({
-        Responses: {
-          'test-tracking-table': [],
-        },
+        Item: { status: 'failed' },
       });
+
+      const result = await isAlreadyProcessed('failed-msg');
+      expect(result).toBe(false);
+    });
+
+    it('returns false when the message does not exist', async () => {
+      mockDocClientSend.mockResolvedValue({});
 
       const result = await isAlreadyProcessed('new-msg');
       expect(result).toBe(false);

@@ -6,21 +6,42 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { config } from '../config';
 import { TrackingRecord } from '../types';
+import { withRetry } from '../utils/resilience';
 
 const ddbClient = new DynamoDBClient({ region: config.aws.region });
 const docClient = DynamoDBDocumentClient.from(ddbClient);
 
 const TABLE = config.aws.dynamoTable;
 
+const dynamoRetryOpts = {
+  maxAttempts: config.processing.retryMaxAttempts,
+  baseDelayMs: config.processing.retryBaseDelayMs,
+  isRetryable: (error: unknown) => {
+    if (error && typeof error === 'object' && 'name' in error) {
+      const name = (error as { name: string }).name;
+      return (
+        name === 'ProvisionedThroughputExceededException' ||
+        name === 'ThrottlingException' ||
+        name === 'InternalServerError'
+      );
+    }
+    return false;
+  },
+};
+
 export async function saveProcessingRecord(
   record: TrackingRecord
 ): Promise<void> {
-  await docClient.send(
-    new PutCommand({
-      TableName: TABLE,
-      Item: record,
-      ConditionExpression: 'attribute_not_exists(messageId)',
-    })
+  await withRetry(
+    () =>
+      docClient.send(
+        new PutCommand({
+          TableName: TABLE,
+          Item: record,
+          ConditionExpression: 'attribute_not_exists(messageId)',
+        })
+      ),
+    dynamoRetryOpts
   );
 }
 
@@ -29,7 +50,6 @@ export async function getProcessedMessageIds(
 ): Promise<Set<string>> {
   if (messageIds.length === 0) return new Set();
 
-  // BatchGetItem supports max 100 keys per call
   const chunks: string[][] = [];
   for (let i = 0; i < messageIds.length; i += 100) {
     chunks.push(messageIds.slice(i, i + 100));
@@ -38,15 +58,19 @@ export async function getProcessedMessageIds(
   const processed = new Set<string>();
 
   for (const chunk of chunks) {
-    const response = await docClient.send(
-      new BatchGetCommand({
-        RequestItems: {
-          [TABLE]: {
-            Keys: chunk.map((id) => ({ messageId: id })),
-            ProjectionExpression: 'messageId',
-          },
-        },
-      })
+    const response = await withRetry(
+      () =>
+        docClient.send(
+          new BatchGetCommand({
+            RequestItems: {
+              [TABLE]: {
+                Keys: chunk.map((id) => ({ messageId: id })),
+                ProjectionExpression: 'messageId',
+              },
+            },
+          })
+        ),
+      dynamoRetryOpts
     );
 
     const items = response.Responses?.[TABLE] || [];
@@ -72,20 +96,24 @@ export async function recordFailure(
   error: string
 ): Promise<void> {
   try {
-    await docClient.send(
-      new PutCommand({
-        TableName: TABLE,
-        Item: {
-          messageId,
-          employeeName,
-          employeeEmail,
-          status: 'failed',
-          error,
-          processedAt: new Date().toISOString(),
-          folderUrl: '',
-          documentsUploaded: [],
-        } satisfies TrackingRecord,
-      })
+    await withRetry(
+      () =>
+        docClient.send(
+          new PutCommand({
+            TableName: TABLE,
+            Item: {
+              messageId,
+              employeeName,
+              employeeEmail,
+              status: 'failed',
+              error,
+              processedAt: new Date().toISOString(),
+              folderUrl: '',
+              documentsUploaded: [],
+            } satisfies TrackingRecord,
+          })
+        ),
+      dynamoRetryOpts
     );
   } catch (err) {
     console.error('Failed to record failure in DynamoDB:', err);

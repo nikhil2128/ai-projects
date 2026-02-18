@@ -3,6 +3,7 @@ import { simpleParser } from 'mailparser';
 import { config } from '../config';
 import { EmployeeSubmission } from '../types';
 import { normalizeDocumentBatch } from './document-normalizer';
+import { withRetry } from '../utils/resilience';
 
 const s3 = new S3Client({ region: config.aws.region });
 
@@ -14,11 +15,18 @@ export async function parseEmailFromS3(
   bucket: string,
   key: string
 ): Promise<EmployeeSubmission> {
-  const response = await s3.send(
-    new GetObjectCommand({ Bucket: bucket, Key: key })
+  const rawEmail = await withRetry(
+    async () => {
+      const response = await s3.send(
+        new GetObjectCommand({ Bucket: bucket, Key: key })
+      );
+      return response.Body!.transformToString();
+    },
+    {
+      maxAttempts: config.processing.retryMaxAttempts,
+      baseDelayMs: config.processing.retryBaseDelayMs,
+    }
   );
-
-  const rawEmail = await response.Body!.transformToString();
   const parsed = await simpleParser(rawEmail);
 
   const sender = parsed.from?.value[0];

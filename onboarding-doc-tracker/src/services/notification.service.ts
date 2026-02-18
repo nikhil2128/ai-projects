@@ -1,12 +1,14 @@
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { config } from '../config';
 import { ProcessingResult } from '../types';
+import { withRetry } from '../utils/resilience';
 
 const ses = new SESClient({ region: config.aws.region });
 
 /**
  * Sends an HTML email to HR via SES with a link to the employee's
  * OneDrive folder containing their onboarding documents.
+ * Retries on transient SES failures (throttling, service unavailable).
  */
 export async function notifyHrOfUpload(
   result: ProcessingResult
@@ -32,24 +34,38 @@ export async function notifyHrOfUpload(
     </p>
   `.trim();
 
-  await ses.send(
-    new SendEmailCommand({
-      Source: config.ses.fromEmail,
-      Destination: {
-        ToAddresses: [config.hr.email],
-      },
-      Message: {
-        Subject: {
-          Data: `Onboarding Documents Received — ${result.employeeName}`,
-          Charset: 'UTF-8',
-        },
-        Body: {
-          Html: {
-            Data: htmlBody,
-            Charset: 'UTF-8',
+  await withRetry(
+    () =>
+      ses.send(
+        new SendEmailCommand({
+          Source: config.ses.fromEmail,
+          Destination: {
+            ToAddresses: [config.hr.email],
           },
-        },
+          Message: {
+            Subject: {
+              Data: `Onboarding Documents Received — ${result.employeeName}`,
+              Charset: 'UTF-8',
+            },
+            Body: {
+              Html: {
+                Data: htmlBody,
+                Charset: 'UTF-8',
+              },
+            },
+          },
+        })
+      ),
+    {
+      maxAttempts: config.processing.retryMaxAttempts,
+      baseDelayMs: config.processing.retryBaseDelayMs,
+      isRetryable: (error) => {
+        if (error && typeof error === 'object' && 'name' in error) {
+          const name = (error as { name: string }).name;
+          return name === 'Throttling' || name === 'ServiceUnavailableException';
+        }
+        return false;
       },
-    })
+    }
   );
 }

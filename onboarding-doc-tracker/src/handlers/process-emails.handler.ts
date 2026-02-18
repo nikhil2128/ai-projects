@@ -1,5 +1,7 @@
 import { S3Event } from '../types';
-import { processEmailFromS3 } from '../services/processing.service';
+import { config } from '../config';
+import { processEmailFromS3, ProcessingRunResult } from '../services/processing.service';
+import { mapWithConcurrency } from '../utils/resilience';
 
 interface LambdaResponse {
   statusCode: number;
@@ -10,15 +12,32 @@ interface LambdaResponse {
  * AWS Lambda handler triggered by S3 PutObject events.
  * SES deposits raw emails into S3, which triggers this function
  * to parse, upload documents to OneDrive, and notify HR.
+ *
+ * Records are processed concurrently (bounded by EMAIL_CONCURRENCY)
+ * to handle bursts when many employees submit documents simultaneously.
  */
 export async function handler(event: S3Event): Promise<LambdaResponse> {
   const startTime = Date.now();
-  const results = [];
 
-  for (const record of event.Records) {
-    const { bucket, object } = record.s3;
-    const result = await processEmailFromS3(bucket.name, object.key);
-    results.push(result);
+  const settled = await mapWithConcurrency(
+    event.Records,
+    config.processing.emailConcurrency,
+    async (record) => {
+      const { bucket, object } = record.s3;
+      return processEmailFromS3(bucket.name, object.key);
+    }
+  );
+
+  const results: ProcessingRunResult[] = [];
+  for (const outcome of settled) {
+    if (outcome.status === 'fulfilled') {
+      results.push(outcome.value);
+    } else {
+      const errorMessage = outcome.reason instanceof Error
+        ? outcome.reason.message
+        : String(outcome.reason);
+      results.push({ success: false, messageId: 'unknown', error: errorMessage });
+    }
   }
 
   const succeeded = results.filter((r) => r.success).length;
@@ -34,6 +53,13 @@ export async function handler(event: S3Event): Promise<LambdaResponse> {
 
   if (failed > 0) {
     console.error('Some emails failed processing:', JSON.stringify(summary));
+  }
+
+  if (failed === results.length && results.length > 0) {
+    throw new Error(
+      `All ${failed} email(s) failed processing. ` +
+      `Throwing to trigger Lambda retry. Errors: ${results.map((r) => r.error).join('; ')}`
+    );
   }
 
   return {

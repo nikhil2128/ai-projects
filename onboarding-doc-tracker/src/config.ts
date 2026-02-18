@@ -38,4 +38,12 @@ export const config = {
   ses: {
     fromEmail: optional('SES_FROM_EMAIL', 'onboarding@company.com'),
   },
+
+  processing: {
+    emailConcurrency: parseInt(optional('EMAIL_CONCURRENCY', '5'), 10),
+    uploadConcurrency: parseInt(optional('UPLOAD_CONCURRENCY', '3'), 10),
+    retryMaxAttempts: parseInt(optional('RETRY_MAX_ATTEMPTS', '3'), 10),
+    retryBaseDelayMs: parseInt(optional('RETRY_BASE_DELAY_MS', '500'), 10),
+    retryMaxDelayMs: parseInt(optional('RETRY_MAX_DELAY_MS', '15000'), 10),
+  },
 } as const;

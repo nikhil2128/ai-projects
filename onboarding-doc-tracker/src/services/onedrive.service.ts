@@ -1,6 +1,7 @@
 import { config } from '../config';
 import { graphFetch, graphUpload } from './graph-client';
 import { GraphDriveItem, GraphSharingLink, DocumentAttachment } from '../types';
+import { mapWithConcurrency } from '../utils/resilience';
 
 const userDrivePath = `/users/${config.hr.userId}/drive`;
 
@@ -76,21 +77,45 @@ export async function uploadDocument(
   );
 }
 
+export interface UploadResult {
+  uploaded: string[];
+  failed: Array<{ name: string; error: string }>;
+}
+
 /**
- * Uploads all documents in a submission to the employee's folder.
+ * Uploads documents concurrently with bounded parallelism.
+ * Continues uploading remaining files even if some fail, returning
+ * both successful and failed uploads for partial-success tracking.
  */
 export async function uploadAllDocuments(
   folderId: string,
   attachments: DocumentAttachment[]
-): Promise<string[]> {
-  const uploadedNames: string[] = [];
+): Promise<UploadResult> {
+  const settled = await mapWithConcurrency(
+    attachments,
+    config.processing.uploadConcurrency,
+    async (attachment) => {
+      await uploadDocument(folderId, attachment);
+      return attachment.normalizedName;
+    }
+  );
 
-  for (const attachment of attachments) {
-    await uploadDocument(folderId, attachment);
-    uploadedNames.push(attachment.normalizedName);
+  const uploaded: string[] = [];
+  const failed: Array<{ name: string; error: string }> = [];
+
+  for (let i = 0; i < settled.length; i++) {
+    const outcome = settled[i];
+    if (outcome.status === 'fulfilled') {
+      uploaded.push(outcome.value);
+    } else {
+      const errorMsg = outcome.reason instanceof Error
+        ? outcome.reason.message
+        : String(outcome.reason);
+      failed.push({ name: attachments[i].normalizedName, error: errorMsg });
+    }
   }
 
-  return uploadedNames;
+  return { uploaded, failed };
 }
 
 /**

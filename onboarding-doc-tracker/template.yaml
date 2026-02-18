@@ -1,0 +1,170 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Onboarding Document Tracker — SES receives employee emails with documents,
+  stores in S3, triggers Lambda to parse attachments, upload to OneDrive,
+  and notify HR via SES.
+
+Parameters:
+  AzureTenantId:
+    Type: String
+    Description: Azure AD tenant ID for Microsoft Graph API (OneDrive access)
+  AzureClientId:
+    Type: String
+    Description: Azure AD application (client) ID
+  AzureClientSecret:
+    Type: String
+    NoEcho: true
+    Description: Azure AD client secret
+  HrEmail:
+    Type: String
+    Default: hr@company.com
+    Description: HR email address to receive notifications
+  HrUserId:
+    Type: String
+    Description: Microsoft Graph user object ID for the HR mailbox (OneDrive owner)
+  OneDriveRootFolder:
+    Type: String
+    Default: Onboarding Documents
+    Description: Root folder name in HR's OneDrive
+  SesFromEmail:
+    Type: String
+    Default: onboarding@company.com
+    Description: Verified SES sender address for HR notifications
+  OnboardingRecipient:
+    Type: String
+    Default: onboarding@company.com
+    Description: Email address that employees reply to (must match SES verified domain)
+
+Globals:
+  Function:
+    Timeout: 300
+    Runtime: nodejs20.x
+    MemorySize: 512
+    Environment:
+      Variables:
+        NODE_ENV: production
+
+Resources:
+
+  # ── S3 Bucket: stores raw emails deposited by SES ──
+  EmailBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-emails'
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireProcessedEmails
+            Status: Enabled
+            ExpirationInDays: 90
+
+  EmailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref EmailBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowSESPut
+            Effect: Allow
+            Principal:
+              Service: ses.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${EmailBucket.Arn}/incoming/*'
+            Condition:
+              StringEquals:
+                'AWS:SourceAccount': !Ref 'AWS::AccountId'
+
+  # ── Lambda: processes emails from S3 ──
+  ProcessEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: dist/handlers/process-emails.handler.handler
+      Description: Parses onboarding emails from S3, uploads documents to OneDrive, notifies HR
+      Environment:
+        Variables:
+          AZURE_TENANT_ID: !Ref AzureTenantId
+          AZURE_CLIENT_ID: !Ref AzureClientId
+          AZURE_CLIENT_SECRET: !Ref AzureClientSecret
+          HR_EMAIL: !Ref HrEmail
+          HR_USER_ID: !Ref HrUserId
+          ONEDRIVE_ROOT_FOLDER: !Ref OneDriveRootFolder
+          SES_FROM_EMAIL: !Ref SesFromEmail
+          DYNAMODB_TABLE: !Ref ProcessedEmailsTable
+          EMAIL_BUCKET: !Ref EmailBucket
+      Events:
+        S3EmailReceived:
+          Type: S3
+          Properties:
+            Bucket: !Ref EmailBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: incoming/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ProcessedEmailsTable
+        - S3ReadPolicy:
+            BucketName: !Ref EmailBucket
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: '*'
+
+  # ── SES Receipt Rule: receives email → stores in S3 ──
+  SesReceiptRuleSet:
+    Type: AWS::SES::ReceiptRuleSet
+    Properties:
+      RuleSetName: !Sub '${AWS::StackName}-ruleset'
+
+  SesReceiptRule:
+    Type: AWS::SES::ReceiptRule
+    DependsOn:
+      - EmailBucketPolicy
+    Properties:
+      RuleSetName: !Ref SesReceiptRuleSet
+      Rule:
+        Name: !Sub '${AWS::StackName}-receive-docs'
+        Enabled: true
+        ScanEnabled: true
+        Recipients:
+          - !Ref OnboardingRecipient
+        Actions:
+          - S3Action:
+              BucketName: !Ref EmailBucket
+              ObjectKeyPrefix: incoming/
+
+  # ── DynamoDB: tracks processed emails ──
+  ProcessedEmailsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-tracking'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: messageId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: messageId
+          KeyType: HASH
+      Tags:
+        - Key: Project
+          Value: onboarding-doc-tracker
+
+Outputs:
+  ProcessEmailFunctionArn:
+    Description: ARN of the email processing Lambda function
+    Value: !GetAtt ProcessEmailFunction.Arn
+  EmailBucketName:
+    Description: S3 bucket receiving emails from SES
+    Value: !Ref EmailBucket
+  DynamoDBTableName:
+    Description: DynamoDB table tracking processed emails
+    Value: !Ref ProcessedEmailsTable
+  SesRuleSetName:
+    Description: SES receipt rule set (must be activated manually after deploy)
+    Value: !Ref SesReceiptRuleSet

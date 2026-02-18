@@ -1,0 +1,82 @@
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { simpleParser } from 'mailparser';
+import { config } from '../config';
+import { EmployeeSubmission } from '../types';
+import { normalizeDocumentBatch } from './document-normalizer';
+
+const s3 = new S3Client({ region: config.aws.region });
+
+/**
+ * Reads a raw MIME email from S3 (deposited by SES), parses it,
+ * and extracts sender info + PDF attachments into an EmployeeSubmission.
+ */
+export async function parseEmailFromS3(
+  bucket: string,
+  key: string
+): Promise<EmployeeSubmission> {
+  const response = await s3.send(
+    new GetObjectCommand({ Bucket: bucket, Key: key })
+  );
+
+  const rawEmail = await response.Body!.transformToString();
+  const parsed = await simpleParser(rawEmail);
+
+  const sender = parsed.from?.value[0];
+  if (!sender) {
+    throw new Error(`Could not extract sender from email at s3://${bucket}/${key}`);
+  }
+
+  const employeeName = extractEmployeeName(sender.name, sender.address);
+
+  const pdfAttachments = (parsed.attachments || []).filter(
+    (att) =>
+      att.contentType === 'application/pdf' ||
+      att.filename?.toLowerCase().endsWith('.pdf')
+  );
+
+  if (pdfAttachments.length === 0) {
+    throw new Error(
+      `No PDF attachments found in email from ${sender.address}`
+    );
+  }
+
+  const filenames = pdfAttachments.map(
+    (att) => att.filename || 'unnamed.pdf'
+  );
+  const nameMapping = normalizeDocumentBatch(filenames, employeeName);
+
+  return {
+    messageId: parsed.messageId || key,
+    employeeName,
+    employeeEmail: sender.address || '',
+    subject: parsed.subject || '',
+    receivedAt: (parsed.date || new Date()).toISOString(),
+    attachments: pdfAttachments.map((att) => {
+      const originalName = att.filename || 'unnamed.pdf';
+      return {
+        originalName,
+        normalizedName: nameMapping.get(originalName) || originalName,
+        contentBytes: att.content.toString('base64'),
+        contentType: att.contentType,
+        size: att.size,
+      };
+    }),
+  };
+}
+
+function extractEmployeeName(
+  displayName: string | undefined,
+  emailAddress: string | undefined
+): string {
+  if (displayName && displayName.trim().length > 0) {
+    return displayName.trim();
+  }
+
+  if (!emailAddress) return 'Unknown';
+
+  const localPart = emailAddress.split('@')[0];
+  return localPart
+    .replace(/[._-]/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}

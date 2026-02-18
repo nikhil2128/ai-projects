@@ -20,6 +20,7 @@ PROJECTS := \
 	image-annotator/frontend \
 	invoice-processor \
 	invoice-processor/ui \
+	onboarding-doc-tracker \
 	smart-task-manager/backend \
 	smart-task-manager/frontend \
 	video-merger

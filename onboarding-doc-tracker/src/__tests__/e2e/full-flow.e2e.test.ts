@@ -8,7 +8,7 @@ vi.mock('../../config', () => ({
     nodeEnv: 'test',
     aws: {
       region: 'us-east-1',
-      dynamoTable: 'e2e-table',
+      dynamoTablePrefix: 'e2e-tracking',
       tenantsTable: 'e2e-tenants',
       emailBucket: 'e2e-bucket',
       kmsKeyArn: '',

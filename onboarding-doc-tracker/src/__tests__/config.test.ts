@@ -16,7 +16,7 @@ describe('config', () => {
     delete process.env.PORT;
     delete process.env.NODE_ENV;
     delete process.env.AWS_REGION;
-    delete process.env.DYNAMODB_TABLE;
+    delete process.env.DYNAMODB_TABLE_PREFIX;
     delete process.env.TENANTS_TABLE;
     delete process.env.EMAIL_BUCKET;
     delete process.env.API_KEY;
@@ -26,7 +26,7 @@ describe('config', () => {
     expect(config.port).toBe(3005);
     expect(config.nodeEnv).toBe('development');
     expect(config.aws.region).toBe('us-east-1');
-    expect(config.aws.dynamoTable).toBe('onboarding-doc-tracker');
+    expect(config.aws.dynamoTablePrefix).toBe('onboarding-doc-tracker-tracking');
     expect(config.aws.tenantsTable).toBe('onboarding-doc-tenants');
     expect(config.aws.emailBucket).toBe('onboarding-doc-emails');
     expect(config.apiKey).toBe('');
@@ -36,7 +36,7 @@ describe('config', () => {
     process.env.PORT = '4000';
     process.env.NODE_ENV = 'staging';
     process.env.AWS_REGION = 'eu-west-1';
-    process.env.DYNAMODB_TABLE = 'custom-table';
+    process.env.DYNAMODB_TABLE_PREFIX = 'custom-prefix';
     process.env.TENANTS_TABLE = 'custom-tenants';
     process.env.EMAIL_BUCKET = 'custom-bucket';
     process.env.API_KEY = 'my-secret-key';
@@ -46,7 +46,7 @@ describe('config', () => {
     expect(config.port).toBe(4000);
     expect(config.nodeEnv).toBe('staging');
     expect(config.aws.region).toBe('eu-west-1');
-    expect(config.aws.dynamoTable).toBe('custom-table');
+    expect(config.aws.dynamoTablePrefix).toBe('custom-prefix');
     expect(config.aws.tenantsTable).toBe('custom-tenants');
     expect(config.aws.emailBucket).toBe('custom-bucket');
     expect(config.apiKey).toBe('my-secret-key');

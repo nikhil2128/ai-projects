@@ -225,10 +225,17 @@ Resources:
                   - dynamodb:Scan
                   - dynamodb:BatchGetItem
                 Resource:
-                  - !GetAtt ProcessedEmailsTable.Arn
-                  - !Sub '${ProcessedEmailsTable.Arn}/index/*'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AWS::StackName}-tracking-*'
                   - !GetAtt TenantsTable.Arn
                   - !Sub '${TenantsTable.Arn}/index/*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:CreateTable
+                  - dynamodb:DeleteTable
+                  - dynamodb:DescribeTable
+                  - dynamodb:TagResource
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${AWS::StackName}-tracking-*'
         - PolicyName: S3ReadAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -291,7 +298,7 @@ Resources:
       Environment:
         Variables:
           API_KEY: !Ref ApiKey
-          DYNAMODB_TABLE: !Ref ProcessedEmailsTable
+          DYNAMODB_TABLE_PREFIX: !Sub '${AWS::StackName}-tracking'
           TENANTS_TABLE: !Ref TenantsTable
           EMAIL_BUCKET: !Ref EmailBucket
           KMS_KEY_ARN: !GetAtt TenantDataKey.Arn
@@ -331,37 +338,9 @@ Resources:
               ObjectKeyPrefix: incoming/
               KmsKeyArn: !GetAtt TenantDataKey.Arn
 
-  # ── DynamoDB: tracks processed emails (multi-tenant, encrypted) ──
-  ProcessedEmailsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub '${AWS::StackName}-tracking'
-      BillingMode: PAY_PER_REQUEST
-      SSESpecification:
-        SSEEnabled: true
-        SSEType: KMS
-        KMSMasterKeyId: !GetAtt TenantDataKey.Arn
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-      DeletionProtectionEnabled: true
-      AttributeDefinitions:
-        - AttributeName: messageId
-          AttributeType: S
-        - AttributeName: tenantId
-          AttributeType: S
-      KeySchema:
-        - AttributeName: messageId
-          KeyType: HASH
-      GlobalSecondaryIndexes:
-        - IndexName: tenantId-index
-          KeySchema:
-            - AttributeName: tenantId
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-      Tags:
-        - Key: Project
-          Value: onboarding-doc-tracker
+  # ── DynamoDB: per-tenant tracking tables are created dynamically ──
+  # Each tenant gets a dedicated table named ${StackName}-tracking-${tenantId}
+  # created/deleted via the tenant.service during tenant lifecycle.
 
   # ── DynamoDB: tenant configurations (encrypted, no secrets in records) ──
   TenantsTable:
@@ -408,9 +387,9 @@ Outputs:
   EmailProcessingDLQUrl:
     Description: Dead-letter queue URL for failed email processing
     Value: !Ref EmailProcessingDLQ
-  TrackingTableName:
-    Description: DynamoDB table tracking processed emails
-    Value: !Ref ProcessedEmailsTable
+  TrackingTablePrefix:
+    Description: Prefix for per-tenant DynamoDB tracking tables (each tenant gets ${prefix}-${tenantId})
+    Value: !Sub '${AWS::StackName}-tracking'
   TenantsTableName:
     Description: DynamoDB table storing tenant configurations
     Value: !Ref TenantsTable

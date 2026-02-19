@@ -1,4 +1,9 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import {
+  DynamoDBClient,
+  CreateTableCommand,
+  DeleteTableCommand,
+  waitUntilTableExists,
+} from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   PutCommand,
@@ -12,6 +17,7 @@ import { config } from '../config';
 import { CreateTenantInput, UpdateTenantInput, Tenant } from '../types';
 import { storeSecret, updateSecret, deleteSecret } from './secrets.service';
 import { auditLog } from '../middleware/security';
+import { getTrackingTableName } from './tracking.service';
 
 const ddbClient = new DynamoDBClient({ region: config.aws.region });
 const docClient = DynamoDBDocumentClient.from(ddbClient);
@@ -47,6 +53,8 @@ export async function createTenant(input: CreateTenantInput): Promise<Tenant> {
       ConditionExpression: 'attribute_not_exists(tenantId)',
     }),
   );
+
+  await createTrackingTable(tenantId);
 
   auditLog('tenant.created', { tenantId, companyName: input.companyName });
 
@@ -134,6 +142,8 @@ export async function deleteTenant(tenantId: string): Promise<boolean> {
     }),
   );
 
+  await deleteTrackingTable(tenantId);
+
   auditLog('tenant.deleted', { tenantId, companyName: existing.companyName });
 
   return true;
@@ -144,4 +154,48 @@ export async function listTenants(): Promise<Tenant[]> {
     new ScanCommand({ TableName: TABLE }),
   );
   return (response.Items as Tenant[]) || [];
+}
+
+async function createTrackingTable(tenantId: string): Promise<void> {
+  const tableName = getTrackingTableName(tenantId);
+
+  await ddbClient.send(
+    new CreateTableCommand({
+      TableName: tableName,
+      BillingMode: 'PAY_PER_REQUEST',
+      AttributeDefinitions: [
+        { AttributeName: 'messageId', AttributeType: 'S' },
+      ],
+      KeySchema: [{ AttributeName: 'messageId', KeyType: 'HASH' }],
+      SSESpecification: config.aws.kmsKeyArn
+        ? { Enabled: true, SSEType: 'KMS', KMSMasterKeyId: config.aws.kmsKeyArn }
+        : undefined,
+      Tags: [
+        { Key: 'Project', Value: 'onboarding-doc-tracker' },
+        { Key: 'TenantId', Value: tenantId },
+      ],
+    }),
+  );
+
+  await waitUntilTableExists(
+    { client: ddbClient, maxWaitTime: 120 },
+    { TableName: tableName },
+  );
+}
+
+async function deleteTrackingTable(tenantId: string): Promise<void> {
+  const tableName = getTrackingTableName(tenantId);
+  try {
+    await ddbClient.send(new DeleteTableCommand({ TableName: tableName }));
+  } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'name' in error &&
+      (error as { name: string }).name === 'ResourceNotFoundException'
+    ) {
+      return;
+    }
+    throw error;
+  }
 }

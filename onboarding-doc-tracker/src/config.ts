@@ -18,7 +18,7 @@ export const config = {
 
   aws: {
     region: optional('AWS_REGION', 'us-east-1'),
-    dynamoTable: optional('DYNAMODB_TABLE', 'onboarding-doc-tracker'),
+    dynamoTablePrefix: optional('DYNAMODB_TABLE_PREFIX', 'onboarding-doc-tracker-tracking'),
     tenantsTable: optional('TENANTS_TABLE', 'onboarding-doc-tenants'),
     emailBucket: optional('EMAIL_BUCKET', 'onboarding-doc-emails'),
     kmsKeyArn: isProd ? required('KMS_KEY_ARN') : optional('KMS_KEY_ARN', ''),

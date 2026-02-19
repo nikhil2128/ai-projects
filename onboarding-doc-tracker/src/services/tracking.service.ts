@@ -3,7 +3,7 @@ import {
   DynamoDBDocumentClient,
   PutCommand,
   GetCommand,
-  QueryCommand,
+  ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from '../config';
 import { TrackingRecord } from '../types';
@@ -11,8 +11,6 @@ import { withRetry } from '../utils/resilience';
 
 const ddbClient = new DynamoDBClient({ region: config.aws.region });
 const docClient = DynamoDBDocumentClient.from(ddbClient);
-
-const TABLE = config.aws.dynamoTable;
 
 const dynamoRetryOpts = {
   maxAttempts: config.processing.retryMaxAttempts,
@@ -30,14 +28,19 @@ const dynamoRetryOpts = {
   },
 };
 
+export function getTrackingTableName(tenantId: string): string {
+  return `${config.aws.dynamoTablePrefix}-${tenantId}`;
+}
+
 export async function saveProcessingRecord(
   record: TrackingRecord,
 ): Promise<void> {
+  const tableName = getTrackingTableName(record.tenantId);
   await withRetry(
     () =>
       docClient.send(
         new PutCommand({
-          TableName: TABLE,
+          TableName: tableName,
           Item: record,
           ConditionExpression:
             'attribute_not_exists(messageId) OR #s = :failed',
@@ -49,22 +52,18 @@ export async function saveProcessingRecord(
   );
 }
 
-/**
- * Checks if a message was already processed. Verifies both messageId and
- * tenantId to prevent a crafted messageId from masquerading as another
- * tenant's already-processed record.
- */
 export async function isAlreadyProcessed(
   messageId: string,
   tenantId: string,
 ): Promise<boolean> {
+  const tableName = getTrackingTableName(tenantId);
   const response = await withRetry(
     () =>
       docClient.send(
         new GetCommand({
-          TableName: TABLE,
+          TableName: tableName,
           Key: { messageId },
-          ProjectionExpression: '#s, tenantId',
+          ProjectionExpression: '#s',
           ExpressionAttributeNames: { '#s': 'status' },
         }),
       ),
@@ -72,38 +71,22 @@ export async function isAlreadyProcessed(
   );
 
   if (!response.Item) return false;
-
-  if (response.Item.tenantId !== tenantId) {
-    console.error(
-      JSON.stringify({
-        level: 'SECURITY',
-        event: 'cross_tenant_duplicate_check',
-        messageId,
-        expectedTenant: tenantId,
-        foundTenant: response.Item.tenantId,
-      }),
-    );
-    return false;
-  }
-
   return response.Item.status === 'processed';
 }
 
 /**
- * Returns all tracking records for a specific tenant, ensuring strict
- * tenant isolation via the tenantId-index GSI.
+ * Returns all tracking records for a tenant by scanning the tenant's
+ * dedicated table.
  */
 export async function getRecordsByTenant(
   tenantId: string,
 ): Promise<TrackingRecord[]> {
+  const tableName = getTrackingTableName(tenantId);
   const response = await withRetry(
     () =>
       docClient.send(
-        new QueryCommand({
-          TableName: TABLE,
-          IndexName: 'tenantId-index',
-          KeyConditionExpression: 'tenantId = :tid',
-          ExpressionAttributeValues: { ':tid': tenantId },
+        new ScanCommand({
+          TableName: tableName,
         }),
       ),
     dynamoRetryOpts,
@@ -119,12 +102,25 @@ export async function recordFailure(
   employeeEmail: string,
   error: string,
 ): Promise<void> {
+  if (tenantId === 'unknown') {
+    console.error(
+      JSON.stringify({
+        level: 'WARN',
+        event: 'failure_not_tracked',
+        messageId,
+        reason: 'Tenant could not be resolved — no tenant-specific table available',
+      }),
+    );
+    return;
+  }
+
+  const tableName = getTrackingTableName(tenantId);
   try {
     await withRetry(
       () =>
         docClient.send(
           new PutCommand({
-            TableName: TABLE,
+            TableName: tableName,
             Item: {
               tenantId,
               messageId,

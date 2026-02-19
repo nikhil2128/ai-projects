@@ -2,14 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../config', () => ({
   config: {
-    aws: { region: 'us-east-1', tenantsTable: 'test-tenants-table' },
+    aws: { region: 'us-east-1', tenantsTable: 'test-tenants-table', dynamoTablePrefix: 'test-tracking', kmsKeyArn: '' },
     processing: { retryMaxAttempts: 1, retryBaseDelayMs: 10, retryMaxDelayMs: 100 },
   },
 }));
 
 const mockDocClientSend = vi.hoisted(() => vi.fn());
+const mockDdbClientSend = vi.hoisted(() => vi.fn());
 vi.mock('@aws-sdk/client-dynamodb', () => ({
-  DynamoDBClient: vi.fn(() => ({})),
+  DynamoDBClient: vi.fn(() => ({ send: mockDdbClientSend })),
+  CreateTableCommand: vi.fn((input: unknown) => ({ _type: 'CreateTableCommand', ...input as object })),
+  DeleteTableCommand: vi.fn((input: unknown) => ({ _type: 'DeleteTableCommand', ...input as object })),
+  waitUntilTableExists: vi.fn().mockResolvedValue({}),
 }));
 vi.mock('@aws-sdk/lib-dynamodb', () => ({
   DynamoDBDocumentClient: {
@@ -64,10 +68,11 @@ describe('tenant.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDocClientSend.mockResolvedValue({});
+    mockDdbClientSend.mockResolvedValue({});
   });
 
   describe('createTenant', () => {
-    it('creates a new tenant with generated ID, stores secret in SM', async () => {
+    it('creates a new tenant with generated ID, stores secret in SM, and creates tracking table', async () => {
       // Query for existing tenant by email → none found
       mockDocClientSend.mockResolvedValueOnce({ Items: [] });
       // PutCommand succeeds
@@ -83,6 +88,11 @@ describe('tenant.service', () => {
       expect(tenant.createdAt).toBeDefined();
       expect(tenant.updatedAt).toBeDefined();
       expect(mockStoreSecret).toHaveBeenCalledWith('generated-uuid', 'acme-azure-secret');
+
+      // Verify tracking table was created
+      const createTableCall = mockDdbClientSend.mock.calls[0][0];
+      expect(createTableCall._type).toBe('CreateTableCommand');
+      expect(createTableCall.TableName).toBe('test-tracking-generated-uuid');
     });
 
     it('rejects duplicate receiving email', async () => {
@@ -181,7 +191,7 @@ describe('tenant.service', () => {
   });
 
   describe('deleteTenant', () => {
-    it('deletes existing tenant, removes secret, and returns true', async () => {
+    it('deletes existing tenant, removes secret, deletes tracking table, and returns true', async () => {
       mockDocClientSend.mockResolvedValueOnce({
         Item: { tenantId: 'tid', azureClientSecretArn: 'arn:test' },
       });
@@ -190,6 +200,11 @@ describe('tenant.service', () => {
       const result = await deleteTenant('tid');
       expect(result).toBe(true);
       expect(mockDeleteSecret).toHaveBeenCalledWith('arn:test');
+
+      // Verify tracking table was deleted
+      const deleteTableCall = mockDdbClientSend.mock.calls[0][0];
+      expect(deleteTableCall._type).toBe('DeleteTableCommand');
+      expect(deleteTableCall.TableName).toBe('test-tracking-tid');
     });
 
     it('returns false for non-existent tenant', async () => {

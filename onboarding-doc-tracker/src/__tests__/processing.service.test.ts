@@ -3,7 +3,7 @@ import { Tenant } from '../types';
 
 vi.mock('../config', () => ({
   config: {
-    aws: { region: 'us-east-1', dynamoTable: 'test-table', tenantsTable: 'test-tenants', emailBucket: 'test-bucket' },
+    aws: { region: 'us-east-1', dynamoTablePrefix: 'test-tracking', tenantsTable: 'test-tenants', emailBucket: 'test-bucket' },
     processing: { uploadConcurrency: 3, retryMaxAttempts: 1, retryBaseDelayMs: 10, retryMaxDelayMs: 100 },
   },
 }));

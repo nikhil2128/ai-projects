@@ -6,8 +6,22 @@ vi.mock('../../config', () => ({
   config: {
     port: 3099,
     nodeEnv: 'test',
-    aws: { region: 'us-east-1', dynamoTable: 'e2e-table', tenantsTable: 'e2e-tenants', emailBucket: 'e2e-bucket' },
+    aws: {
+      region: 'us-east-1',
+      dynamoTable: 'e2e-table',
+      tenantsTable: 'e2e-tenants',
+      emailBucket: 'e2e-bucket',
+      kmsKeyArn: '',
+      secretsPrefix: 'test/tenants',
+    },
     apiKey: '',
+    security: {
+      rateLimitWindowMs: 60000,
+      rateLimitMaxRequests: 1000,
+      corsAllowedOrigins: ['*'],
+      maxRequestBodyBytes: 1048576,
+      secretsCacheTtlMs: 300000,
+    },
     processing: {
       emailConcurrency: 5,
       uploadConcurrency: 3,
@@ -55,6 +69,20 @@ vi.mock('mailparser', () => ({
   simpleParser: mockSimpleParser,
 }));
 
+// --- Secrets Manager mock ---
+vi.mock('../../services/secrets.service', () => ({
+  resolveAzureCredentials: vi.fn().mockResolvedValue({
+    tenantId: 'e2e-azure-tenant',
+    clientId: 'e2e-azure-client',
+    clientSecret: 'e2e-azure-secret',
+  }),
+  storeSecret: vi.fn().mockResolvedValue('arn:aws:secretsmanager:us-east-1:123456:secret:test'),
+  updateSecret: vi.fn().mockResolvedValue(undefined),
+  deleteSecret: vi.fn().mockResolvedValue(undefined),
+  getSecret: vi.fn().mockResolvedValue('e2e-azure-secret'),
+  clearSecretCache: vi.fn(),
+}));
+
 // --- Graph API mock (via global fetch) ---
 const mockFetch = vi.hoisted(() => vi.fn());
 vi.stubGlobal('fetch', mockFetch);
@@ -69,7 +97,7 @@ const testTenant: Tenant = {
   hrUserId: 'e2e-user-id',
   azureTenantId: 'e2e-azure-tenant',
   azureClientId: 'e2e-azure-client',
-  azureClientSecret: 'e2e-azure-secret',
+  azureClientSecretArn: 'arn:aws:secretsmanager:us-east-1:123456:secret:e2e-azure-secret',
   oneDriveRootFolder: 'E2E Onboarding',
   sesFromEmail: 'e2e@test.com',
   status: 'active',

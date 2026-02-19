@@ -58,8 +58,31 @@ export interface SQSBatchResponse {
 
 // ── Multi-tenant ──
 
+/**
+ * What is stored in DynamoDB. The Azure client secret is NOT stored here —
+ * it lives in AWS Secrets Manager and is referenced by `azureClientSecretArn`.
+ */
 export interface Tenant {
   tenantId: string;
+  companyName: string;
+  receivingEmail: string;
+  hrEmail: string;
+  hrUserId: string;
+  azureTenantId: string;
+  azureClientId: string;
+  azureClientSecretArn: string;
+  oneDriveRootFolder: string;
+  sesFromEmail: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * API input when creating/updating a tenant. The caller supplies the actual
+ * `azureClientSecret` value; the service stores it in Secrets Manager.
+ */
+export interface CreateTenantInput {
   companyName: string;
   receivingEmail: string;
   hrEmail: string;
@@ -69,9 +92,18 @@ export interface Tenant {
   azureClientSecret: string;
   oneDriveRootFolder: string;
   sesFromEmail: string;
-  status: 'active' | 'inactive';
-  createdAt: string;
-  updatedAt: string;
+}
+
+export interface UpdateTenantInput {
+  companyName?: string;
+  receivingEmail?: string;
+  hrEmail?: string;
+  hrUserId?: string;
+  azureTenantId?: string;
+  azureClientId?: string;
+  azureClientSecret?: string;
+  oneDriveRootFolder?: string;
+  sesFromEmail?: string;
 }
 
 export interface AzureCredentials {
@@ -135,3 +167,13 @@ export type DocumentType =
   | 'visa'
   | 'work_permit'
   | 'document';
+
+// ── Audit ──
+
+export interface AuditEntry {
+  timestamp: string;
+  action: string;
+  tenantId?: string;
+  actor: string;
+  details?: Record<string, unknown>;
+}

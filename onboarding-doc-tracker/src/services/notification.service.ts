@@ -2,31 +2,42 @@ import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { config } from '../config';
 import { ProcessingResult, Tenant } from '../types';
 import { withRetry } from '../utils/resilience';
+import { escapeHtml } from '../utils/sanitize';
 
 const ses = new SESClient({ region: config.aws.region });
 
 /**
  * Sends an HTML email to HR via SES with a link to the employee's
  * OneDrive folder containing their onboarding documents.
- * Retries on transient SES failures (throttling, service unavailable).
+ * All user-supplied values are HTML-escaped to prevent injection.
  */
 export async function notifyHrOfUpload(
   result: ProcessingResult,
-  tenant: Tenant
+  tenant: Tenant,
 ): Promise<void> {
+  const name = escapeHtml(result.employeeName);
+  const email = escapeHtml(result.employeeEmail);
+  const company = escapeHtml(tenant.companyName);
+  const date = escapeHtml(new Date(result.processedAt).toLocaleString());
+  const folderUrl = encodeURI(result.folderUrl);
+
+  const docList = result.documentsUploaded
+    .map((d) => `<li>${escapeHtml(d)}</li>`)
+    .join('\n      ');
+
   const htmlBody = `
     <h2>Onboarding Documents Received</h2>
-    <p><strong>Employee:</strong> ${result.employeeName}</p>
-    <p><strong>Email:</strong> ${result.employeeEmail}</p>
-    <p><strong>Company:</strong> ${tenant.companyName}</p>
-    <p><strong>Received:</strong> ${new Date(result.processedAt).toLocaleString()}</p>
+    <p><strong>Employee:</strong> ${name}</p>
+    <p><strong>Email:</strong> ${email}</p>
+    <p><strong>Company:</strong> ${company}</p>
+    <p><strong>Received:</strong> ${date}</p>
     <hr />
     <p><strong>Documents uploaded:</strong></p>
     <ul>
-      ${result.documentsUploaded.map((name) => `<li>${name}</li>`).join('\n      ')}
+      ${docList}
     </ul>
     <p>
-      <a href="${result.folderUrl}" style="display:inline-block;padding:10px 20px;background:#0078d4;color:#fff;text-decoration:none;border-radius:4px;">
+      <a href="${folderUrl}" style="display:inline-block;padding:10px 20px;background:#0078d4;color:#fff;text-decoration:none;border-radius:4px;">
         View Documents on OneDrive
       </a>
     </p>
@@ -35,6 +46,8 @@ export async function notifyHrOfUpload(
       This is an automated notification from the Onboarding Document Tracker.
     </p>
   `.trim();
+
+  const subject = `Onboarding Documents Received — ${name}`;
 
   await withRetry(
     () =>
@@ -46,7 +59,7 @@ export async function notifyHrOfUpload(
           },
           Message: {
             Subject: {
-              Data: `Onboarding Documents Received — ${result.employeeName}`,
+              Data: subject,
               Charset: 'UTF-8',
             },
             Body: {
@@ -56,7 +69,7 @@ export async function notifyHrOfUpload(
               },
             },
           },
-        })
+        }),
       ),
     {
       maxAttempts: config.processing.retryMaxAttempts,
@@ -68,6 +81,6 @@ export async function notifyHrOfUpload(
         }
         return false;
       },
-    }
+    },
   );
 }

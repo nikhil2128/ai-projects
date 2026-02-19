@@ -14,6 +14,17 @@ vi.mock('../services/graph-client', () => ({
   graphUpload: mockGraphUpload,
 }));
 
+const mockResolveAzureCredentials = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({
+    tenantId: 'azure-tenant-id',
+    clientId: 'azure-client-id',
+    clientSecret: 'azure-client-secret',
+  }),
+);
+vi.mock('../services/secrets.service', () => ({
+  resolveAzureCredentials: mockResolveAzureCredentials,
+}));
+
 import {
   createEmployeeFolder,
   uploadDocument,
@@ -30,7 +41,7 @@ const testTenant: Tenant = {
   hrUserId: 'test-user-id',
   azureTenantId: 'azure-tenant-id',
   azureClientId: 'azure-client-id',
-  azureClientSecret: 'azure-client-secret',
+  azureClientSecretArn: 'arn:aws:secretsmanager:us-east-1:123456:secret:azure-client-secret',
   oneDriveRootFolder: 'Onboarding Documents',
   sesFromEmail: 'noreply@testcorp.com',
   status: 'active',

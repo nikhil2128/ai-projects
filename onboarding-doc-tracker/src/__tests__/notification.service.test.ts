@@ -25,7 +25,7 @@ const testTenant: Tenant = {
   hrUserId: 'test-user-id',
   azureTenantId: 'azure-tenant-id',
   azureClientId: 'azure-client-id',
-  azureClientSecret: 'azure-client-secret',
+  azureClientSecretArn: 'arn:aws:secretsmanager:us-east-1:123456:secret:azure-client-secret',
   oneDriveRootFolder: 'Onboarding Documents',
   sesFromEmail: 'noreply@testcorp.com',
   status: 'active',

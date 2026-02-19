@@ -32,8 +32,8 @@ export interface ProcessingRunResult {
  *
  * 1. Parse raw MIME email from S3 -> extract sender + recipient + PDF attachments
  * 2. Resolve tenant from recipient email address
- * 3. Check DynamoDB to skip already-processed emails
- * 4. Create employee folder on OneDrive (using tenant's Azure credentials)
+ * 3. Check DynamoDB to skip already-processed emails (tenant-scoped)
+ * 4. Create employee folder on OneDrive (credentials resolved from Secrets Manager)
  * 5. Upload normalized documents (concurrently, with partial success)
  * 6. Generate sharing link
  * 7. Notify HR via SES (non-critical — failure here doesn't fail the pipeline)
@@ -41,7 +41,7 @@ export interface ProcessingRunResult {
  */
 export async function processEmailFromS3(
   bucket: string,
-  key: string
+  key: string,
 ): Promise<ProcessingRunResult> {
   let messageId = key;
   let employeeName = '';
@@ -50,6 +50,13 @@ export async function processEmailFromS3(
   const warnings: string[] = [];
 
   try {
+    if (!key.startsWith('incoming/')) {
+      throw new StepError(
+        'validation',
+        `S3 key must start with "incoming/" — got "${key}"`,
+      );
+    }
+
     const submission = await parseEmailFromS3(bucket, key);
     messageId = submission.messageId;
     employeeName = submission.employeeName;
@@ -59,18 +66,28 @@ export async function processEmailFromS3(
     if (!tenant) {
       throw new StepError(
         'tenant-resolution',
-        `No tenant registered for receiving email "${submission.recipientEmail}"`
+        `No tenant registered for receiving email "${submission.recipientEmail}"`,
       );
     }
 
     if (tenant.status !== 'active') {
       throw new StepError(
         'tenant-resolution',
-        `Tenant "${tenant.companyName}" is inactive`
+        `Tenant "${tenant.companyName}" is inactive`,
       );
     }
 
-    if (await isAlreadyProcessed(messageId)) {
+    console.log(
+      JSON.stringify({
+        level: 'INFO',
+        event: 'processing_started',
+        tenantId: tenant.tenantId,
+        messageId,
+        employeeEmail,
+      }),
+    );
+
+    if (await isAlreadyProcessed(messageId, tenant.tenantId)) {
       return {
         success: true,
         messageId,
@@ -85,7 +102,7 @@ export async function processEmailFromS3(
     const { uploaded, failed: uploadFailures } = await uploadAllDocuments(
       folder.id,
       submission.attachments,
-      tenant
+      tenant,
     );
 
     if (uploaded.length === 0) {
@@ -94,7 +111,7 @@ export async function processEmailFromS3(
         .join('; ');
       throw new StepError(
         'upload',
-        `All ${uploadFailures.length} document(s) failed to upload: ${failureDetails}`
+        `All ${uploadFailures.length} document(s) failed to upload: ${failureDetails}`,
       );
     }
 
@@ -110,7 +127,7 @@ export async function processEmailFromS3(
     } catch (error) {
       sharingLink = folder.webUrl || '';
       warnings.push(
-        `Sharing link creation failed, using folder URL: ${error instanceof Error ? error.message : String(error)}`
+        `Sharing link creation failed, using folder URL: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
@@ -128,7 +145,7 @@ export async function processEmailFromS3(
       await notifyHrOfUpload(result, tenant);
     } catch (error) {
       warnings.push(
-        `HR notification failed (documents are uploaded): ${error instanceof Error ? error.message : String(error)}`
+        `HR notification failed (documents are uploaded): ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
@@ -138,6 +155,16 @@ export async function processEmailFromS3(
       ...(warnings.length > 0 && { error: warnings.join(' | ') }),
     };
     await saveProcessingRecord(trackingRecord);
+
+    console.log(
+      JSON.stringify({
+        level: 'INFO',
+        event: 'processing_completed',
+        tenantId: tenant.tenantId,
+        messageId,
+        documentsUploaded: uploaded.length,
+      }),
+    );
 
     return {
       success: true,
@@ -156,8 +183,14 @@ export async function processEmailFromS3(
       error instanceof StepError ? error.step : 'unknown';
 
     console.error(
-      `Failed to process email s3://${bucket}/${key} at step "${failedAtStep}":`,
-      errorMessage
+      JSON.stringify({
+        level: 'ERROR',
+        event: 'processing_failed',
+        tenantId: tenant?.tenantId,
+        messageId,
+        step: failedAtStep,
+        error: errorMessage,
+      }),
     );
 
     await recordFailure(
@@ -165,7 +198,7 @@ export async function processEmailFromS3(
       messageId,
       employeeName,
       employeeEmail,
-      errorMessage
+      errorMessage,
     );
 
     return {
@@ -183,7 +216,7 @@ export async function processEmailFromS3(
 class StepError extends Error {
   constructor(
     public readonly step: string,
-    message: string
+    message: string,
   ) {
     super(message);
     this.name = 'StepError';

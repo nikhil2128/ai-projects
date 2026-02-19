@@ -1,24 +1,17 @@
 import { config } from '../config';
 import { graphFetch, graphUpload } from './graph-client';
 import {
-  AzureCredentials,
   GraphDriveItem,
   GraphSharingLink,
   DocumentAttachment,
   Tenant,
+  AzureCredentials,
 } from '../types';
 import { mapWithConcurrency } from '../utils/resilience';
+import { resolveAzureCredentials } from './secrets.service';
 
 interface ChildrenResponse {
   value: GraphDriveItem[];
-}
-
-function toAzureCredentials(tenant: Tenant): AzureCredentials {
-  return {
-    tenantId: tenant.azureTenantId,
-    clientId: tenant.azureClientId,
-    clientSecret: tenant.azureClientSecret,
-  };
 }
 
 function getUserDrivePath(hrUserId: string): string {
@@ -31,16 +24,16 @@ function getUserDrivePath(hrUserId: string): string {
  */
 export async function createEmployeeFolder(
   employeeName: string,
-  tenant: Tenant
+  tenant: Tenant,
 ): Promise<GraphDriveItem> {
-  const credentials = toAzureCredentials(tenant);
+  const credentials = await resolveAzureCredentials(tenant);
   const drivePath = getUserDrivePath(tenant.hrUserId);
 
   const rootFolder = await ensureFolder(
     'root',
     tenant.oneDriveRootFolder,
     drivePath,
-    credentials
+    credentials,
   );
 
   return ensureFolder(rootFolder.id, employeeName, drivePath, credentials);
@@ -50,7 +43,7 @@ async function ensureFolder(
   parentItemId: string,
   folderName: string,
   drivePath: string,
-  credentials: AzureCredentials
+  credentials: AzureCredentials,
 ): Promise<GraphDriveItem> {
   const existing = await findChildFolder(parentItemId, folderName, drivePath, credentials);
   if (existing) {
@@ -67,7 +60,7 @@ async function ensureFolder(
         '@microsoft.graph.conflictBehavior': 'rename',
       }),
     },
-    credentials
+    credentials,
   );
 }
 
@@ -75,13 +68,13 @@ async function findChildFolder(
   parentItemId: string,
   folderName: string,
   drivePath: string,
-  credentials: AzureCredentials
+  credentials: AzureCredentials,
 ): Promise<GraphDriveItem | null> {
   try {
     const response = await graphFetch<ChildrenResponse>(
       `${drivePath}/items/${parentItemId}/children?$filter=name eq '${encodeURIComponent(folderName)}'`,
       {},
-      credentials
+      credentials,
     );
     return response.value.find((item) => item.folder !== undefined) || null;
   } catch {
@@ -97,16 +90,16 @@ async function findChildFolder(
 export async function uploadDocument(
   folderId: string,
   attachment: DocumentAttachment,
-  tenant: Tenant
+  tenant: Tenant,
 ): Promise<GraphDriveItem> {
   const content = Buffer.from(attachment.contentBytes, 'base64');
-  const credentials = toAzureCredentials(tenant);
+  const credentials = await resolveAzureCredentials(tenant);
   const drivePath = getUserDrivePath(tenant.hrUserId);
 
   return graphUpload<GraphDriveItem>(
     `${drivePath}/items/${folderId}:/${encodeURIComponent(attachment.normalizedName)}:/content`,
     content,
-    credentials
+    credentials,
   );
 }
 
@@ -123,7 +116,7 @@ export interface UploadResult {
 export async function uploadAllDocuments(
   folderId: string,
   attachments: DocumentAttachment[],
-  tenant: Tenant
+  tenant: Tenant,
 ): Promise<UploadResult> {
   const settled = await mapWithConcurrency(
     attachments,
@@ -131,7 +124,7 @@ export async function uploadAllDocuments(
     async (attachment) => {
       await uploadDocument(folderId, attachment, tenant);
       return attachment.normalizedName;
-    }
+    },
   );
 
   const uploaded: string[] = [];
@@ -142,9 +135,10 @@ export async function uploadAllDocuments(
     if (outcome.status === 'fulfilled') {
       uploaded.push(outcome.value);
     } else {
-      const errorMsg = outcome.reason instanceof Error
-        ? outcome.reason.message
-        : String(outcome.reason);
+      const errorMsg =
+        outcome.reason instanceof Error
+          ? outcome.reason.message
+          : String(outcome.reason);
       failed.push({ name: attachments[i].normalizedName, error: errorMsg });
     }
   }
@@ -158,9 +152,9 @@ export async function uploadAllDocuments(
  */
 export async function createSharingLink(
   folderId: string,
-  tenant: Tenant
+  tenant: Tenant,
 ): Promise<string> {
-  const credentials = toAzureCredentials(tenant);
+  const credentials = await resolveAzureCredentials(tenant);
   const drivePath = getUserDrivePath(tenant.hrUserId);
 
   const response = await graphFetch<GraphSharingLink>(
@@ -172,7 +166,7 @@ export async function createSharingLink(
         scope: 'organization',
       }),
     },
-    credentials
+    credentials,
   );
 
   return response.link.webUrl;

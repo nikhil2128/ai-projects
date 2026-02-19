@@ -4,7 +4,8 @@ Description: >
   Onboarding Document Tracker (Multi-tenant SaaS) — SES receives employee emails
   with documents, stores in S3, S3 notifies SQS, Lambda processes from SQS to
   resolve the tenant, parse attachments, upload to tenant's OneDrive, and notify
-  tenant's HR via SES.
+  tenant's HR via SES.  All tenant data is encrypted at rest with a dedicated
+  KMS key and Azure credentials are stored in AWS Secrets Manager.
 
 Parameters:
   ApiKey:
@@ -20,6 +21,10 @@ Parameters:
     Type: Number
     Default: 3
     Description: Number of times SQS retries a failed message before sending to DLQ
+  CorsAllowedOrigins:
+    Type: String
+    Default: '*'
+    Description: Comma-separated list of allowed CORS origins (restrict in production)
 
 Globals:
   Function:
@@ -32,17 +37,84 @@ Globals:
 
 Resources:
 
-  # ── S3 Bucket: stores raw emails deposited by SES ──
+  # ── KMS: customer-managed key for encrypting all tenant data at rest ──
+  TenantDataKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Encrypts all tenant data at rest (DynamoDB, S3, SQS, Secrets Manager)
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: RootAccountAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: LambdaKeyUsage
+            Effect: Allow
+            Principal:
+              AWS: !GetAtt ProcessEmailFunctionRole.Arn
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+              - kms:DescribeKey
+            Resource: '*'
+          - Sid: SESKeyUsage
+            Effect: Allow
+            Principal:
+              Service: ses.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'kms:ViaService': !Sub 's3.${AWS::Region}.amazonaws.com'
+          - Sid: SQSKeyUsage
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+            Resource: '*'
+
+  TenantDataKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${AWS::StackName}-tenant-data-key'
+      TargetKeyId: !Ref TenantDataKey
+
+  # ── S3 Bucket: stores raw emails deposited by SES (encrypted) ──
   EmailBucket:
     Type: AWS::S3::Bucket
     DependsOn: EmailQueuePolicy
     Properties:
       BucketName: !Sub '${AWS::StackName}-emails'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+              KMSMasterKeyID: !GetAtt TenantDataKey.Arn
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
       LifecycleConfiguration:
         Rules:
           - Id: ExpireProcessedEmails
             Status: Enabled
             ExpirationInDays: 90
+          - Id: ExpireOldVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
       NotificationConfiguration:
         QueueConfigurations:
           - Event: s3:ObjectCreated:*
@@ -69,13 +141,32 @@ Resources:
             Condition:
               StringEquals:
                 'AWS:SourceAccount': !Ref 'AWS::AccountId'
+          - Sid: DenyUnencryptedUploads
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub '${EmailBucket.Arn}/*'
+            Condition:
+              StringNotEquals:
+                's3:x-amz-server-side-encryption': 'aws:kms'
+          - Sid: EnforceSSLOnly
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Sub '${EmailBucket.Arn}'
+              - !Sub '${EmailBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': false
 
-  # ── SQS: buffers S3 event notifications with retry + DLQ ──
+  # ── SQS: buffers S3 event notifications with retry + DLQ (encrypted) ──
   EmailProcessingDLQ:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub '${AWS::StackName}-email-dlq'
       MessageRetentionPeriod: 1209600  # 14 days
+      KmsMasterKeyId: !GetAtt TenantDataKey.Arn
 
   EmailProcessingQueue:
     Type: AWS::SQS::Queue
@@ -83,6 +174,7 @@ Resources:
       QueueName: !Sub '${AWS::StackName}-email-queue'
       VisibilityTimeout: 360  # 6× Lambda timeout for safety margin
       MessageRetentionPeriod: 345600  # 4 days
+      KmsMasterKeyId: !GetAtt TenantDataKey.Arn
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt EmailProcessingDLQ.Arn
         maxReceiveCount: !Ref MaxRetries
@@ -105,12 +197,96 @@ Resources:
               ArnLike:
                 'aws:SourceArn': !Sub 'arn:aws:s3:::${AWS::StackName}-emails'
 
+  # ── IAM Role for Lambda (defined explicitly for KMS key policy reference) ──
+  ProcessEmailFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                Resource:
+                  - !GetAtt ProcessedEmailsTable.Arn
+                  - !Sub '${ProcessedEmailsTable.Arn}/index/*'
+                  - !GetAtt TenantsTable.Arn
+                  - !Sub '${TenantsTable.Arn}/index/*'
+        - PolicyName: S3ReadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub '${EmailBucket.Arn}/incoming/*'
+        - PolicyName: SQSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt EmailProcessingQueue.Arn
+        - PolicyName: SESAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource:
+                  - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/${OnboardingDomain}'
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:UpdateSecret
+                  - secretsmanager:DeleteSecret
+                  - secretsmanager:TagResource
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${AWS::StackName}/tenants/*'
+        - PolicyName: KMSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                  - kms:DescribeKey
+                Resource: !GetAtt TenantDataKey.Arn
+
   # ── Lambda: processes emails from SQS ──
   ProcessEmailFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: dist/handlers/process-emails.handler.handler
       Description: Parses onboarding emails from S3 (via SQS), resolves tenant, uploads documents to OneDrive, notifies HR
+      Role: !GetAtt ProcessEmailFunctionRole.Arn
       ReservedConcurrentExecutions: 5
       Environment:
         Variables:
@@ -118,6 +294,9 @@ Resources:
           DYNAMODB_TABLE: !Ref ProcessedEmailsTable
           TENANTS_TABLE: !Ref TenantsTable
           EMAIL_BUCKET: !Ref EmailBucket
+          KMS_KEY_ARN: !GetAtt TenantDataKey.Arn
+          SECRETS_PREFIX: !Sub '${AWS::StackName}/tenants'
+          CORS_ALLOWED_ORIGINS: !Ref CorsAllowedOrigins
       Events:
         SQSEmailReceived:
           Type: SQS
@@ -126,22 +305,6 @@ Resources:
             BatchSize: 5
             FunctionResponseTypes:
               - ReportBatchItemFailures
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ProcessedEmailsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TenantsTable
-        - S3ReadPolicy:
-            BucketName: !Ref EmailBucket
-        - SQSPollerPolicy:
-            QueueName: !GetAtt EmailProcessingQueue.QueueName
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - ses:SendEmail
-                - ses:SendRawEmail
-              Resource: '*'
 
   # ── SES Receipt Rule: receives email for all tenants on the domain ──
   SesReceiptRuleSet:
@@ -159,19 +322,28 @@ Resources:
         Name: !Sub '${AWS::StackName}-receive-docs'
         Enabled: true
         ScanEnabled: true
+        TlsPolicy: Require
         Recipients:
           - !Ref OnboardingDomain
         Actions:
           - S3Action:
               BucketName: !Ref EmailBucket
               ObjectKeyPrefix: incoming/
+              KmsKeyArn: !GetAtt TenantDataKey.Arn
 
-  # ── DynamoDB: tracks processed emails (multi-tenant) ──
+  # ── DynamoDB: tracks processed emails (multi-tenant, encrypted) ──
   ProcessedEmailsTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub '${AWS::StackName}-tracking'
       BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !GetAtt TenantDataKey.Arn
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      DeletionProtectionEnabled: true
       AttributeDefinitions:
         - AttributeName: messageId
           AttributeType: S
@@ -191,12 +363,19 @@ Resources:
         - Key: Project
           Value: onboarding-doc-tracker
 
-  # ── DynamoDB: tenant configurations ──
+  # ── DynamoDB: tenant configurations (encrypted, no secrets in records) ──
   TenantsTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub '${AWS::StackName}-tenants'
       BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !GetAtt TenantDataKey.Arn
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      DeletionProtectionEnabled: true
       AttributeDefinitions:
         - AttributeName: tenantId
           AttributeType: S
@@ -238,3 +417,6 @@ Outputs:
   SesRuleSetName:
     Description: SES receipt rule set (must be activated manually after deploy)
     Value: !Ref SesReceiptRuleSet
+  TenantDataKeyArn:
+    Description: KMS key ARN used for encrypting all tenant data
+    Value: !GetAtt TenantDataKey.Arn

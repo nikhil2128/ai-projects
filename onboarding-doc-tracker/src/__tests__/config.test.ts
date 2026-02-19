@@ -54,10 +54,21 @@ describe('config', () => {
 
   it('requires API_KEY in production', async () => {
     process.env.NODE_ENV = 'production';
+    process.env.KMS_KEY_ARN = 'arn:aws:kms:us-east-1:123:key/test';
     delete process.env.API_KEY;
 
     await expect(import('../config')).rejects.toThrow(
       'Missing required environment variable: API_KEY'
+    );
+  });
+
+  it('requires KMS_KEY_ARN in production', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.API_KEY = 'test-key';
+    delete process.env.KMS_KEY_ARN;
+
+    await expect(import('../config')).rejects.toThrow(
+      'Missing required environment variable: KMS_KEY_ARN'
     );
   });
 

@@ -3,7 +3,7 @@ import {
   DynamoDBDocumentClient,
   PutCommand,
   GetCommand,
-  BatchGetCommand,
+  QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { config } from '../config';
 import { TrackingRecord } from '../types';
@@ -31,7 +31,7 @@ const dynamoRetryOpts = {
 };
 
 export async function saveProcessingRecord(
-  record: TrackingRecord
+  record: TrackingRecord,
 ): Promise<void> {
   await withRetry(
     () =>
@@ -43,51 +43,20 @@ export async function saveProcessingRecord(
             'attribute_not_exists(messageId) OR #s = :failed',
           ExpressionAttributeNames: { '#s': 'status' },
           ExpressionAttributeValues: { ':failed': 'failed' },
-        })
+        }),
       ),
-    dynamoRetryOpts
+    dynamoRetryOpts,
   );
 }
 
-export async function getProcessedMessageIds(
-  messageIds: string[]
-): Promise<Set<string>> {
-  if (messageIds.length === 0) return new Set();
-
-  const chunks: string[][] = [];
-  for (let i = 0; i < messageIds.length; i += 100) {
-    chunks.push(messageIds.slice(i, i + 100));
-  }
-
-  const processed = new Set<string>();
-
-  for (const chunk of chunks) {
-    const response = await withRetry(
-      () =>
-        docClient.send(
-          new BatchGetCommand({
-            RequestItems: {
-              [TABLE]: {
-                Keys: chunk.map((id) => ({ messageId: id })),
-                ProjectionExpression: 'messageId',
-              },
-            },
-          })
-        ),
-      dynamoRetryOpts
-    );
-
-    const items = response.Responses?.[TABLE] || [];
-    for (const item of items) {
-      processed.add(item.messageId as string);
-    }
-  }
-
-  return processed;
-}
-
+/**
+ * Checks if a message was already processed. Verifies both messageId and
+ * tenantId to prevent a crafted messageId from masquerading as another
+ * tenant's already-processed record.
+ */
 export async function isAlreadyProcessed(
-  messageId: string
+  messageId: string,
+  tenantId: string,
 ): Promise<boolean> {
   const response = await withRetry(
     () =>
@@ -95,13 +64,52 @@ export async function isAlreadyProcessed(
         new GetCommand({
           TableName: TABLE,
           Key: { messageId },
-          ProjectionExpression: '#s',
+          ProjectionExpression: '#s, tenantId',
           ExpressionAttributeNames: { '#s': 'status' },
-        })
+        }),
       ),
-    dynamoRetryOpts
+    dynamoRetryOpts,
   );
-  return response.Item?.status === 'processed';
+
+  if (!response.Item) return false;
+
+  if (response.Item.tenantId !== tenantId) {
+    console.error(
+      JSON.stringify({
+        level: 'SECURITY',
+        event: 'cross_tenant_duplicate_check',
+        messageId,
+        expectedTenant: tenantId,
+        foundTenant: response.Item.tenantId,
+      }),
+    );
+    return false;
+  }
+
+  return response.Item.status === 'processed';
+}
+
+/**
+ * Returns all tracking records for a specific tenant, ensuring strict
+ * tenant isolation via the tenantId-index GSI.
+ */
+export async function getRecordsByTenant(
+  tenantId: string,
+): Promise<TrackingRecord[]> {
+  const response = await withRetry(
+    () =>
+      docClient.send(
+        new QueryCommand({
+          TableName: TABLE,
+          IndexName: 'tenantId-index',
+          KeyConditionExpression: 'tenantId = :tid',
+          ExpressionAttributeValues: { ':tid': tenantId },
+        }),
+      ),
+    dynamoRetryOpts,
+  );
+
+  return (response.Items as TrackingRecord[]) || [];
 }
 
 export async function recordFailure(
@@ -109,7 +117,7 @@ export async function recordFailure(
   messageId: string,
   employeeName: string,
   employeeEmail: string,
-  error: string
+  error: string,
 ): Promise<void> {
   try {
     await withRetry(
@@ -128,9 +136,9 @@ export async function recordFailure(
               folderUrl: '',
               documentsUploaded: [],
             } satisfies TrackingRecord,
-          })
+          }),
         ),
-      dynamoRetryOpts
+      dynamoRetryOpts,
     );
   } catch (err) {
     console.error('Failed to record failure in DynamoDB:', err);

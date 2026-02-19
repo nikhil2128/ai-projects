@@ -4,9 +4,17 @@ import express from 'express';
 
 vi.mock('../config', () => ({
   config: {
+    nodeEnv: 'test',
     aws: { region: 'us-east-1', dynamoTable: 'tbl', tenantsTable: 'tenants', emailBucket: 'test-email-bucket' },
+    apiKey: '',
     processing: { retryMaxAttempts: 1, retryBaseDelayMs: 10, retryMaxDelayMs: 100 },
   },
+}));
+
+vi.mock('../middleware/security', () => ({
+  requireApiKey: vi.fn((_req: unknown, _res: unknown, next: () => void) => next()),
+  auditLog: vi.fn(),
+  sanitizeErrorMessage: vi.fn((error: unknown) => error instanceof Error ? error.message : String(error)),
 }));
 
 const mockProcessEmailFromS3 = vi.hoisted(() => vi.fn());

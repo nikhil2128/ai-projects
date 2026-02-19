@@ -26,6 +26,19 @@ vi.mock('crypto', () => ({
   randomUUID: vi.fn(() => 'generated-uuid'),
 }));
 
+const mockStoreSecret = vi.hoisted(() => vi.fn().mockResolvedValue('arn:aws:secretsmanager:us-east-1:123:secret:test'));
+const mockUpdateSecret = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockDeleteSecret = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+vi.mock('../services/secrets.service', () => ({
+  storeSecret: mockStoreSecret,
+  updateSecret: mockUpdateSecret,
+  deleteSecret: mockDeleteSecret,
+}));
+
+vi.mock('../middleware/security', () => ({
+  auditLog: vi.fn(),
+}));
+
 import {
   createTenant,
   getTenant,
@@ -54,7 +67,7 @@ describe('tenant.service', () => {
   });
 
   describe('createTenant', () => {
-    it('creates a new tenant with generated ID and timestamps', async () => {
+    it('creates a new tenant with generated ID, stores secret in SM', async () => {
       // Query for existing tenant by email → none found
       mockDocClientSend.mockResolvedValueOnce({ Items: [] });
       // PutCommand succeeds
@@ -65,9 +78,11 @@ describe('tenant.service', () => {
       expect(tenant.tenantId).toBe('generated-uuid');
       expect(tenant.companyName).toBe('Acme Corp');
       expect(tenant.receivingEmail).toBe('onboarding@acme.com');
+      expect(tenant.azureClientSecretArn).toBe('arn:aws:secretsmanager:us-east-1:123:secret:test');
       expect(tenant.status).toBe('active');
       expect(tenant.createdAt).toBeDefined();
       expect(tenant.updatedAt).toBeDefined();
+      expect(mockStoreSecret).toHaveBeenCalledWith('generated-uuid', 'acme-azure-secret');
     });
 
     it('rejects duplicate receiving email', async () => {
@@ -128,6 +143,7 @@ describe('tenant.service', () => {
           tenantId: 'tid',
           companyName: 'Old Name',
           receivingEmail: 'old@x.com',
+          azureClientSecretArn: 'arn:test',
           createdAt: '2024-01-01T00:00:00.000Z',
           updatedAt: '2024-01-01T00:00:00.000Z',
         },
@@ -165,14 +181,15 @@ describe('tenant.service', () => {
   });
 
   describe('deleteTenant', () => {
-    it('deletes existing tenant and returns true', async () => {
+    it('deletes existing tenant, removes secret, and returns true', async () => {
       mockDocClientSend.mockResolvedValueOnce({
-        Item: { tenantId: 'tid' },
+        Item: { tenantId: 'tid', azureClientSecretArn: 'arn:test' },
       });
       mockDocClientSend.mockResolvedValueOnce({});
 
       const result = await deleteTenant('tid');
       expect(result).toBe(true);
+      expect(mockDeleteSecret).toHaveBeenCalledWith('arn:test');
     });
 
     it('returns false for non-existent tenant', async () => {

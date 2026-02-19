@@ -51,7 +51,7 @@ const testTenant: Tenant = {
   hrUserId: 'test-user-id',
   azureTenantId: 'azure-tenant-id',
   azureClientId: 'azure-client-id',
-  azureClientSecret: 'azure-client-secret',
+  azureClientSecretArn: 'arn:aws:secretsmanager:us-east-1:123456:secret:azure-client-secret',
   oneDriveRootFolder: 'Onboarding Documents',
   sesFromEmail: 'noreply@testcorp.com',
   status: 'active',
@@ -109,7 +109,7 @@ describe('processEmailFromS3', () => {
     mockUploadAllDocuments.mockResolvedValue({ uploaded: ['doc.pdf'], failed: [] });
     mockCreateSharingLink.mockResolvedValue('https://link');
 
-    await processEmailFromS3('bucket', 'key');
+    await processEmailFromS3('bucket', 'incoming/key');
 
     expect(mockGetTenantByReceivingEmail).toHaveBeenCalledWith('onboarding@testcorp.com');
   });
@@ -120,7 +120,7 @@ describe('processEmailFromS3', () => {
     mockUploadAllDocuments.mockResolvedValue({ uploaded: ['doc.pdf'], failed: [] });
     mockCreateSharingLink.mockResolvedValue('https://link');
 
-    await processEmailFromS3('bucket', 'key');
+    await processEmailFromS3('bucket', 'incoming/key');
 
     expect(mockCreateEmployeeFolder).toHaveBeenCalledWith('John Doe', testTenant);
     expect(mockUploadAllDocuments).toHaveBeenCalledWith('fid', mockSubmission.attachments, testTenant);
@@ -137,7 +137,7 @@ describe('processEmailFromS3', () => {
     mockUploadAllDocuments.mockResolvedValue({ uploaded: ['doc.pdf'], failed: [] });
     mockCreateSharingLink.mockResolvedValue('https://link');
 
-    await processEmailFromS3('bucket', 'key');
+    await processEmailFromS3('bucket', 'incoming/key');
 
     const savedRecord = mockSaveProcessingRecord.mock.calls[0][0];
     expect(savedRecord.tenantId).toBe('tenant-001');
@@ -151,7 +151,7 @@ describe('processEmailFromS3', () => {
     mockParseEmailFromS3.mockResolvedValue(mockSubmission);
     mockGetTenantByReceivingEmail.mockResolvedValue(null);
 
-    const result = await processEmailFromS3('bucket', 'key');
+    const result = await processEmailFromS3('bucket', 'incoming/key');
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('No tenant registered');
@@ -164,7 +164,7 @@ describe('processEmailFromS3', () => {
     mockParseEmailFromS3.mockResolvedValue(mockSubmission);
     mockGetTenantByReceivingEmail.mockResolvedValue({ ...testTenant, status: 'inactive' });
 
-    const result = await processEmailFromS3('bucket', 'key');
+    const result = await processEmailFromS3('bucket', 'incoming/key');
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('inactive');
@@ -175,7 +175,7 @@ describe('processEmailFromS3', () => {
     mockParseEmailFromS3.mockResolvedValue(mockSubmission);
     mockIsAlreadyProcessed.mockResolvedValue(true);
 
-    const result = await processEmailFromS3('bucket', 'key');
+    const result = await processEmailFromS3('bucket', 'incoming/key');
 
     expect(result.success).toBe(true);
     expect(result.tenantId).toBe('tenant-001');
@@ -190,13 +190,13 @@ describe('processEmailFromS3', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockParseEmailFromS3.mockRejectedValue(new Error('Malformed email'));
 
-    const result = await processEmailFromS3('bucket', 'bad-key');
+    const result = await processEmailFromS3('bucket', 'incoming/bad-key');
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('Malformed email');
-    expect(result.messageId).toBe('bad-key');
+    expect(result.messageId).toBe('incoming/bad-key');
     expect(mockRecordFailure).toHaveBeenCalledWith(
-      'unknown', 'bad-key', '', '', 'Malformed email'
+      'unknown', 'incoming/bad-key', '', '', 'Malformed email'
     );
     consoleSpy.mockRestore();
   });
@@ -206,7 +206,7 @@ describe('processEmailFromS3', () => {
     mockParseEmailFromS3.mockResolvedValue(mockSubmission);
     mockCreateEmployeeFolder.mockRejectedValue(new Error('Graph API down'));
 
-    const result = await processEmailFromS3('bucket', 'key');
+    const result = await processEmailFromS3('bucket', 'incoming/key');
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('Graph API down');
@@ -223,7 +223,7 @@ describe('processEmailFromS3', () => {
     mockCreateSharingLink.mockResolvedValue('https://link');
     mockNotifyHrOfUpload.mockRejectedValue(new Error('SES unavailable'));
 
-    const result = await processEmailFromS3('bucket', 'key');
+    const result = await processEmailFromS3('bucket', 'incoming/key');
 
     expect(result.success).toBe(true);
     expect(result.warnings).toEqual(
@@ -236,7 +236,7 @@ describe('processEmailFromS3', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockParseEmailFromS3.mockRejectedValue('string error');
 
-    const result = await processEmailFromS3('bucket', 'key');
+    const result = await processEmailFromS3('bucket', 'incoming/key');
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('string error');
@@ -252,7 +252,7 @@ describe('processEmailFromS3', () => {
     });
     mockCreateSharingLink.mockResolvedValue('https://link');
 
-    const result = await processEmailFromS3('bucket', 'key');
+    const result = await processEmailFromS3('bucket', 'incoming/key');
 
     expect(result.success).toBe(true);
     expect(result.documentsFailed).toEqual([{ name: 'doc2.pdf', error: 'Timeout' }]);
@@ -270,7 +270,7 @@ describe('processEmailFromS3', () => {
       failed: [{ name: 'passport.pdf', error: 'Graph error' }],
     });
 
-    const result = await processEmailFromS3('bucket', 'key');
+    const result = await processEmailFromS3('bucket', 'incoming/key');
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('All 1 document(s) failed to upload');

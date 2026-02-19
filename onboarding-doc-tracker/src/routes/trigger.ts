@@ -1,12 +1,15 @@
 import { Router } from 'express';
 import { processEmailFromS3 } from '../services/processing.service';
 import { config } from '../config';
+import { requireApiKey, auditLog, sanitizeErrorMessage } from '../middleware/security';
 
 const router = Router();
 
+router.use('/trigger', requireApiKey);
+
 /**
  * POST /trigger — manually triggers processing for a specific email in S3.
- * Only available in development; useful for testing without SES delivery.
+ * Protected by API key even in development.
  *
  * Body: { "key": "incoming/abc123" }
  */
@@ -17,13 +20,19 @@ router.post('/trigger', async (req, res) => {
     return;
   }
 
+  if (!key.startsWith('incoming/')) {
+    res.status(400).json({ error: 'S3 key must start with "incoming/"' });
+    return;
+  }
+
+  auditLog('api.trigger', { key }, req);
+
   try {
     const result = await processEmailFromS3(config.aws.emailBucket, key);
     res.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('Manual trigger failed:', message);
-    res.status(500).json({ success: false, error: message });
+    console.error('Manual trigger failed:', error);
+    res.status(500).json({ success: false, error: sanitizeErrorMessage(error) });
   }
 });
 

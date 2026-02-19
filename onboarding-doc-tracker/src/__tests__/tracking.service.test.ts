@@ -26,7 +26,6 @@ vi.mock('@aws-sdk/lib-dynamodb', () => ({
 
 import {
   saveProcessingRecord,
-  getProcessedMessageIds,
   isAlreadyProcessed,
   recordFailure,
 } from '../services/tracking.service';
@@ -74,91 +73,13 @@ describe('tracking.service', () => {
     });
   });
 
-  describe('getProcessedMessageIds', () => {
-    it('returns empty set for empty input', async () => {
-      const result = await getProcessedMessageIds([]);
-      expect(result).toEqual(new Set());
-      expect(mockDocClientSend).not.toHaveBeenCalled();
-    });
-
-    it('returns set of found message IDs', async () => {
-      mockDocClientSend.mockResolvedValue({
-        Responses: {
-          'test-tracking-table': [
-            { messageId: 'msg-1' },
-            { messageId: 'msg-3' },
-          ],
-        },
-      });
-
-      const result = await getProcessedMessageIds([
-        'msg-1',
-        'msg-2',
-        'msg-3',
-      ]);
-
-      expect(result).toEqual(new Set(['msg-1', 'msg-3']));
-    });
-
-    it('handles missing Responses gracefully', async () => {
-      mockDocClientSend.mockResolvedValue({
-        Responses: {},
-      });
-
-      const result = await getProcessedMessageIds(['msg-1']);
-      expect(result).toEqual(new Set());
-    });
-
-    it('handles undefined table responses', async () => {
-      mockDocClientSend.mockResolvedValue({
-        Responses: {
-          'test-tracking-table': undefined,
-        },
-      });
-
-      const result = await getProcessedMessageIds(['msg-1']);
-      expect(result).toEqual(new Set());
-    });
-
-    it('chunks requests for more than 100 IDs', async () => {
-      const ids = Array.from({ length: 150 }, (_, i) => `msg-${i}`);
-
-      mockDocClientSend
-        .mockResolvedValueOnce({
-          Responses: {
-            'test-tracking-table': [{ messageId: 'msg-0' }],
-          },
-        })
-        .mockResolvedValueOnce({
-          Responses: {
-            'test-tracking-table': [{ messageId: 'msg-100' }],
-          },
-        });
-
-      const result = await getProcessedMessageIds(ids);
-
-      expect(mockDocClientSend).toHaveBeenCalledTimes(2);
-      expect(result).toEqual(new Set(['msg-0', 'msg-100']));
-
-      const firstCommand = mockDocClientSend.mock.calls[0][0];
-      expect(
-        firstCommand.RequestItems['test-tracking-table'].Keys
-      ).toHaveLength(100);
-
-      const secondCommand = mockDocClientSend.mock.calls[1][0];
-      expect(
-        secondCommand.RequestItems['test-tracking-table'].Keys
-      ).toHaveLength(50);
-    });
-  });
-
   describe('isAlreadyProcessed', () => {
-    it('returns true when status is processed', async () => {
+    it('returns true when status is processed and tenantId matches', async () => {
       mockDocClientSend.mockResolvedValue({
-        Item: { status: 'processed' },
+        Item: { status: 'processed', tenantId: 'tenant-001' },
       });
 
-      const result = await isAlreadyProcessed('existing-msg');
+      const result = await isAlreadyProcessed('existing-msg', 'tenant-001');
       expect(result).toBe(true);
 
       const command = mockDocClientSend.mock.calls[0][0];
@@ -168,18 +89,32 @@ describe('tracking.service', () => {
 
     it('returns false when status is failed (allows retry)', async () => {
       mockDocClientSend.mockResolvedValue({
-        Item: { status: 'failed' },
+        Item: { status: 'failed', tenantId: 'tenant-001' },
       });
 
-      const result = await isAlreadyProcessed('failed-msg');
+      const result = await isAlreadyProcessed('failed-msg', 'tenant-001');
       expect(result).toBe(false);
     });
 
     it('returns false when the message does not exist', async () => {
       mockDocClientSend.mockResolvedValue({});
 
-      const result = await isAlreadyProcessed('new-msg');
+      const result = await isAlreadyProcessed('new-msg', 'tenant-001');
       expect(result).toBe(false);
+    });
+
+    it('returns false and logs security event when tenantId mismatches', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockDocClientSend.mockResolvedValue({
+        Item: { status: 'processed', tenantId: 'other-tenant' },
+      });
+
+      const result = await isAlreadyProcessed('msg-001', 'tenant-001');
+      expect(result).toBe(false);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('cross_tenant_duplicate_check'),
+      );
+      consoleSpy.mockRestore();
     });
   });
 

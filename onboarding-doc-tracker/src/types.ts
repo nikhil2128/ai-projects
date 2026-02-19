@@ -56,8 +56,35 @@ export interface SQSBatchResponse {
   batchItemFailures: Array<{ itemIdentifier: string }>;
 }
 
+// ── Multi-tenant ──
+
+export interface Tenant {
+  tenantId: string;
+  companyName: string;
+  receivingEmail: string;
+  hrEmail: string;
+  hrUserId: string;
+  azureTenantId: string;
+  azureClientId: string;
+  azureClientSecret: string;
+  oneDriveRootFolder: string;
+  sesFromEmail: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AzureCredentials {
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+}
+
+// ── Domain types ──
+
 export interface EmployeeSubmission {
   messageId: string;
+  recipientEmail: string;
   employeeName: string;
   employeeEmail: string;
   subject: string;
@@ -74,6 +101,7 @@ export interface DocumentAttachment {
 }
 
 export interface ProcessingResult {
+  tenantId: string;
   messageId: string;
   employeeName: string;
   employeeEmail: string;
@@ -83,6 +111,7 @@ export interface ProcessingResult {
 }
 
 export interface TrackingRecord {
+  tenantId: string;
   messageId: string;
   employeeName: string;
   employeeEmail: string;

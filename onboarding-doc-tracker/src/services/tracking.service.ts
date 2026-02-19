@@ -105,6 +105,7 @@ export async function isAlreadyProcessed(
 }
 
 export async function recordFailure(
+  tenantId: string,
   messageId: string,
   employeeName: string,
   employeeEmail: string,
@@ -117,6 +118,7 @@ export async function recordFailure(
           new PutCommand({
             TableName: TABLE,
             Item: {
+              tenantId,
               messageId,
               employeeName,
               employeeEmail,

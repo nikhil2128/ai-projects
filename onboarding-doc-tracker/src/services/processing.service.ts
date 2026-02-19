@@ -10,11 +10,13 @@ import {
   saveProcessingRecord,
   recordFailure,
 } from './tracking.service';
-import { ProcessingResult, TrackingRecord } from '../types';
+import { getTenantByReceivingEmail } from './tenant.service';
+import { ProcessingResult, Tenant, TrackingRecord } from '../types';
 
 export interface ProcessingRunResult {
   success: boolean;
   messageId: string;
+  tenantId?: string;
   employeeName?: string;
   employeeEmail?: string;
   folderUrl?: string;
@@ -28,13 +30,14 @@ export interface ProcessingRunResult {
 /**
  * Processes a single email stored in S3 by SES:
  *
- * 1. Parse raw MIME email from S3 -> extract sender + PDF attachments
- * 2. Check DynamoDB to skip already-processed emails
- * 3. Create employee folder on OneDrive
- * 4. Upload normalized documents (concurrently, with partial success)
- * 5. Generate sharing link
- * 6. Notify HR via SES (non-critical — failure here doesn't fail the pipeline)
- * 7. Record in DynamoDB
+ * 1. Parse raw MIME email from S3 -> extract sender + recipient + PDF attachments
+ * 2. Resolve tenant from recipient email address
+ * 3. Check DynamoDB to skip already-processed emails
+ * 4. Create employee folder on OneDrive (using tenant's Azure credentials)
+ * 5. Upload normalized documents (concurrently, with partial success)
+ * 6. Generate sharing link
+ * 7. Notify HR via SES (non-critical — failure here doesn't fail the pipeline)
+ * 8. Record in DynamoDB
  */
 export async function processEmailFromS3(
   bucket: string,
@@ -43,6 +46,7 @@ export async function processEmailFromS3(
   let messageId = key;
   let employeeName = '';
   let employeeEmail = '';
+  let tenant: Tenant | null = null;
   const warnings: string[] = [];
 
   try {
@@ -51,20 +55,37 @@ export async function processEmailFromS3(
     employeeName = submission.employeeName;
     employeeEmail = submission.employeeEmail;
 
+    tenant = await getTenantByReceivingEmail(submission.recipientEmail);
+    if (!tenant) {
+      throw new StepError(
+        'tenant-resolution',
+        `No tenant registered for receiving email "${submission.recipientEmail}"`
+      );
+    }
+
+    if (tenant.status !== 'active') {
+      throw new StepError(
+        'tenant-resolution',
+        `Tenant "${tenant.companyName}" is inactive`
+      );
+    }
+
     if (await isAlreadyProcessed(messageId)) {
       return {
         success: true,
         messageId,
+        tenantId: tenant.tenantId,
         employeeName,
         warnings: ['Already processed — skipped'],
       };
     }
 
-    const folder = await createEmployeeFolder(employeeName);
+    const folder = await createEmployeeFolder(employeeName, tenant);
 
     const { uploaded, failed: uploadFailures } = await uploadAllDocuments(
       folder.id,
-      submission.attachments
+      submission.attachments,
+      tenant
     );
 
     if (uploaded.length === 0) {
@@ -85,7 +106,7 @@ export async function processEmailFromS3(
 
     let sharingLink: string;
     try {
-      sharingLink = await createSharingLink(folder.id);
+      sharingLink = await createSharingLink(folder.id, tenant);
     } catch (error) {
       sharingLink = folder.webUrl || '';
       warnings.push(
@@ -94,6 +115,7 @@ export async function processEmailFromS3(
     }
 
     const result: ProcessingResult = {
+      tenantId: tenant.tenantId,
       messageId,
       employeeName,
       employeeEmail,
@@ -103,7 +125,7 @@ export async function processEmailFromS3(
     };
 
     try {
-      await notifyHrOfUpload(result);
+      await notifyHrOfUpload(result, tenant);
     } catch (error) {
       warnings.push(
         `HR notification failed (documents are uploaded): ${error instanceof Error ? error.message : String(error)}`
@@ -120,6 +142,7 @@ export async function processEmailFromS3(
     return {
       success: true,
       messageId,
+      tenantId: tenant.tenantId,
       employeeName,
       folderUrl: sharingLink,
       documentsUploaded: uploaded,
@@ -137,11 +160,18 @@ export async function processEmailFromS3(
       errorMessage
     );
 
-    await recordFailure(messageId, employeeName, employeeEmail, errorMessage);
+    await recordFailure(
+      tenant?.tenantId || 'unknown',
+      messageId,
+      employeeName,
+      employeeEmail,
+      errorMessage
+    );
 
     return {
       success: false,
       messageId,
+      tenantId: tenant?.tenantId,
       employeeName: employeeName || undefined,
       employeeEmail: employeeEmail || undefined,
       error: errorMessage,

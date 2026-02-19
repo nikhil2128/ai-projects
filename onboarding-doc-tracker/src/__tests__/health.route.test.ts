@@ -4,11 +4,8 @@ import express from 'express';
 
 vi.mock('../config', () => ({
   config: {
-    aws: { region: 'us-east-1', dynamoTable: 'tbl', emailBucket: 'bkt' },
-    azure: { tenantId: 't', clientId: 'c', clientSecret: 's' },
-    hr: { email: 'hr@t.com', userId: 'u' },
-    onedrive: { rootFolder: 'D' },
-    ses: { fromEmail: 'n@t.com' },
+    aws: { region: 'us-east-1', dynamoTable: 'tbl', tenantsTable: 'tenants', emailBucket: 'bkt' },
+    processing: { retryMaxAttempts: 1, retryBaseDelayMs: 10, retryMaxDelayMs: 100 },
   },
 }));
 

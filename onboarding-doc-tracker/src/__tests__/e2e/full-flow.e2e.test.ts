@@ -1,15 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
+import { Tenant } from '../../types';
 
 vi.mock('../../config', () => ({
   config: {
     port: 3099,
     nodeEnv: 'test',
-    azure: { tenantId: 'e2e-tenant', clientId: 'e2e-client', clientSecret: 'e2e-secret' },
-    hr: { email: 'hr@e2e.com', userId: 'e2e-user-id' },
-    onedrive: { rootFolder: 'E2E Onboarding' },
-    aws: { region: 'us-east-1', dynamoTable: 'e2e-table', emailBucket: 'e2e-bucket' },
-    ses: { fromEmail: 'e2e@test.com' },
+    aws: { region: 'us-east-1', dynamoTable: 'e2e-table', tenantsTable: 'e2e-tenants', emailBucket: 'e2e-bucket' },
+    apiKey: '',
+    processing: {
+      emailConcurrency: 5,
+      uploadConcurrency: 3,
+      retryMaxAttempts: 1,
+      retryBaseDelayMs: 10,
+      retryMaxDelayMs: 100,
+    },
   },
 }));
 
@@ -37,7 +42,11 @@ vi.mock('@aws-sdk/lib-dynamodb', () => ({
     from: vi.fn(() => ({ send: mockDDBSend })),
   },
   PutCommand: vi.fn((input: unknown) => input),
+  GetCommand: vi.fn((input: unknown) => input),
   BatchGetCommand: vi.fn((input: unknown) => input),
+  QueryCommand: vi.fn((input: unknown) => input),
+  ScanCommand: vi.fn((input: unknown) => input),
+  DeleteCommand: vi.fn((input: unknown) => input),
 }));
 
 // --- mailparser mock ---
@@ -52,6 +61,22 @@ vi.stubGlobal('fetch', mockFetch);
 
 import app from '../../app';
 
+const testTenant: Tenant = {
+  tenantId: 'e2e-tenant-id',
+  companyName: 'E2E Corp',
+  receivingEmail: 'onboarding@e2ecorp.com',
+  hrEmail: 'hr@e2ecorp.com',
+  hrUserId: 'e2e-user-id',
+  azureTenantId: 'e2e-azure-tenant',
+  azureClientId: 'e2e-azure-client',
+  azureClientSecret: 'e2e-azure-secret',
+  oneDriveRootFolder: 'E2E Onboarding',
+  sesFromEmail: 'e2e@test.com',
+  status: 'active',
+  createdAt: '2024-01-01T00:00:00.000Z',
+  updatedAt: '2024-01-01T00:00:00.000Z',
+};
+
 describe('E2E: Full onboarding document flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -65,11 +90,14 @@ describe('E2E: Full onboarding document flow', () => {
       },
     });
 
-    // mailparser returns a parsed email with sender and attachments
+    // mailparser returns a parsed email with sender, recipient, and attachments
     mockSimpleParser.mockResolvedValue({
       messageId: '<e2e-msg-001@test.com>',
       from: {
         value: [{ name: 'Sarah Connor', address: 'sarah@example.com' }],
+      },
+      to: {
+        value: [{ address: 'onboarding@e2ecorp.com' }],
       },
       subject: 'Onboarding - Sarah Connor Documents',
       date: new Date('2024-06-15T14:30:00Z'),
@@ -89,11 +117,13 @@ describe('E2E: Full onboarding document flow', () => {
       ],
     });
 
-    // DynamoDB: message not yet processed
+    // DynamoDB: tenant lookup by receiving email (QueryCommand on tenants table)
     mockDDBSend.mockResolvedValueOnce({
-      Responses: { 'e2e-table': [] },
+      Items: [testTenant],
     });
-    // DynamoDB: save record succeeds
+    // DynamoDB: isAlreadyProcessed check
+    mockDDBSend.mockResolvedValueOnce({});
+    // DynamoDB: save processing record
     mockDDBSend.mockResolvedValueOnce({});
 
     // Graph API: token acquisition
@@ -173,7 +203,7 @@ describe('E2E: Full onboarding document flow', () => {
     mockSESSend.mockResolvedValue({});
   }
 
-  it('processes an email through the entire pipeline via /trigger', async () => {
+  it('processes an email through the entire multi-tenant pipeline via /trigger', async () => {
     setupMocks();
 
     const res = await request(app)
@@ -183,6 +213,7 @@ describe('E2E: Full onboarding document flow', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.messageId).toBe('<e2e-msg-001@test.com>');
+    expect(res.body.tenantId).toBe('e2e-tenant-id');
     expect(res.body.employeeName).toBe('Sarah Connor');
     expect(res.body.folderUrl).toBe('https://sharepoint.com/share/sarah-connor-docs');
     expect(res.body.documentsUploaded).toEqual([
@@ -193,18 +224,17 @@ describe('E2E: Full onboarding document flow', () => {
     // Verify S3 was called to get the email
     expect(mockS3Send).toHaveBeenCalledOnce();
 
-    // Verify DynamoDB was called (check + save)
-    expect(mockDDBSend).toHaveBeenCalledTimes(2);
-
-    // Verify SES was called for HR notification
+    // Verify SES used tenant's config
     expect(mockSESSend).toHaveBeenCalledOnce();
     const sesCommand = mockSESSend.mock.calls[0][0];
-    expect(sesCommand.Destination.ToAddresses).toEqual(['hr@e2e.com']);
+    expect(sesCommand.Source).toBe('e2e@test.com');
+    expect(sesCommand.Destination.ToAddresses).toEqual(['hr@e2ecorp.com']);
     expect(sesCommand.Message.Subject.Data).toContain('Sarah Connor');
   });
 
-  it('skips already-processed emails', async () => {
-    // S3 returns email
+  it('fails when no tenant matches the recipient email', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     mockS3Send.mockResolvedValue({
       Body: {
         transformToString: vi.fn().mockResolvedValue('raw email'),
@@ -212,8 +242,9 @@ describe('E2E: Full onboarding document flow', () => {
     });
 
     mockSimpleParser.mockResolvedValue({
-      messageId: '<already-processed@test.com>',
+      messageId: '<unknown@test.com>',
       from: { value: [{ name: 'Bob', address: 'bob@test.com' }] },
+      to: { value: [{ address: 'unknown@nowhere.com' }] },
       subject: 'Docs',
       date: new Date(),
       attachments: [
@@ -226,24 +257,20 @@ describe('E2E: Full onboarding document flow', () => {
       ],
     });
 
-    // DynamoDB: message already processed
-    mockDDBSend.mockResolvedValueOnce({
-      Responses: {
-        'e2e-table': [{ messageId: '<already-processed@test.com>' }],
-      },
-    });
+    // Tenant lookup returns no match
+    mockDDBSend.mockResolvedValueOnce({ Items: [] });
+    // recordFailure
+    mockDDBSend.mockResolvedValueOnce({});
 
     const res = await request(app)
       .post('/trigger')
-      .send({ key: 'incoming/duplicate' });
+      .send({ key: 'incoming/unknown-tenant' });
 
     expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toContain('No tenant registered');
 
-    // No Graph API calls (no folder creation, upload, or sharing)
-    expect(mockFetch).not.toHaveBeenCalled();
-    // No SES notification
-    expect(mockSESSend).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 
   it('returns error when email has no PDF attachments', async () => {
@@ -258,6 +285,7 @@ describe('E2E: Full onboarding document flow', () => {
     mockSimpleParser.mockResolvedValue({
       messageId: '<no-pdfs@test.com>',
       from: { value: [{ name: 'Eve', address: 'eve@test.com' }] },
+      to: { value: [{ address: 'onboarding@e2ecorp.com' }] },
       subject: 'Hello',
       date: new Date(),
       attachments: [
@@ -270,14 +298,13 @@ describe('E2E: Full onboarding document flow', () => {
       ],
     });
 
-    // DynamoDB: recordFailure
+    // recordFailure
     mockDDBSend.mockResolvedValue({});
 
     const res = await request(app)
       .post('/trigger')
       .send({ key: 'incoming/no-pdfs' });
 
-    // processEmailFromS3 catches errors internally and returns {success: false}
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(false);
     expect(res.body.error).toContain('No PDF attachments');

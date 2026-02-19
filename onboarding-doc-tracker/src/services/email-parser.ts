@@ -9,7 +9,7 @@ const s3 = new S3Client({ region: config.aws.region });
 
 /**
  * Reads a raw MIME email from S3 (deposited by SES), parses it,
- * and extracts sender info + PDF attachments into an EmployeeSubmission.
+ * and extracts sender info, recipient, and PDF attachments into an EmployeeSubmission.
  */
 export async function parseEmailFromS3(
   bucket: string,
@@ -34,6 +34,21 @@ export async function parseEmailFromS3(
     throw new Error(`Could not extract sender from email at s3://${bucket}/${key}`);
   }
 
+  const toField = parsed.to;
+  let recipientEmail = '';
+  if (toField) {
+    const addresses = Array.isArray(toField) ? toField : [toField];
+    for (const group of addresses) {
+      if (group && 'value' in group) {
+        const first = group.value[0];
+        if (first?.address) {
+          recipientEmail = first.address;
+          break;
+        }
+      }
+    }
+  }
+
   const employeeName = extractEmployeeName(sender.name, sender.address);
 
   const pdfAttachments = (parsed.attachments || []).filter(
@@ -55,6 +70,7 @@ export async function parseEmailFromS3(
 
   return {
     messageId: parsed.messageId || key,
+    recipientEmail,
     employeeName,
     employeeEmail: sender.address || '',
     subject: parsed.subject || '',

@@ -12,111 +12,70 @@ describe('config', () => {
     process.env = savedEnv;
   });
 
-  function setRequiredEnvVars() {
-    process.env.AZURE_TENANT_ID = 'test-tenant';
-    process.env.AZURE_CLIENT_ID = 'test-client';
-    process.env.AZURE_CLIENT_SECRET = 'test-secret';
-    process.env.HR_USER_ID = 'test-hr-user';
-  }
-
-  it('loads all config values with required env vars set', async () => {
-    setRequiredEnvVars();
-    const { config } = await import('../config');
-
-    expect(config.azure.tenantId).toBe('test-tenant');
-    expect(config.azure.clientId).toBe('test-client');
-    expect(config.azure.clientSecret).toBe('test-secret');
-    expect(config.hr.userId).toBe('test-hr-user');
-  });
-
-  it('uses default values for optional vars', async () => {
-    setRequiredEnvVars();
+  it('loads all config values with defaults', async () => {
     delete process.env.PORT;
     delete process.env.NODE_ENV;
-    delete process.env.HR_EMAIL;
-    delete process.env.ONEDRIVE_ROOT_FOLDER;
     delete process.env.AWS_REGION;
     delete process.env.DYNAMODB_TABLE;
+    delete process.env.TENANTS_TABLE;
     delete process.env.EMAIL_BUCKET;
-    delete process.env.SES_FROM_EMAIL;
+    delete process.env.API_KEY;
 
     const { config } = await import('../config');
 
     expect(config.port).toBe(3005);
     expect(config.nodeEnv).toBe('development');
-    expect(config.hr.email).toBe('hr@company.com');
-    expect(config.onedrive.rootFolder).toBe('Onboarding Documents');
     expect(config.aws.region).toBe('us-east-1');
     expect(config.aws.dynamoTable).toBe('onboarding-doc-tracker');
+    expect(config.aws.tenantsTable).toBe('onboarding-doc-tenants');
     expect(config.aws.emailBucket).toBe('onboarding-doc-emails');
-    expect(config.ses.fromEmail).toBe('onboarding@company.com');
+    expect(config.apiKey).toBe('');
   });
 
-  it('uses custom values for optional vars when set', async () => {
-    setRequiredEnvVars();
+  it('uses custom values when set', async () => {
     process.env.PORT = '4000';
-    process.env.NODE_ENV = 'production';
-    process.env.HR_EMAIL = 'custom-hr@test.com';
-    process.env.ONEDRIVE_ROOT_FOLDER = 'Custom Folder';
+    process.env.NODE_ENV = 'staging';
     process.env.AWS_REGION = 'eu-west-1';
     process.env.DYNAMODB_TABLE = 'custom-table';
+    process.env.TENANTS_TABLE = 'custom-tenants';
     process.env.EMAIL_BUCKET = 'custom-bucket';
-    process.env.SES_FROM_EMAIL = 'custom@test.com';
+    process.env.API_KEY = 'my-secret-key';
 
     const { config } = await import('../config');
 
     expect(config.port).toBe(4000);
-    expect(config.nodeEnv).toBe('production');
-    expect(config.hr.email).toBe('custom-hr@test.com');
-    expect(config.onedrive.rootFolder).toBe('Custom Folder');
+    expect(config.nodeEnv).toBe('staging');
     expect(config.aws.region).toBe('eu-west-1');
     expect(config.aws.dynamoTable).toBe('custom-table');
+    expect(config.aws.tenantsTable).toBe('custom-tenants');
     expect(config.aws.emailBucket).toBe('custom-bucket');
-    expect(config.ses.fromEmail).toBe('custom@test.com');
+    expect(config.apiKey).toBe('my-secret-key');
   });
 
-  it('throws when AZURE_TENANT_ID is missing', async () => {
-    setRequiredEnvVars();
-    delete process.env.AZURE_TENANT_ID;
+  it('requires API_KEY in production', async () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.API_KEY;
 
     await expect(import('../config')).rejects.toThrow(
-      'Missing required environment variable: AZURE_TENANT_ID'
-    );
-  });
-
-  it('throws when AZURE_CLIENT_ID is missing', async () => {
-    setRequiredEnvVars();
-    delete process.env.AZURE_CLIENT_ID;
-
-    await expect(import('../config')).rejects.toThrow(
-      'Missing required environment variable: AZURE_CLIENT_ID'
-    );
-  });
-
-  it('throws when AZURE_CLIENT_SECRET is missing', async () => {
-    setRequiredEnvVars();
-    delete process.env.AZURE_CLIENT_SECRET;
-
-    await expect(import('../config')).rejects.toThrow(
-      'Missing required environment variable: AZURE_CLIENT_SECRET'
-    );
-  });
-
-  it('throws when HR_USER_ID is missing', async () => {
-    setRequiredEnvVars();
-    delete process.env.HR_USER_ID;
-
-    await expect(import('../config')).rejects.toThrow(
-      'Missing required environment variable: HR_USER_ID'
+      'Missing required environment variable: API_KEY'
     );
   });
 
   it('parses PORT as integer', async () => {
-    setRequiredEnvVars();
     process.env.PORT = '8080';
 
     const { config } = await import('../config');
     expect(config.port).toBe(8080);
     expect(typeof config.port).toBe('number');
+  });
+
+  it('loads processing config with defaults', async () => {
+    const { config } = await import('../config');
+
+    expect(config.processing.emailConcurrency).toBe(5);
+    expect(config.processing.uploadConcurrency).toBe(3);
+    expect(config.processing.retryMaxAttempts).toBe(3);
+    expect(config.processing.retryBaseDelayMs).toBe(500);
+    expect(config.processing.retryMaxDelayMs).toBe(15000);
   });
 });

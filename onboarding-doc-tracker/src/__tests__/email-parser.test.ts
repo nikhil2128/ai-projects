@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../config', () => ({
   config: {
     aws: { region: 'us-east-1' },
+    processing: { retryMaxAttempts: 1, retryBaseDelayMs: 10 },
   },
 }));
 
@@ -43,6 +44,9 @@ describe('parseEmailFromS3', () => {
       from: {
         value: [{ name: 'John Doe', address: 'john@example.com' }],
       },
+      to: {
+        value: [{ address: 'onboarding@company.com' }],
+      },
       subject: 'My Onboarding Documents',
       date: new Date('2024-01-15T10:00:00Z'),
       attachments: [
@@ -57,7 +61,7 @@ describe('parseEmailFromS3', () => {
     };
   }
 
-  it('parses email and returns an EmployeeSubmission', async () => {
+  it('parses email and returns an EmployeeSubmission with recipientEmail', async () => {
     mockS3Response('raw mime content');
     mockSimpleParser.mockResolvedValue(makeParsedEmail());
     mockNormalizeBatch.mockReturnValue(
@@ -67,6 +71,7 @@ describe('parseEmailFromS3', () => {
     const result = await parseEmailFromS3('test-bucket', 'incoming/abc');
 
     expect(result.messageId).toBe('<msg-123@test.com>');
+    expect(result.recipientEmail).toBe('onboarding@company.com');
     expect(result.employeeName).toBe('John Doe');
     expect(result.employeeEmail).toBe('john@example.com');
     expect(result.subject).toBe('My Onboarding Documents');
@@ -77,6 +82,34 @@ describe('parseEmailFromS3', () => {
     expect(result.attachments[0].contentBytes).toBe(
       Buffer.from('pdf-content-1').toString('base64')
     );
+  });
+
+  it('extracts recipient email from "to" field', async () => {
+    mockS3Response('raw email');
+    mockSimpleParser.mockResolvedValue(
+      makeParsedEmail({
+        to: { value: [{ address: 'docs@acme.com' }] },
+      })
+    );
+    mockNormalizeBatch.mockReturnValue(
+      new Map([['passport.pdf', 'john_doe_passport.pdf']])
+    );
+
+    const result = await parseEmailFromS3('bucket', 'key');
+    expect(result.recipientEmail).toBe('docs@acme.com');
+  });
+
+  it('returns empty recipientEmail when "to" is missing', async () => {
+    mockS3Response('raw email');
+    mockSimpleParser.mockResolvedValue(
+      makeParsedEmail({ to: undefined })
+    );
+    mockNormalizeBatch.mockReturnValue(
+      new Map([['passport.pdf', 'john_doe_passport.pdf']])
+    );
+
+    const result = await parseEmailFromS3('bucket', 'key');
+    expect(result.recipientEmail).toBe('');
   });
 
   it('extracts employee name from email address when display name is absent', async () => {

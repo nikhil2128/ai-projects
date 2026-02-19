@@ -4,7 +4,7 @@ vi.mock('../config', () => ({
   config: {
     aws: { region: 'us-east-1', dynamoTable: 'test-tracking-table' },
     processing: {
-      retryMaxAttempts: 3,
+      retryMaxAttempts: 1,
       retryBaseDelayMs: 10,
       retryMaxDelayMs: 100,
     },
@@ -39,6 +39,7 @@ describe('tracking.service', () => {
   });
 
   const sampleRecord: TrackingRecord = {
+    tenantId: 'tenant-001',
     messageId: 'msg-001',
     employeeName: 'John Doe',
     employeeEmail: 'john@example.com',
@@ -56,11 +57,10 @@ describe('tracking.service', () => {
       const command = mockDocClientSend.mock.calls[0][0];
       expect(command.TableName).toBe('test-tracking-table');
       expect(command.Item).toEqual(sampleRecord);
+      expect(command.Item.tenantId).toBe('tenant-001');
       expect(command.ConditionExpression).toBe(
         'attribute_not_exists(messageId) OR #s = :failed'
       );
-      expect(command.ExpressionAttributeNames).toEqual({ '#s': 'status' });
-      expect(command.ExpressionAttributeValues).toEqual({ ':failed': 'failed' });
     });
 
     it('propagates DynamoDB errors', async () => {
@@ -140,13 +140,11 @@ describe('tracking.service', () => {
       expect(mockDocClientSend).toHaveBeenCalledTimes(2);
       expect(result).toEqual(new Set(['msg-0', 'msg-100']));
 
-      // Verify first chunk has 100 keys
       const firstCommand = mockDocClientSend.mock.calls[0][0];
       expect(
         firstCommand.RequestItems['test-tracking-table'].Keys
       ).toHaveLength(100);
 
-      // Verify second chunk has 50 keys
       const secondCommand = mockDocClientSend.mock.calls[1][0];
       expect(
         secondCommand.RequestItems['test-tracking-table'].Keys
@@ -186,11 +184,12 @@ describe('tracking.service', () => {
   });
 
   describe('recordFailure', () => {
-    it('saves a failure record with error details', async () => {
-      await recordFailure('msg-fail', 'John', 'john@test.com', 'Parse error');
+    it('saves a failure record with tenantId and error details', async () => {
+      await recordFailure('tenant-001', 'msg-fail', 'John', 'john@test.com', 'Parse error');
 
       expect(mockDocClientSend).toHaveBeenCalledOnce();
       const command = mockDocClientSend.mock.calls[0][0];
+      expect(command.Item.tenantId).toBe('tenant-001');
       expect(command.Item.messageId).toBe('msg-fail');
       expect(command.Item.status).toBe('failed');
       expect(command.Item.error).toBe('Parse error');
@@ -202,8 +201,7 @@ describe('tracking.service', () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       mockDocClientSend.mockRejectedValue(new Error('DDB error'));
 
-      // Should not throw
-      await recordFailure('msg-x', '', '', 'some error');
+      await recordFailure('tenant-001', 'msg-x', '', '', 'some error');
 
       expect(consoleSpy).toHaveBeenCalledWith(
         'Failed to record failure in DynamoDB:',

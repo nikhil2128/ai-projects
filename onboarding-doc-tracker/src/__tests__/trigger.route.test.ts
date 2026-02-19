@@ -4,11 +4,8 @@ import express from 'express';
 
 vi.mock('../config', () => ({
   config: {
-    aws: { region: 'us-east-1', dynamoTable: 'tbl', emailBucket: 'test-email-bucket' },
-    azure: { tenantId: 't', clientId: 'c', clientSecret: 's' },
-    hr: { email: 'hr@t.com', userId: 'u' },
-    onedrive: { rootFolder: 'D' },
-    ses: { fromEmail: 'n@t.com' },
+    aws: { region: 'us-east-1', dynamoTable: 'tbl', tenantsTable: 'tenants', emailBucket: 'test-email-bucket' },
+    processing: { retryMaxAttempts: 1, retryBaseDelayMs: 10, retryMaxDelayMs: 100 },
   },
 }));
 
@@ -39,6 +36,7 @@ describe('POST /trigger', () => {
     mockProcessEmailFromS3.mockResolvedValue({
       success: true,
       messageId: 'msg-1',
+      tenantId: 'tenant-001',
       employeeName: 'Alice',
       folderUrl: 'https://share/link',
       documentsUploaded: ['alice_passport.pdf'],
@@ -51,6 +49,7 @@ describe('POST /trigger', () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.employeeName).toBe('Alice');
+    expect(res.body.tenantId).toBe('tenant-001');
     expect(mockProcessEmailFromS3).toHaveBeenCalledWith(
       'test-email-bucket',
       'incoming/test-email'

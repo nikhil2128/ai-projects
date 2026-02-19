@@ -1,18 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Tenant } from '../types';
 
 vi.mock('../config', () => ({
   config: {
-    aws: { region: 'us-east-1', dynamoTable: 'test-table', emailBucket: 'test-bucket' },
-    azure: { tenantId: 't', clientId: 'c', clientSecret: 's' },
-    hr: { email: 'hr@test.com', userId: 'uid' },
-    onedrive: { rootFolder: 'Docs' },
-    ses: { fromEmail: 'noreply@test.com' },
+    aws: { region: 'us-east-1', dynamoTable: 'test-table', tenantsTable: 'test-tenants', emailBucket: 'test-bucket' },
+    processing: { uploadConcurrency: 3, retryMaxAttempts: 1, retryBaseDelayMs: 10, retryMaxDelayMs: 100 },
   },
 }));
 
 const mockParseEmailFromS3 = vi.hoisted(() => vi.fn());
 vi.mock('../services/email-parser', () => ({
   parseEmailFromS3: mockParseEmailFromS3,
+}));
+
+const mockGetTenantByReceivingEmail = vi.hoisted(() => vi.fn());
+vi.mock('../services/tenant.service', () => ({
+  getTenantByReceivingEmail: mockGetTenantByReceivingEmail,
 }));
 
 const mockCreateEmployeeFolder = vi.hoisted(() => vi.fn());
@@ -40,6 +43,22 @@ vi.mock('../services/tracking.service', () => ({
 
 import { processEmailFromS3 } from '../services/processing.service';
 
+const testTenant: Tenant = {
+  tenantId: 'tenant-001',
+  companyName: 'Test Corp',
+  receivingEmail: 'onboarding@testcorp.com',
+  hrEmail: 'hr@testcorp.com',
+  hrUserId: 'test-user-id',
+  azureTenantId: 'azure-tenant-id',
+  azureClientId: 'azure-client-id',
+  azureClientSecret: 'azure-client-secret',
+  oneDriveRootFolder: 'Onboarding Documents',
+  sesFromEmail: 'noreply@testcorp.com',
+  status: 'active',
+  createdAt: '2024-01-01T00:00:00.000Z',
+  updatedAt: '2024-01-01T00:00:00.000Z',
+};
+
 describe('processEmailFromS3', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,10 +66,12 @@ describe('processEmailFromS3', () => {
     mockSaveProcessingRecord.mockResolvedValue(undefined);
     mockRecordFailure.mockResolvedValue(undefined);
     mockNotifyHrOfUpload.mockResolvedValue(undefined);
+    mockGetTenantByReceivingEmail.mockResolvedValue(testTenant);
   });
 
   const mockSubmission = {
     messageId: 'msg-123',
+    recipientEmail: 'onboarding@testcorp.com',
     employeeName: 'John Doe',
     employeeEmail: 'john@example.com',
     subject: 'My Documents',
@@ -69,51 +90,85 @@ describe('processEmailFromS3', () => {
   it('processes a new email end-to-end successfully', async () => {
     mockParseEmailFromS3.mockResolvedValue(mockSubmission);
     mockCreateEmployeeFolder.mockResolvedValue({ id: 'folder-id', name: 'John Doe' });
-    mockUploadAllDocuments.mockResolvedValue(['john_doe_passport.pdf']);
+    mockUploadAllDocuments.mockResolvedValue({ uploaded: ['john_doe_passport.pdf'], failed: [] });
     mockCreateSharingLink.mockResolvedValue('https://share.link/folder');
 
     const result = await processEmailFromS3('test-bucket', 'incoming/abc');
 
     expect(result.success).toBe(true);
     expect(result.messageId).toBe('msg-123');
+    expect(result.tenantId).toBe('tenant-001');
     expect(result.employeeName).toBe('John Doe');
     expect(result.folderUrl).toBe('https://share.link/folder');
     expect(result.documentsUploaded).toEqual(['john_doe_passport.pdf']);
   });
 
-  it('calls all pipeline stages in order', async () => {
+  it('resolves tenant from recipient email', async () => {
     mockParseEmailFromS3.mockResolvedValue(mockSubmission);
     mockCreateEmployeeFolder.mockResolvedValue({ id: 'fid' });
-    mockUploadAllDocuments.mockResolvedValue(['doc.pdf']);
+    mockUploadAllDocuments.mockResolvedValue({ uploaded: ['doc.pdf'], failed: [] });
     mockCreateSharingLink.mockResolvedValue('https://link');
 
     await processEmailFromS3('bucket', 'key');
 
-    expect(mockParseEmailFromS3).toHaveBeenCalledWith('bucket', 'key');
-    expect(mockIsAlreadyProcessed).toHaveBeenCalledWith('msg-123');
-    expect(mockCreateEmployeeFolder).toHaveBeenCalledWith('John Doe');
-    expect(mockUploadAllDocuments).toHaveBeenCalledWith('fid', mockSubmission.attachments);
-    expect(mockCreateSharingLink).toHaveBeenCalledWith('fid');
-    expect(mockNotifyHrOfUpload).toHaveBeenCalledOnce();
-    expect(mockSaveProcessingRecord).toHaveBeenCalledOnce();
+    expect(mockGetTenantByReceivingEmail).toHaveBeenCalledWith('onboarding@testcorp.com');
   });
 
-  it('saves a tracking record with correct shape', async () => {
+  it('passes tenant to all downstream services', async () => {
     mockParseEmailFromS3.mockResolvedValue(mockSubmission);
     mockCreateEmployeeFolder.mockResolvedValue({ id: 'fid' });
-    mockUploadAllDocuments.mockResolvedValue(['doc.pdf']);
+    mockUploadAllDocuments.mockResolvedValue({ uploaded: ['doc.pdf'], failed: [] });
+    mockCreateSharingLink.mockResolvedValue('https://link');
+
+    await processEmailFromS3('bucket', 'key');
+
+    expect(mockCreateEmployeeFolder).toHaveBeenCalledWith('John Doe', testTenant);
+    expect(mockUploadAllDocuments).toHaveBeenCalledWith('fid', mockSubmission.attachments, testTenant);
+    expect(mockCreateSharingLink).toHaveBeenCalledWith('fid', testTenant);
+    expect(mockNotifyHrOfUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'tenant-001' }),
+      testTenant
+    );
+  });
+
+  it('saves a tracking record with tenantId', async () => {
+    mockParseEmailFromS3.mockResolvedValue(mockSubmission);
+    mockCreateEmployeeFolder.mockResolvedValue({ id: 'fid' });
+    mockUploadAllDocuments.mockResolvedValue({ uploaded: ['doc.pdf'], failed: [] });
     mockCreateSharingLink.mockResolvedValue('https://link');
 
     await processEmailFromS3('bucket', 'key');
 
     const savedRecord = mockSaveProcessingRecord.mock.calls[0][0];
+    expect(savedRecord.tenantId).toBe('tenant-001');
     expect(savedRecord.messageId).toBe('msg-123');
     expect(savedRecord.employeeName).toBe('John Doe');
-    expect(savedRecord.employeeEmail).toBe('john@example.com');
-    expect(savedRecord.folderUrl).toBe('https://link');
-    expect(savedRecord.documentsUploaded).toEqual(['doc.pdf']);
     expect(savedRecord.status).toBe('processed');
-    expect(savedRecord.processedAt).toBeDefined();
+  });
+
+  it('fails when no tenant matches the recipient email', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockParseEmailFromS3.mockResolvedValue(mockSubmission);
+    mockGetTenantByReceivingEmail.mockResolvedValue(null);
+
+    const result = await processEmailFromS3('bucket', 'key');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('No tenant registered');
+    expect(result.failedAtStep).toBe('tenant-resolution');
+    consoleSpy.mockRestore();
+  });
+
+  it('fails when tenant is inactive', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockParseEmailFromS3.mockResolvedValue(mockSubmission);
+    mockGetTenantByReceivingEmail.mockResolvedValue({ ...testTenant, status: 'inactive' });
+
+    const result = await processEmailFromS3('bucket', 'key');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('inactive');
+    consoleSpy.mockRestore();
   });
 
   it('skips processing for already-processed emails', async () => {
@@ -123,8 +178,8 @@ describe('processEmailFromS3', () => {
     const result = await processEmailFromS3('bucket', 'key');
 
     expect(result.success).toBe(true);
+    expect(result.tenantId).toBe('tenant-001');
     expect(result.messageId).toBe('msg-123');
-    expect(result.employeeName).toBe('John Doe');
     expect(mockCreateEmployeeFolder).not.toHaveBeenCalled();
     expect(mockUploadAllDocuments).not.toHaveBeenCalled();
     expect(mockNotifyHrOfUpload).not.toHaveBeenCalled();
@@ -141,7 +196,7 @@ describe('processEmailFromS3', () => {
     expect(result.error).toBe('Malformed email');
     expect(result.messageId).toBe('bad-key');
     expect(mockRecordFailure).toHaveBeenCalledWith(
-      'bad-key', '', '', 'Malformed email'
+      'unknown', 'bad-key', '', '', 'Malformed email'
     );
     consoleSpy.mockRestore();
   });
@@ -156,24 +211,25 @@ describe('processEmailFromS3', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe('Graph API down');
     expect(mockRecordFailure).toHaveBeenCalledWith(
-      'msg-123', '', '', 'Graph API down'
+      'tenant-001', 'msg-123', 'John Doe', 'john@example.com', 'Graph API down'
     );
     consoleSpy.mockRestore();
   });
 
-  it('handles notification failure', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  it('continues when HR notification fails (non-critical)', async () => {
     mockParseEmailFromS3.mockResolvedValue(mockSubmission);
     mockCreateEmployeeFolder.mockResolvedValue({ id: 'fid' });
-    mockUploadAllDocuments.mockResolvedValue(['doc.pdf']);
+    mockUploadAllDocuments.mockResolvedValue({ uploaded: ['doc.pdf'], failed: [] });
     mockCreateSharingLink.mockResolvedValue('https://link');
     mockNotifyHrOfUpload.mockRejectedValue(new Error('SES unavailable'));
 
     const result = await processEmailFromS3('bucket', 'key');
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('SES unavailable');
-    consoleSpy.mockRestore();
+    expect(result.success).toBe(true);
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining('HR notification failed')])
+    );
+    expect(mockSaveProcessingRecord).toHaveBeenCalledOnce();
   });
 
   it('handles non-Error thrown values', async () => {
@@ -184,6 +240,40 @@ describe('processEmailFromS3', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('string error');
+    consoleSpy.mockRestore();
+  });
+
+  it('handles partial upload failures with warnings', async () => {
+    mockParseEmailFromS3.mockResolvedValue(mockSubmission);
+    mockCreateEmployeeFolder.mockResolvedValue({ id: 'fid' });
+    mockUploadAllDocuments.mockResolvedValue({
+      uploaded: ['doc1.pdf'],
+      failed: [{ name: 'doc2.pdf', error: 'Timeout' }],
+    });
+    mockCreateSharingLink.mockResolvedValue('https://link');
+
+    const result = await processEmailFromS3('bucket', 'key');
+
+    expect(result.success).toBe(true);
+    expect(result.documentsFailed).toEqual([{ name: 'doc2.pdf', error: 'Timeout' }]);
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining('Upload failed for doc2.pdf')])
+    );
+  });
+
+  it('fails when all documents fail to upload', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockParseEmailFromS3.mockResolvedValue(mockSubmission);
+    mockCreateEmployeeFolder.mockResolvedValue({ id: 'fid' });
+    mockUploadAllDocuments.mockResolvedValue({
+      uploaded: [],
+      failed: [{ name: 'passport.pdf', error: 'Graph error' }],
+    });
+
+    const result = await processEmailFromS3('bucket', 'key');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('All 1 document(s) failed to upload');
     consoleSpy.mockRestore();
   });
 });

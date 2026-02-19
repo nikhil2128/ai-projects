@@ -1,13 +1,12 @@
 import { config } from '../config';
-import { GraphTokenResponse } from '../types';
+import { AzureCredentials, GraphTokenResponse } from '../types';
 import { withRetry, RetryableError } from '../utils/resilience';
 
-const TOKEN_URL = `https://login.microsoftonline.com/${config.azure.tenantId}/oauth2/v2.0/token`;
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
-let cachedToken: { token: string; expiresAt: number } | null = null;
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
 const retryOpts = {
   maxAttempts: config.processing.retryMaxAttempts,
@@ -16,20 +15,25 @@ const retryOpts = {
   isRetryable: (error: unknown) => error instanceof RetryableError,
 };
 
-async function acquireToken(): Promise<string> {
-  if (cachedToken && Date.now() < cachedToken.expiresAt - 60_000) {
-    return cachedToken.token;
+async function acquireToken(credentials: AzureCredentials): Promise<string> {
+  const cacheKey = `${credentials.tenantId}:${credentials.clientId}`;
+  const cached = tokenCache.get(cacheKey);
+
+  if (cached && Date.now() < cached.expiresAt - 60_000) {
+    return cached.token;
   }
 
+  const tokenUrl = `https://login.microsoftonline.com/${credentials.tenantId}/oauth2/v2.0/token`;
+
   const body = new URLSearchParams({
-    client_id: config.azure.clientId,
-    client_secret: config.azure.clientSecret,
+    client_id: credentials.clientId,
+    client_secret: credentials.clientSecret,
     scope: 'https://graph.microsoft.com/.default',
     grant_type: 'client_credentials',
   });
 
   return withRetry(async () => {
-    const response = await fetch(TOKEN_URL, {
+    const response = await fetch(tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
@@ -49,21 +53,22 @@ async function acquireToken(): Promise<string> {
 
     const data = (await response.json()) as GraphTokenResponse;
 
-    cachedToken = {
+    tokenCache.set(cacheKey, {
       token: data.access_token,
       expiresAt: Date.now() + data.expires_in * 1000,
-    };
+    });
 
-    return cachedToken.token;
+    return data.access_token;
   }, retryOpts);
 }
 
 export async function graphFetch<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  credentials: AzureCredentials
 ): Promise<T> {
   return withRetry(async () => {
-    const token = await acquireToken();
+    const token = await acquireToken(credentials);
 
     const response = await fetch(`${GRAPH_BASE}${path}`, {
       ...options,
@@ -78,7 +83,8 @@ export async function graphFetch<T>(
       const error = await response.text();
 
       if (response.status === 401) {
-        cachedToken = null;
+        const cacheKey = `${credentials.tenantId}:${credentials.clientId}`;
+        tokenCache.delete(cacheKey);
       }
 
       if (RETRYABLE_STATUS_CODES.has(response.status)) {
@@ -105,10 +111,11 @@ export async function graphFetch<T>(
  */
 export async function graphUpload<T>(
   path: string,
-  content: Buffer
+  content: Buffer,
+  credentials: AzureCredentials
 ): Promise<T> {
   return withRetry(async () => {
-    const token = await acquireToken();
+    const token = await acquireToken(credentials);
 
     const response = await fetch(`${GRAPH_BASE}${path}`, {
       method: 'PUT',
@@ -123,7 +130,8 @@ export async function graphUpload<T>(
       const error = await response.text();
 
       if (response.status === 401) {
-        cachedToken = null;
+        const cacheKey = `${credentials.tenantId}:${credentials.clientId}`;
+        tokenCache.delete(cacheKey);
       }
 
       if (RETRYABLE_STATUS_CODES.has(response.status)) {
@@ -140,6 +148,11 @@ export async function graphUpload<T>(
 
     return (await response.json()) as T;
   }, retryOpts);
+}
+
+/** Exposed for testing — clears the per-tenant token cache. */
+export function clearTokenCache(): void {
+  tokenCache.clear();
 }
 
 function parseRetryAfter(response: Response): number | undefined {

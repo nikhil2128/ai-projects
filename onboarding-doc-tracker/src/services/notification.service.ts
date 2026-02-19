@@ -1,6 +1,6 @@
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { config } from '../config';
-import { ProcessingResult } from '../types';
+import { ProcessingResult, Tenant } from '../types';
 import { withRetry } from '../utils/resilience';
 
 const ses = new SESClient({ region: config.aws.region });
@@ -11,12 +11,14 @@ const ses = new SESClient({ region: config.aws.region });
  * Retries on transient SES failures (throttling, service unavailable).
  */
 export async function notifyHrOfUpload(
-  result: ProcessingResult
+  result: ProcessingResult,
+  tenant: Tenant
 ): Promise<void> {
   const htmlBody = `
     <h2>Onboarding Documents Received</h2>
     <p><strong>Employee:</strong> ${result.employeeName}</p>
     <p><strong>Email:</strong> ${result.employeeEmail}</p>
+    <p><strong>Company:</strong> ${tenant.companyName}</p>
     <p><strong>Received:</strong> ${new Date(result.processedAt).toLocaleString()}</p>
     <hr />
     <p><strong>Documents uploaded:</strong></p>
@@ -38,9 +40,9 @@ export async function notifyHrOfUpload(
     () =>
       ses.send(
         new SendEmailCommand({
-          Source: config.ses.fromEmail,
+          Source: tenant.sesFromEmail,
           Destination: {
-            ToAddresses: [config.hr.email],
+            ToAddresses: [tenant.hrEmail],
           },
           Message: {
             Subject: {

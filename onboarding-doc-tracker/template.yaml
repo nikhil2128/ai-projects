@@ -1,40 +1,21 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  Onboarding Document Tracker — SES receives employee emails with documents,
-  stores in S3, S3 notifies SQS, Lambda processes from SQS to parse
-  attachments, upload to OneDrive, and notify HR via SES.
+  Onboarding Document Tracker (Multi-tenant SaaS) — SES receives employee emails
+  with documents, stores in S3, S3 notifies SQS, Lambda processes from SQS to
+  resolve the tenant, parse attachments, upload to tenant's OneDrive, and notify
+  tenant's HR via SES.
 
 Parameters:
-  AzureTenantId:
-    Type: String
-    Description: Azure AD tenant ID for Microsoft Graph API (OneDrive access)
-  AzureClientId:
-    Type: String
-    Description: Azure AD application (client) ID
-  AzureClientSecret:
+  ApiKey:
     Type: String
     NoEcho: true
-    Description: Azure AD client secret
-  HrEmail:
+    Description: API key for tenant management endpoints
+  OnboardingDomain:
     Type: String
-    Default: hr@company.com
-    Description: HR email address to receive notifications
-  HrUserId:
-    Type: String
-    Description: Microsoft Graph user object ID for the HR mailbox (OneDrive owner)
-  OneDriveRootFolder:
-    Type: String
-    Default: Onboarding Documents
-    Description: Root folder name in HR's OneDrive
-  SesFromEmail:
-    Type: String
-    Default: onboarding@company.com
-    Description: Verified SES sender address for HR notifications
-  OnboardingRecipient:
-    Type: String
-    Default: onboarding@company.com
-    Description: Email address that employees reply to (must match SES verified domain)
+    Description: >
+      Domain for receiving onboarding emails (e.g. docs.example.com).
+      Each tenant gets a unique address on this domain (e.g. acme@docs.example.com).
   MaxRetries:
     Type: Number
     Default: 3
@@ -129,18 +110,13 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: dist/handlers/process-emails.handler.handler
-      Description: Parses onboarding emails from S3 (via SQS), uploads documents to OneDrive, notifies HR
+      Description: Parses onboarding emails from S3 (via SQS), resolves tenant, uploads documents to OneDrive, notifies HR
       ReservedConcurrentExecutions: 5
       Environment:
         Variables:
-          AZURE_TENANT_ID: !Ref AzureTenantId
-          AZURE_CLIENT_ID: !Ref AzureClientId
-          AZURE_CLIENT_SECRET: !Ref AzureClientSecret
-          HR_EMAIL: !Ref HrEmail
-          HR_USER_ID: !Ref HrUserId
-          ONEDRIVE_ROOT_FOLDER: !Ref OneDriveRootFolder
-          SES_FROM_EMAIL: !Ref SesFromEmail
+          API_KEY: !Ref ApiKey
           DYNAMODB_TABLE: !Ref ProcessedEmailsTable
+          TENANTS_TABLE: !Ref TenantsTable
           EMAIL_BUCKET: !Ref EmailBucket
       Events:
         SQSEmailReceived:
@@ -153,6 +129,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ProcessedEmailsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TenantsTable
         - S3ReadPolicy:
             BucketName: !Ref EmailBucket
         - SQSPollerPolicy:
@@ -165,7 +143,7 @@ Resources:
                 - ses:SendRawEmail
               Resource: '*'
 
-  # ── SES Receipt Rule: receives email → stores in S3 ──
+  # ── SES Receipt Rule: receives email for all tenants on the domain ──
   SesReceiptRuleSet:
     Type: AWS::SES::ReceiptRuleSet
     Properties:
@@ -182,13 +160,13 @@ Resources:
         Enabled: true
         ScanEnabled: true
         Recipients:
-          - !Ref OnboardingRecipient
+          - !Ref OnboardingDomain
         Actions:
           - S3Action:
               BucketName: !Ref EmailBucket
               ObjectKeyPrefix: incoming/
 
-  # ── DynamoDB: tracks processed emails ──
+  # ── DynamoDB: tracks processed emails (multi-tenant) ──
   ProcessedEmailsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -197,9 +175,43 @@ Resources:
       AttributeDefinitions:
         - AttributeName: messageId
           AttributeType: S
+        - AttributeName: tenantId
+          AttributeType: S
       KeySchema:
         - AttributeName: messageId
           KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: tenantId-index
+          KeySchema:
+            - AttributeName: tenantId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Project
+          Value: onboarding-doc-tracker
+
+  # ── DynamoDB: tenant configurations ──
+  TenantsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-tenants'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: tenantId
+          AttributeType: S
+        - AttributeName: receivingEmail
+          AttributeType: S
+      KeySchema:
+        - AttributeName: tenantId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: receivingEmail-index
+          KeySchema:
+            - AttributeName: receivingEmail
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
       Tags:
         - Key: Project
           Value: onboarding-doc-tracker
@@ -217,9 +229,12 @@ Outputs:
   EmailProcessingDLQUrl:
     Description: Dead-letter queue URL for failed email processing
     Value: !Ref EmailProcessingDLQ
-  DynamoDBTableName:
+  TrackingTableName:
     Description: DynamoDB table tracking processed emails
     Value: !Ref ProcessedEmailsTable
+  TenantsTableName:
+    Description: DynamoDB table storing tenant configurations
+    Value: !Ref TenantsTable
   SesRuleSetName:
     Description: SES receipt rule set (must be activated manually after deploy)
     Value: !Ref SesReceiptRuleSet

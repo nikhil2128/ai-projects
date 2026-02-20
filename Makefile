@@ -21,6 +21,8 @@ PROJECTS := \
 	invoice-processor \
 	invoice-processor/ui \
 	onboarding-doc-tracker \
+	photo-share/backend \
+	photo-share/frontend \
 	smart-task-manager/backend \
 	smart-task-manager/frontend \
 	video-merger

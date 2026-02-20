@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-gray-50 text-gray-900 antialiased;
+}
+
+.filter-none { filter: none; }
+.filter-grayscale { filter: grayscale(100%); }
+.filter-sepia { filter: sepia(80%); }
+.filter-saturate { filter: saturate(200%); }
+.filter-contrast { filter: contrast(150%); }
+.filter-brightness { filter: brightness(120%); }
+.filter-blur { filter: blur(1px); }
+.filter-hue-rotate { filter: hue-rotate(90deg); }
+.filter-invert { filter: invert(80%); }
+.filter-warm { filter: sepia(30%) saturate(140%) brightness(110%); }
+.filter-cool { filter: saturate(80%) hue-rotate(180deg) brightness(105%); }
+.filter-vintage { filter: sepia(40%) contrast(120%) brightness(90%); }

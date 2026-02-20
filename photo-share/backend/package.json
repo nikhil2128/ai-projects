@@ -11,7 +11,10 @@
     "lint": "eslint \"src/**/*.ts\"",
     "lint:fix": "eslint \"src/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"No tests configured yet\" && exit 0"
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch",
+    "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
+    "test:cov": "jest --coverage --runInBand"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -28,6 +31,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
     "multer": "^1.4.5-lts.1",
+    "neo4j-driver": "^5.28.2",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.0",
@@ -36,6 +40,8 @@
     "typeorm": "^0.3.17"
   },
   "devDependencies": {
+    "@nestjs/testing": "^10.4.20",
+    "@types/jest": "^30.0.0",
     "@nestjs/cli": "^10.0.0",
     "@nestjs/schematics": "^10.0.0",
     "@types/bcrypt": "^5.0.0",
@@ -43,11 +49,15 @@
     "@types/multer": "^1.4.7",
     "@types/node": "^20.0.0",
     "@types/passport-jwt": "^4.0.0",
+    "@types/supertest": "^6.0.3",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^10.0.0",
+    "jest": "^30.2.0",
     "prettier": "^3.0.0",
+    "supertest": "^7.1.4",
+    "ts-jest": "^29.4.5",
     "ts-node": "^10.9.0",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.1.0"

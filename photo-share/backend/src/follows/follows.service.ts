@@ -86,7 +86,10 @@ export class FollowsService {
         { userId },
       );
 
-      const followerIds = result.records.map((r) => r.get('id').toNumber());
+      const followerIds = result.records.map(
+        (r: { get: (key: string) => { toNumber: () => number } }) =>
+          r.get('id').toNumber(),
+      );
       if (followerIds.length === 0) return [];
 
       const users = await this.userRepository
@@ -96,7 +99,7 @@ export class FollowsService {
 
       const userMap = new Map(users.map((u) => [u.id, u]));
       return result.records
-        .map((r) => {
+        .map((r: { get: (key: string) => { toNumber: () => number; toString: () => string } }) => {
           const user = userMap.get(r.get('id').toNumber());
           if (!user) return null;
           return {
@@ -107,7 +110,7 @@ export class FollowsService {
             followedAt: new Date(r.get('followedAt').toString()),
           };
         })
-        .filter((u): u is FollowedUser => u !== null);
+        .filter((u: FollowedUser | null): u is FollowedUser => u !== null);
     });
   }
 
@@ -120,7 +123,10 @@ export class FollowsService {
         { userId },
       );
 
-      const followingIds = result.records.map((r) => r.get('id').toNumber());
+      const followingIds = result.records.map(
+        (r: { get: (key: string) => { toNumber: () => number } }) =>
+          r.get('id').toNumber(),
+      );
       if (followingIds.length === 0) return [];
 
       const users = await this.userRepository
@@ -130,7 +136,7 @@ export class FollowsService {
 
       const userMap = new Map(users.map((u) => [u.id, u]));
       return result.records
-        .map((r) => {
+        .map((r: { get: (key: string) => { toNumber: () => number; toString: () => string } }) => {
           const user = userMap.get(r.get('id').toNumber());
           if (!user) return null;
           return {
@@ -141,7 +147,7 @@ export class FollowsService {
             followedAt: new Date(r.get('followedAt').toString()),
           };
         })
-        .filter((u): u is FollowedUser => u !== null);
+        .filter((u: FollowedUser | null): u is FollowedUser => u !== null);
     });
   }
 }

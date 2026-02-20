@@ -34,7 +34,9 @@ export class PostsService {
          RETURN other.id AS id`,
         { userId },
       );
-      return result.records.map((r) => r.get('id').toNumber());
+      return result.records.map((r: { get: (key: string) => { toNumber: () => number } }) =>
+        r.get('id').toNumber(),
+      );
     });
     followingIds.push(userId);
 

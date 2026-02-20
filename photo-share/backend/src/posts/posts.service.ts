@@ -2,8 +2,8 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Post } from './post.entity';
-import { Follow } from '../follows/follow.entity';
 import { Reaction } from '../reactions/reaction.entity';
+import { Neo4jService } from '../neo4j/neo4j.service';
 import { CreatePostDto } from './dto/create-post.dto';
 
 @Injectable()
@@ -11,10 +11,9 @@ export class PostsService {
   constructor(
     @InjectRepository(Post)
     private readonly postRepository: Repository<Post>,
-    @InjectRepository(Follow)
-    private readonly followRepository: Repository<Follow>,
     @InjectRepository(Reaction)
     private readonly reactionRepository: Repository<Reaction>,
+    private readonly neo4jService: Neo4jService,
   ) {}
 
   async create(userId: number, dto: CreatePostDto, imageUrl: string) {
@@ -29,10 +28,14 @@ export class PostsService {
   }
 
   async getFeed(userId: number, page = 1, limit = 20) {
-    const following = await this.followRepository.find({
-      where: { followerId: userId },
+    const followingIds = await this.neo4jService.read(async (tx) => {
+      const result = await tx.run(
+        `MATCH (me:User {id: $userId})-[:FOLLOWS]->(other:User)
+         RETURN other.id AS id`,
+        { userId },
+      );
+      return result.records.map((r) => r.get('id').toNumber());
     });
-    const followingIds = following.map((f) => f.followingId);
     followingIds.push(userId);
 
     const [posts, total] = await this.postRepository.findAndCount({

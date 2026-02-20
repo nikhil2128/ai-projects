@@ -8,6 +8,7 @@ import { UsersModule } from './users/users.module';
 import { PostsModule } from './posts/posts.module';
 import { FollowsModule } from './follows/follows.module';
 import { ReactionsModule } from './reactions/reactions.module';
+import { Neo4jModule } from './neo4j/neo4j.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ReactionsModule } from './reactions/reactions.module';
       rootPath: join(__dirname, '..', 'uploads'),
       serveRoot: '/uploads',
     }),
+    Neo4jModule,
     AuthModule,
     UsersModule,
     PostsModule,

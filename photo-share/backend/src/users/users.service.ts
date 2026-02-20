@@ -2,15 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './user.entity';
-import { Follow } from '../follows/follow.entity';
+import { Neo4jService } from '../neo4j/neo4j.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-    @InjectRepository(Follow)
-    private readonly followRepository: Repository<Follow>,
+    private readonly neo4jService: Neo4jService,
   ) {}
 
   async findByUsername(username: string, currentUserId?: number) {
@@ -19,19 +18,28 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    const [followersCount, followingCount, postsCount] = await Promise.all([
-      this.followRepository.count({ where: { followingId: user.id } }),
-      this.followRepository.count({ where: { followerId: user.id } }),
-      this.userRepository.manager.count('posts', { where: { userId: user.id } }),
-    ]);
+    const postsCount = await this.userRepository.manager.count('posts', {
+      where: { userId: user.id },
+    });
 
-    let isFollowing = false;
-    if (currentUserId && currentUserId !== user.id) {
-      const follow = await this.followRepository.findOne({
-        where: { followerId: currentUserId, followingId: user.id },
+    const { followersCount, followingCount, isFollowing } =
+      await this.neo4jService.read(async (tx) => {
+        const result = await tx.run(
+          `OPTIONAL MATCH (:User)-[f:FOLLOWS]->(me:User {id: $userId})
+           WITH count(f) AS followers
+           OPTIONAL MATCH (me:User {id: $userId})-[g:FOLLOWS]->(:User)
+           WITH followers, count(g) AS following
+           OPTIONAL MATCH (cur:User {id: $currentUserId})-[h:FOLLOWS]->(target:User {id: $userId})
+           RETURN followers, following, count(h) > 0 AS isFollowing`,
+          { userId: user.id, currentUserId: currentUserId ?? -1 },
+        );
+        const record = result.records[0];
+        return {
+          followersCount: record?.get('followers')?.toNumber() ?? 0,
+          followingCount: record?.get('following')?.toNumber() ?? 0,
+          isFollowing: currentUserId ? (record?.get('isFollowing') ?? false) : false,
+        };
       });
-      isFollowing = !!follow;
-    }
 
     return {
       ...user,

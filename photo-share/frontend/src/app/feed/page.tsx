@@ -63,12 +63,20 @@ export default function FeedPage() {
             <p className="mb-4 text-sm text-gray-500">
               Follow other users or create your first post to see content here.
             </p>
-            <button
-              onClick={() => router.push('/create')}
-              className="rounded-lg bg-gradient-to-r from-pink-500 to-purple-500 px-6 py-2 text-sm font-medium text-white"
-            >
-              Create a Post
-            </button>
+            <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+              <button
+                onClick={() => router.push('/discover')}
+                className="rounded-lg border border-pink-200 bg-pink-50 px-6 py-2 text-sm font-medium text-pink-600 transition-colors hover:bg-pink-100"
+              >
+                Discover Nearby People
+              </button>
+              <button
+                onClick={() => router.push('/create')}
+                className="rounded-lg bg-gradient-to-r from-pink-500 to-purple-500 px-6 py-2 text-sm font-medium text-white"
+              >
+                Create a Post
+              </button>
+            </div>
           </div>
         ) : (
           <>

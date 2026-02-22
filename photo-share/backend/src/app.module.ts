@@ -8,6 +8,7 @@ import { UsersModule } from './users/users.module';
 import { PostsModule } from './posts/posts.module';
 import { FollowsModule } from './follows/follows.module';
 import { ReactionsModule } from './reactions/reactions.module';
+import { RecommendationsModule } from './recommendations/recommendations.module';
 import { Neo4jModule } from './neo4j/neo4j.module';
 
 @Module({
@@ -29,6 +30,7 @@ import { Neo4jModule } from './neo4j/neo4j.module';
     PostsModule,
     FollowsModule,
     ReactionsModule,
+    RecommendationsModule,
   ],
 })
 export class AppModule {}

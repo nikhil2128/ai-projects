@@ -58,4 +58,19 @@ export class UsersService {
       .limit(20)
       .getMany();
   }
+
+  async updateLocation(
+    userId: number,
+    latitude: number,
+    longitude: number,
+    locationName?: string,
+  ) {
+    await this.userRepository.update(userId, {
+      latitude,
+      longitude,
+      locationName: locationName ?? null,
+      locationUpdatedAt: new Date(),
+    });
+    return this.userRepository.findOneBy({ id: userId });
+  }
 }

@@ -81,6 +81,16 @@ export default function Navbar() {
 
         <div className="flex items-center gap-3">
           <Link
+            href="/discover"
+            className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:border-pink-300 hover:text-pink-600"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+            </svg>
+            Discover
+          </Link>
+          <Link
             href="/create"
             className="rounded-lg bg-gradient-to-r from-pink-500 to-purple-500 px-3 py-1.5 text-sm font-medium text-white transition-shadow hover:shadow-md"
           >

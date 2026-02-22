@@ -31,6 +31,18 @@ export class User {
   @Column({ nullable: true })
   avatarUrl!: string;
 
+  @Column({ type: 'float', nullable: true })
+  latitude!: number | null;
+
+  @Column({ type: 'float', nullable: true })
+  longitude!: number | null;
+
+  @Column({ nullable: true })
+  locationName!: string | null;
+
+  @Column({ nullable: true })
+  locationUpdatedAt!: Date | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

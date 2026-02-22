@@ -54,6 +54,27 @@ export interface UserProfile extends AuthUser {
   createdAt: string;
 }
 
+export interface NearbyUser {
+  id: number;
+  username: string;
+  displayName: string | null;
+  bio: string | null;
+  avatarUrl: string | null;
+  locationName: string | null;
+  distance: number;
+  mutualConnections: number;
+  isFollowing: boolean;
+  score: number;
+}
+
+export interface NearbyUsersResponse {
+  users: NearbyUser[];
+  total: number;
+  page: number;
+  totalPages: number;
+  radiusKm: number;
+}
+
 export interface PostItem {
   id: number;
   imageUrl: string;
@@ -95,6 +116,19 @@ export const api = {
 
     search: (q: string) =>
       request<AuthUser[]>(`/api/users/search?q=${encodeURIComponent(q)}`),
+
+    updateLocation: (data: { latitude: number; longitude: number; locationName?: string }) =>
+      request<AuthUser>('/api/users/location', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+  },
+
+  recommendations: {
+    nearby: (radius = 50, page = 1) =>
+      request<NearbyUsersResponse>(
+        `/api/recommendations/nearby?radius=${radius}&page=${page}`,
+      ),
   },
 
   follows: {

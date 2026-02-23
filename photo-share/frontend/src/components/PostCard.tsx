@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { type PostItem, api } from '@/lib/api';
 import EmojiReactions from './EmojiReactions';
+import VerificationBadge from './VerificationBadge';
 
 interface Props {
   post: PostItem;
@@ -29,12 +30,15 @@ export default function PostCard({ post }: Props) {
           {post.user.username[0].toUpperCase()}
         </Link>
         <div>
-          <Link
-            href={`/profile/${post.user.username}`}
-            className="text-sm font-semibold hover:underline"
-          >
-            {post.user.username}
-          </Link>
+          <div className="flex items-center gap-1">
+            <Link
+              href={`/profile/${post.user.username}`}
+              className="text-sm font-semibold hover:underline"
+            >
+              {post.user.username}
+            </Link>
+            <VerificationBadge status={post.user.verificationStatus} />
+          </div>
           <p className="text-xs text-gray-400">{timeAgo}</p>
         </div>
       </div>

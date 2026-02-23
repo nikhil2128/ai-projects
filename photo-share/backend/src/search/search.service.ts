@@ -9,6 +9,7 @@ export interface UserSearchDoc {
   bio: string | null;
   avatarUrl: string | null;
   followersCount?: number;
+  verificationStatus?: string;
 }
 
 const INDEX_NAME = 'users';

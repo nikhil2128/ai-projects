@@ -2,6 +2,7 @@ import { Controller, Post, Delete, Get, Param, UseGuards, Request } from '@nestj
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { FollowsService } from './follows.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { VerifiedGuard } from '../verification/verified.guard';
 
 @ApiTags('Follows')
 @ApiBearerAuth()
@@ -11,6 +12,7 @@ export class FollowsController {
   constructor(private readonly followsService: FollowsService) {}
 
   @Post(':username')
+  @UseGuards(VerifiedGuard)
   follow(
     @Param('username') username: string,
     @Request() req: { user: { id: number } },
@@ -19,6 +21,7 @@ export class FollowsController {
   }
 
   @Delete(':username')
+  @UseGuards(VerifiedGuard)
   unfollow(
     @Param('username') username: string,
     @Request() req: { user: { id: number } },

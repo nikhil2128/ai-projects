@@ -73,7 +73,7 @@ async function request<T>(
   return res.json();
 }
 
-export type VerificationStatus = 'verified' | 'pending_review';
+export type VerificationStatus = 'pending' | 'verified' | 'flagged' | 'restricted';
 
 export interface AuthUser {
   id: number;
@@ -88,6 +88,21 @@ export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
   user: AuthUser;
+}
+
+export interface VerificationCheck {
+  score: number;
+  passed: boolean;
+  detail: string;
+}
+
+export interface VerificationStatusResponse {
+  status: VerificationStatus;
+  score: number;
+  emailVerified: boolean;
+  verifiedAt: string | null;
+  checks: Record<string, VerificationCheck> | null;
+  pendingActions: string[];
 }
 
 export interface UserProfile extends AuthUser {
@@ -226,6 +241,25 @@ export const api = {
         `/api/posts/${postId}/reactions`,
         { method: 'POST', body: JSON.stringify({ emoji }) },
       ),
+  },
+
+  verification: {
+    getStatus: () =>
+      request<VerificationStatusResponse>('/api/verification/status'),
+
+    sendVerificationEmail: () =>
+      request<{ message: string; verifyUrl: string }>(
+        '/api/verification/send-verification-email',
+        { method: 'POST' },
+      ),
+
+    verifyEmail: (token: string) =>
+      request<{ success: boolean; message: string }>(
+        `/api/verification/verify-email?token=${encodeURIComponent(token)}`,
+      ),
+
+    recheck: () =>
+      request<{ message: string }>('/api/verification/recheck', { method: 'POST' }),
   },
 
   getImageUrl: (path: string) => {

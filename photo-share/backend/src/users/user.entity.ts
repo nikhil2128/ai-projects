@@ -10,6 +10,13 @@ import { Post } from '../posts/post.entity';
 import { Reaction } from '../reactions/reaction.entity';
 import { ProfileVerificationStatus } from './profile-verification-status.enum';
 
+export enum VerificationStatus {
+  PENDING = 'pending',
+  VERIFIED = 'verified',
+  FLAGGED = 'flagged',
+  RESTRICTED = 'restricted',
+}
+
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn({ type: 'bigint' })
@@ -47,6 +54,32 @@ export class User {
   @Index()
   @Column({ type: 'boolean', default: true })
   isDiscoverable!: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  verifiedAt!: Date | null;
+
+  @Index()
+  @Column({
+    type: 'varchar',
+    length: 20,
+    default: VerificationStatus.PENDING,
+  })
+  verificationStatus!: VerificationStatus;
+
+  @Column({ type: 'boolean', default: false })
+  emailVerified!: boolean;
+
+  @Column({ type: 'varchar', length: 128, nullable: true, select: false })
+  emailVerificationToken!: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  emailVerificationExpiry!: Date | null;
+
+  @Column({ type: 'int', default: 0 })
+  verificationScore!: number;
+
+  @Column({ type: 'simple-json', nullable: true })
+  verificationChecks!: Record<string, { score: number; passed: boolean; detail: string }> | null;
 
   @Column({ type: 'timestamp', nullable: true })
   verifiedAt!: Date | null;

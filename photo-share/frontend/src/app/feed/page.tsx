@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { api, type PostItem } from '@/lib/api';
 import Navbar from '@/components/Navbar';
+import VerificationBanner from '@/components/VerificationBanner';
 import PostCard from '@/components/PostCard';
 
 export default function FeedPage() {
@@ -77,6 +78,7 @@ export default function FeedPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
+      <VerificationBanner />
       <main className="mx-auto max-w-lg px-4 py-6">
         {user?.verificationStatus === 'pending_review' && (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

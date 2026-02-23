@@ -5,16 +5,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { ProfileScreeningService } from './profile-screening.service';
 import { JwtStrategy } from './jwt.strategy';
 import { User } from '../users/user.entity';
-import { CacheModule } from '../cache/cache.module';
+import { VerificationModule } from '../verification/verification.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User]),
     PassportModule,
-    CacheModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -23,9 +21,10 @@ import { CacheModule } from '../cache/cache.module';
         signOptions: { expiresIn: '7d' },
       }),
     }),
+    VerificationModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, ProfileScreeningService],
+  providers: [AuthService, JwtStrategy],
   exports: [AuthService],
 })
 export class AuthModule {}

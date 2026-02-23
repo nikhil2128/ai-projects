@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { api, type AuthUser } from '@/lib/api';
+import VerificationBadge from './VerificationBadge';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -68,7 +69,10 @@ export default function Navbar() {
                     {u.username[0].toUpperCase()}
                   </div>
                   <div>
-                    <div className="font-medium">{u.username}</div>
+                    <div className="flex items-center gap-1 font-medium">
+                      {u.username}
+                      <VerificationBadge status={u.verificationStatus} />
+                    </div>
                     {u.displayName && (
                       <div className="text-xs text-gray-500">{u.displayName}</div>
                     )}

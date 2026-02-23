@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { api, type UserProfile, type PostItem } from '@/lib/api';
 import Navbar from '@/components/Navbar';
+import VerificationBanner from '@/components/VerificationBanner';
+import VerificationBadge from '@/components/VerificationBadge';
 import PostCard from '@/components/PostCard';
 
 export default function ProfilePage() {
@@ -92,6 +94,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
+      <VerificationBanner />
       <main className="mx-auto max-w-lg px-4 py-6">
         <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-5">
@@ -101,6 +104,7 @@ export default function ProfilePage() {
             <div className="flex-1">
               <div className="flex items-center gap-3">
                 <h1 className="text-xl font-bold">{profile.username}</h1>
+                <VerificationBadge status={profile.verificationStatus} size="md" />
                 {!isOwnProfile && (
                   <button
                     onClick={handleFollowToggle}

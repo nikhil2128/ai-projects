@@ -11,6 +11,7 @@ import { PostsModule } from './posts/posts.module';
 import { FollowsModule } from './follows/follows.module';
 import { ReactionsModule } from './reactions/reactions.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
+import { VerificationModule } from './verification/verification.module';
 import { Neo4jModule } from './neo4j/neo4j.module';
 import { CacheModule } from './cache/cache.module';
 import { StorageModule } from './storage/storage.module';
@@ -88,6 +89,7 @@ import { MetricsModule } from './metrics/metrics.module';
     FollowsModule,
     ReactionsModule,
     RecommendationsModule,
+    VerificationModule,
   ],
   providers: [
     {

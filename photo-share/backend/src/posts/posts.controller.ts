@@ -17,6 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { PostsService } from './posts.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { VerifiedGuard } from '../verification/verified.guard';
 import { CreatePostDto } from './dto/create-post.dto';
 import { Throttle } from '@nestjs/throttler';
 
@@ -28,6 +29,7 @@ export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
   @Post()
+  @UseGuards(VerifiedGuard)
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   @ApiConsumes('multipart/form-data')
   @ApiBody({

@@ -15,11 +15,10 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags, ApiConsumes, ApiBody } from '@nestjs/swagger';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
 import { PostsService } from './posts.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreatePostDto } from './dto/create-post.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('Posts')
 @ApiBearerAuth()
@@ -29,6 +28,7 @@ export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
   @Post()
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -42,13 +42,8 @@ export class PostsController {
   })
   @UseInterceptors(
     FileInterceptor('image', {
-      storage: diskStorage({
-        destination: './uploads',
-        filename: (_req, file, cb) => {
-          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, uniqueSuffix + extname(file.originalname));
-        },
-      }),
+      // Store in memory buffer for S3 upload + sharp processing
+      storage: undefined,
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.match(/^image\/(jpeg|png|gif|webp)$/)) {
           cb(new BadRequestException('Only image files are allowed'), false);
@@ -67,16 +62,27 @@ export class PostsController {
     if (!file) {
       throw new BadRequestException('Image is required');
     }
-    const imageUrl = `/uploads/${file.filename}`;
-    return this.postsService.create(req.user.id, dto, imageUrl);
+    return this.postsService.create(req.user.id, dto, file);
   }
 
   @Get('feed')
   getFeed(
     @Request() req: { user: { id: number } },
+    @Query('cursor') cursor?: string,
     @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.postsService.getFeed(req.user.id, page ? parseInt(page) : 1);
+    const parsedLimit = limit ? Math.min(parseInt(limit), 50) : 20;
+
+    // Support both cursor-based and page-based pagination
+    if (cursor) {
+      return this.postsService.getFeed(req.user.id, cursor, parsedLimit);
+    }
+    return this.postsService.getFeedPaginated(
+      req.user.id,
+      page ? parseInt(page) : 1,
+      parsedLimit,
+    );
   }
 
   @Get('user/:username')

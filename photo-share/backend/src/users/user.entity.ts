@@ -3,6 +3,7 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
+  Index,
   OneToMany,
 } from 'typeorm';
 import { Post } from '../posts/post.entity';
@@ -10,40 +11,44 @@ import { Reaction } from '../reactions/reaction.entity';
 
 @Entity('users')
 export class User {
-  @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: number;
 
-  @Column({ unique: true })
+  @Index()
+  @Column({ type: 'varchar', length: 50, unique: true })
   username!: string;
 
-  @Column({ unique: true })
+  @Index()
+  @Column({ type: 'varchar', length: 255, unique: true })
   email!: string;
 
-  @Column({ select: false })
+  @Column({ type: 'varchar', length: 255, select: false })
   password!: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   displayName!: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   bio!: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 500, nullable: true })
   avatarUrl!: string;
 
+  @Index()
   @Column({ type: 'float', nullable: true })
   latitude!: number | null;
 
+  @Index()
   @Column({ type: 'float', nullable: true })
   longitude!: number | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   locationName!: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'timestamp', nullable: true })
   locationUpdatedAt!: Date | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamp' })
   createdAt!: Date;
 
   @OneToMany(() => Post, (post) => post.user)

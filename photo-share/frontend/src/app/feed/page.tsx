@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { api, type PostItem } from '@/lib/api';
@@ -11,20 +11,28 @@ export default function FeedPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [posts, setPosts] = useState<PostItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const loadFeed = useCallback(async (p: number) => {
-    setLoading(true);
+  const loadFeed = useCallback(async (cursorVal?: string) => {
+    const isInitial = !cursorVal;
+    if (isInitial) setLoading(true);
+    else setLoadingMore(true);
+
     try {
-      const res = await api.posts.getFeed(p);
-      setPosts(res.posts);
-      setTotalPages(res.totalPages);
+      const res = await api.posts.getFeedCursor(cursorVal);
+      setPosts((prev) => (isInitial ? res.posts : [...prev, ...res.posts]));
+      setCursor(res.nextCursor ?? undefined);
+      setHasMore(res.hasMore);
     } catch (err) {
       console.error('Failed to load feed:', err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
@@ -34,9 +42,29 @@ export default function FeedPage() {
       return;
     }
     if (user) {
-      loadFeed(page);
+      loadFeed();
     }
-  }, [user, authLoading, page, router, loadFeed]);
+  }, [user, authLoading, router, loadFeed]);
+
+  // Infinite scroll with IntersectionObserver
+  useEffect(() => {
+    if (observerRef.current) observerRef.current.disconnect();
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && cursor) {
+          loadFeed(cursor);
+        }
+      },
+      { rootMargin: '400px' },
+    );
+
+    if (sentinelRef.current) {
+      observerRef.current.observe(sentinelRef.current);
+    }
+
+    return () => observerRef.current?.disconnect();
+  }, [hasMore, loadingMore, cursor, loadFeed]);
 
   if (authLoading) {
     return (
@@ -86,26 +114,19 @@ export default function FeedPage() {
               ))}
             </div>
 
-            {totalPages > 1 && (
-              <div className="mt-8 flex items-center justify-center gap-2">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm transition-colors hover:bg-gray-50 disabled:opacity-40"
-                >
-                  Previous
-                </button>
-                <span className="px-3 text-sm text-gray-500">
-                  Page {page} of {totalPages}
-                </span>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm transition-colors hover:bg-gray-50 disabled:opacity-40"
-                >
-                  Next
-                </button>
+            {/* Infinite scroll sentinel */}
+            <div ref={sentinelRef} className="h-4" />
+
+            {loadingMore && (
+              <div className="flex justify-center py-6">
+                <div className="h-6 w-6 animate-spin rounded-full border-3 border-pink-500 border-t-transparent" />
               </div>
+            )}
+
+            {!hasMore && posts.length > 0 && (
+              <p className="py-8 text-center text-sm text-gray-400">
+                You&apos;re all caught up!
+              </p>
             )}
           </>
         )}

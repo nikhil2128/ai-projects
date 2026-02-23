@@ -1,5 +1,23 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
+let refreshPromise: Promise<void> | null = null;
+
+async function refreshAccessToken(): Promise<void> {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) throw new Error('No refresh token');
+
+  const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  });
+
+  if (!res.ok) throw new Error('Refresh failed');
+  const data = await res.json();
+  localStorage.setItem('token', data.accessToken);
+  localStorage.setItem('refreshToken', data.refreshToken);
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {},
@@ -19,10 +37,33 @@ async function request<T>(
     headers['Content-Type'] = 'application/json';
   }
 
-  const res = await fetch(`${API_BASE}${endpoint}`, {
+  let res = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers,
   });
+
+  // Auto-refresh on 401
+  if (res.status === 401 && token) {
+    try {
+      if (!refreshPromise) {
+        refreshPromise = refreshAccessToken();
+      }
+      await refreshPromise;
+      refreshPromise = null;
+
+      const newToken = localStorage.getItem('token');
+      headers['Authorization'] = `Bearer ${newToken}`;
+      res = await fetch(`${API_BASE}${endpoint}`, { ...options, headers });
+    } catch {
+      refreshPromise = null;
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+      throw new Error('Session expired');
+    }
+  }
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ message: res.statusText }));
@@ -42,6 +83,7 @@ export interface AuthUser {
 
 export interface AuthResponse {
   accessToken: string;
+  refreshToken: string;
   user: AuthUser;
 }
 
@@ -78,6 +120,7 @@ export interface NearbyUsersResponse {
 export interface PostItem {
   id: number;
   imageUrl: string;
+  thumbnailUrl?: string;
   caption: string;
   filter: string;
   userId: number;
@@ -95,6 +138,12 @@ export interface FeedResponse {
   totalPages: number;
 }
 
+export interface CursorFeedResponse {
+  posts: PostItem[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
 export const api = {
   auth: {
     register: (data: {
@@ -108,6 +157,12 @@ export const api = {
       request<AuthResponse>('/api/auth/login', { method: 'POST', body: JSON.stringify(data) }),
 
     me: () => request<AuthUser>('/api/auth/me'),
+
+    refresh: (refreshToken: string) =>
+      request<AuthResponse>('/api/auth/refresh', {
+        method: 'POST',
+        body: JSON.stringify({ refreshToken }),
+      }),
   },
 
   users: {
@@ -116,6 +171,9 @@ export const api = {
 
     search: (q: string) =>
       request<AuthUser[]>(`/api/users/search?q=${encodeURIComponent(q)}`),
+
+    suggest: (q: string) =>
+      request<AuthUser[]>(`/api/users/suggest?q=${encodeURIComponent(q)}`),
 
     updateLocation: (data: { latitude: number; longitude: number; locationName?: string }) =>
       request<AuthUser>('/api/users/location', {
@@ -146,6 +204,12 @@ export const api = {
     getFeed: (page = 1) =>
       request<FeedResponse>(`/api/posts/feed?page=${page}`),
 
+    getFeedCursor: (cursor?: string, limit = 20) => {
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (cursor) params.set('cursor', cursor);
+      return request<CursorFeedResponse>(`/api/posts/feed?${params}`);
+    },
+
     getUserPosts: (username: string) =>
       request<PostItem[]>(`/api/posts/user/${username}`),
 
@@ -161,5 +225,8 @@ export const api = {
       ),
   },
 
-  getImageUrl: (path: string) => `${API_BASE}${path}`,
+  getImageUrl: (path: string) => {
+    if (path.startsWith('http')) return path;
+    return `${API_BASE}${path}`;
+  },
 };

@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Neo4jService } from '../neo4j/neo4j.service';
+import { CacheService } from '../cache/cache.service';
 import { User } from '../users/user.entity';
 import { FollowedUser } from './follow.interface';
 
@@ -14,6 +15,7 @@ import { FollowedUser } from './follow.interface';
 export class FollowsService {
   constructor(
     private readonly neo4jService: Neo4jService,
+    private readonly cacheService: CacheService,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
   ) {}
@@ -50,6 +52,13 @@ export class FollowsService {
       throw new ConflictException('Already following this user');
     }
 
+    // Invalidate affected caches
+    await Promise.all([
+      this.cacheService.del(`following_ids:${followerId}`),
+      this.cacheService.invalidateFeed(followerId),
+      this.cacheService.invalidateUserProfile(username),
+    ]);
+
     return { message: `Now following ${username}` };
   }
 
@@ -74,23 +83,47 @@ export class FollowsService {
       throw new NotFoundException('Not following this user');
     }
 
+    // Invalidate affected caches
+    await Promise.all([
+      this.cacheService.del(`following_ids:${followerId}`),
+      this.cacheService.invalidateFeed(followerId),
+      this.cacheService.invalidateUserProfile(username),
+    ]);
+
     return { message: `Unfollowed ${username}` };
   }
 
-  async getFollowers(userId: number): Promise<FollowedUser[]> {
+  async getFollowers(userId: number, cursor?: string, limit = 50): Promise<{
+    users: FollowedUser[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }> {
     return this.neo4jService.read(async (tx) => {
-      const result = await tx.run(
-        `MATCH (follower:User)-[r:FOLLOWS]->(me:User {id: $userId})
-         RETURN follower.id AS id, r.createdAt AS followedAt
-         ORDER BY r.createdAt DESC`,
-        { userId },
-      );
+      let query = `MATCH (follower:User)-[r:FOLLOWS]->(me:User {id: $userId})`;
+      const params: Record<string, unknown> = { userId, limit: limit + 1 };
+
+      if (cursor) {
+        const cursorDate = Buffer.from(cursor, 'base64url').toString();
+        query += ` WHERE r.createdAt < datetime($cursor)`;
+        params.cursor = cursorDate;
+      }
+
+      query += ` RETURN follower.id AS id, r.createdAt AS followedAt
+                  ORDER BY r.createdAt DESC
+                  LIMIT $limit`;
+
+      const result = await tx.run(query, params);
 
       const followerIds = result.records.map(
         (r: { get: (key: string) => { toNumber: () => number } }) =>
           r.get('id').toNumber(),
       );
-      if (followerIds.length === 0) return [];
+      if (followerIds.length === 0) {
+        return { users: [], nextCursor: null, hasMore: false };
+      }
+
+      const hasMore = followerIds.length > limit;
+      if (hasMore) followerIds.pop();
 
       const users = await this.userRepository
         .createQueryBuilder('user')
@@ -98,7 +131,9 @@ export class FollowsService {
         .getMany();
 
       const userMap = new Map(users.map((u) => [u.id, u]));
-      return result.records
+      const records = result.records.slice(0, limit);
+
+      const followedUsers = records
         .map((r: { get: (key: string) => { toNumber: () => number; toString: () => string } }) => {
           const user = userMap.get(r.get('id').toNumber());
           if (!user) return null;
@@ -111,23 +146,47 @@ export class FollowsService {
           };
         })
         .filter((u: FollowedUser | null): u is FollowedUser => u !== null);
+
+      const lastRecord = records[records.length - 1];
+      const nextCursor = hasMore && lastRecord
+        ? Buffer.from(lastRecord.get('followedAt').toString()).toString('base64url')
+        : null;
+
+      return { users: followedUsers, nextCursor, hasMore };
     });
   }
 
-  async getFollowing(userId: number): Promise<FollowedUser[]> {
+  async getFollowing(userId: number, cursor?: string, limit = 50): Promise<{
+    users: FollowedUser[];
+    nextCursor: string | null;
+    hasMore: boolean;
+  }> {
     return this.neo4jService.read(async (tx) => {
-      const result = await tx.run(
-        `MATCH (me:User {id: $userId})-[r:FOLLOWS]->(following:User)
-         RETURN following.id AS id, r.createdAt AS followedAt
-         ORDER BY r.createdAt DESC`,
-        { userId },
-      );
+      let query = `MATCH (me:User {id: $userId})-[r:FOLLOWS]->(following:User)`;
+      const params: Record<string, unknown> = { userId, limit: limit + 1 };
+
+      if (cursor) {
+        const cursorDate = Buffer.from(cursor, 'base64url').toString();
+        query += ` WHERE r.createdAt < datetime($cursor)`;
+        params.cursor = cursorDate;
+      }
+
+      query += ` RETURN following.id AS id, r.createdAt AS followedAt
+                  ORDER BY r.createdAt DESC
+                  LIMIT $limit`;
+
+      const result = await tx.run(query, params);
 
       const followingIds = result.records.map(
         (r: { get: (key: string) => { toNumber: () => number } }) =>
           r.get('id').toNumber(),
       );
-      if (followingIds.length === 0) return [];
+      if (followingIds.length === 0) {
+        return { users: [], nextCursor: null, hasMore: false };
+      }
+
+      const hasMore = followingIds.length > limit;
+      if (hasMore) followingIds.pop();
 
       const users = await this.userRepository
         .createQueryBuilder('user')
@@ -135,7 +194,9 @@ export class FollowsService {
         .getMany();
 
       const userMap = new Map(users.map((u) => [u.id, u]));
-      return result.records
+      const records = result.records.slice(0, limit);
+
+      const followedUsers = records
         .map((r: { get: (key: string) => { toNumber: () => number; toString: () => string } }) => {
           const user = userMap.get(r.get('id').toNumber());
           if (!user) return null;
@@ -148,6 +209,13 @@ export class FollowsService {
           };
         })
         .filter((u: FollowedUser | null): u is FollowedUser => u !== null);
+
+      const lastRecord = records[records.length - 1];
+      const nextCursor = hasMore && lastRecord
+        ? Buffer.from(lastRecord.get('followedAt').toString()).toString('base64url')
+        : null;
+
+      return { users: followedUsers, nextCursor, hasMore };
     });
   }
 }

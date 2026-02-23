@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: photoshare-config
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  CORS_ORIGINS: "https://photoshare.example.com"
+  S3_REGION: "us-east-1"
+  S3_BUCKET: "photoshare-images-prod"
+  S3_THUMBNAIL_BUCKET: "photoshare-thumbnails-prod"
+  CDN_URL: "https://cdn.photoshare.example.com"
+  CDN_THUMBNAIL_URL: "https://cdn-thumb.photoshare.example.com"
+  ELASTICSEARCH_URL: "http://elasticsearch:9200"
+  THROTTLE_TTL: "60"
+  THROTTLE_LIMIT: "100"

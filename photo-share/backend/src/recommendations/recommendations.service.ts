@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { Neo4jService } from '../neo4j/neo4j.service';
+import { CacheService } from '../cache/cache.service';
 
 export interface NearbyUser {
   id: number;
@@ -25,11 +26,9 @@ export class RecommendationsService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly neo4jService: Neo4jService,
+    private readonly cacheService: CacheService,
   ) {}
 
-  /**
-   * Haversine formula — returns distance in km between two lat/lng points.
-   */
   private haversineDistance(
     lat1: number,
     lon1: number,
@@ -51,12 +50,26 @@ export class RecommendationsService {
     page = 1,
     limit = 20,
   ): Promise<{ users: NearbyUser[]; total: number; page: number; totalPages: number; radiusKm: number }> {
+    // Check cache first (geo results cached per user+radius, 2 min TTL)
+    const cacheKey = `nearby:${currentUserId}:${radiusKm}:${page}`;
+    const cached = await this.cacheService.get<{
+      users: NearbyUser[];
+      total: number;
+      page: number;
+      totalPages: number;
+      radiusKm: number;
+    }>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     const currentUser = await this.userRepository.findOneBy({ id: currentUserId });
     if (!currentUser?.latitude || !currentUser?.longitude) {
       return { users: [], total: 0, page, totalPages: 0, radiusKm };
     }
 
-    // Bounding-box pre-filter to avoid scanning every user with haversine
+    // Bounding-box pre-filter — avoids full table scan
     const latDelta = radiusKm / 111.32;
     const lonDelta = radiusKm / (111.32 * Math.cos((currentUser.latitude * Math.PI) / 180));
 
@@ -73,6 +86,7 @@ export class RecommendationsService {
         minLon: currentUser.longitude - lonDelta,
         maxLon: currentUser.longitude + lonDelta,
       })
+      .limit(500)
       .getMany();
 
     // Precise haversine filter
@@ -89,12 +103,14 @@ export class RecommendationsService {
       .filter((entry) => entry.distance <= radiusKm);
 
     if (nearbyWithDistance.length === 0) {
-      return { users: [], total: 0, page, totalPages: 0, radiusKm };
+      const result = { users: [], total: 0, page, totalPages: 0, radiusKm };
+      await this.cacheService.set(cacheKey, result, 120);
+      return result;
     }
 
     const candidateIds = nearbyWithDistance.map((e) => e.user.id);
 
-    // Query Neo4j: which candidates the user already follows + mutual connection counts
+    // Batch Neo4j queries for following status and mutual connections
     const { followingSet, mutualCounts } = await this.neo4jService.read(async (tx) => {
       const followingResult = await tx.run(
         `MATCH (me:User {id: $userId})-[:FOLLOWS]->(followed:User)
@@ -108,7 +124,6 @@ export class RecommendationsService {
         ),
       );
 
-      // Mutual connections: people that both current user and the candidate follow
       const mutualResult = await tx.run(
         `UNWIND $candidateIds AS cid
          OPTIONAL MATCH (me:User {id: $userId})-[:FOLLOWS]->(mutual:User)<-[:FOLLOWS]-(candidate:User {id: cid})
@@ -128,16 +143,21 @@ export class RecommendationsService {
       return { followingSet: followingIds, mutualCounts: mutuals };
     });
 
-    // Build scored results — closer distance + more mutual connections = higher score
+    // Multi-signal scoring for recommendations
     const scored: NearbyUser[] = nearbyWithDistance.map(({ user: u, distance }) => {
       const mutualConnections = mutualCounts.get(u.id) ?? 0;
       const isFollowing = followingSet.has(u.id);
 
-      // Distance score: inversely proportional, max 100 at 0km, 0 at radiusKm
+      // Distance score: inversely proportional, max 100 at 0km
       const distanceScore = Math.max(0, 100 * (1 - distance / radiusKm));
-      // Mutual connection bonus: each mutual adds 15 points
-      const mutualScore = mutualConnections * 15;
-      const score = distanceScore + mutualScore;
+      // Mutual connection bonus: diminishing returns
+      const mutualScore = Math.min(mutualConnections * 15, 75);
+      // Activity recency bonus (users who updated location recently)
+      const recencyBonus = u.locationUpdatedAt
+        ? Math.max(0, 10 * (1 - (Date.now() - new Date(u.locationUpdatedAt).getTime()) / (7 * 86400000)))
+        : 0;
+
+      const score = distanceScore + mutualScore + recencyBonus;
 
       return {
         id: u.id,
@@ -149,7 +169,7 @@ export class RecommendationsService {
         distance: Math.round(distance * 10) / 10,
         mutualConnections,
         isFollowing,
-        score,
+        score: Math.round(score * 10) / 10,
       };
     });
 
@@ -163,6 +183,11 @@ export class RecommendationsService {
     const totalPages = Math.ceil(total / limit);
     const paginated = scored.slice((page - 1) * limit, page * limit);
 
-    return { users: paginated, total, page, totalPages, radiusKm };
+    const result = { users: paginated, total, page, totalPages, radiusKm };
+
+    // Cache for 2 minutes
+    await this.cacheService.set(cacheKey, result, 120);
+
+    return result;
   }
 }

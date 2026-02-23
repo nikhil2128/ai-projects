@@ -16,6 +16,11 @@ export class UsersController {
     return this.usersService.searchUsers(query ?? '');
   }
 
+  @Get('suggest')
+  suggest(@Query('q') query: string) {
+    return this.usersService.suggestUsers(query ?? '');
+  }
+
   @Patch('location')
   @ApiOperation({ summary: 'Update current user location for nearby recommendations' })
   updateLocation(

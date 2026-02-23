@@ -5,6 +5,7 @@ import {
   ManyToOne,
   CreateDateColumn,
   JoinColumn,
+  Index,
   Unique,
 } from 'typeorm';
 import { User } from '../users/user.entity';
@@ -12,17 +13,19 @@ import { Post } from '../posts/post.entity';
 
 @Entity('reactions')
 @Unique(['userId', 'postId', 'emoji'])
+@Index(['postId'])
+@Index(['userId', 'postId'])
 export class Reaction {
-  @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn({ type: 'bigint' })
   id!: number;
 
-  @Column()
+  @Column({ type: 'varchar', length: 10 })
   emoji!: string;
 
-  @Column()
+  @Column({ type: 'bigint' })
   userId!: number;
 
-  @Column()
+  @Column({ type: 'bigint' })
   postId!: number;
 
   @ManyToOne(() => User, (user) => user.reactions, { onDelete: 'CASCADE' })
@@ -33,6 +36,6 @@ export class Reaction {
   @JoinColumn({ name: 'postId' })
   post!: Post;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamp' })
   createdAt!: Date;
 }

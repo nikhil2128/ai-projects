@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { type PostItem, api } from '@/lib/api';
 import EmojiReactions from './EmojiReactions';
@@ -10,8 +11,13 @@ interface Props {
 
 export default function PostCard({ post }: Props) {
   const filterClass = `filter-${post.filter ?? 'none'}`;
-  const imageUrl = api.getImageUrl(post.imageUrl);
+  const thumbnailUrl = post.thumbnailUrl
+    ? api.getImageUrl(post.thumbnailUrl)
+    : api.getImageUrl(post.imageUrl);
+  const fullImageUrl = api.getImageUrl(post.imageUrl);
   const timeAgo = getTimeAgo(post.createdAt);
+  const [imgSrc, setImgSrc] = useState(thumbnailUrl);
+  const [loaded, setLoaded] = useState(false);
 
   return (
     <article className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -34,11 +40,28 @@ export default function PostCard({ post }: Props) {
       </div>
 
       <div className="relative aspect-square bg-gray-100">
+        {!loaded && (
+          <div className="absolute inset-0 animate-pulse bg-gray-200" />
+        )}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={imageUrl}
+          src={imgSrc}
           alt={post.caption ?? 'Post image'}
-          className={`h-full w-full object-cover ${filterClass}`}
+          className={`h-full w-full object-cover transition-opacity duration-300 ${filterClass} ${loaded ? 'opacity-100' : 'opacity-0'}`}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => {
+            setLoaded(true);
+            // Progressive: load full-res after thumbnail
+            if (imgSrc === thumbnailUrl && thumbnailUrl !== fullImageUrl) {
+              const img = new Image();
+              img.onload = () => setImgSrc(fullImageUrl);
+              img.src = fullImageUrl;
+            }
+          }}
+          onError={() => {
+            if (imgSrc !== fullImageUrl) setImgSrc(fullImageUrl);
+          }}
         />
       </div>
 

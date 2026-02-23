@@ -80,21 +80,32 @@ export default function DiscoverPage() {
     }
   }, [radius, page, locationState, fetchNearby]);
 
+  // Optimistic follow/unfollow
   const handleFollow = async (username: string, userId: number) => {
     const isCurrentlyFollowing = followingIds.has(userId);
+
+    // Optimistic update
+    setFollowingIds((prev) => {
+      const next = new Set(prev);
+      if (isCurrentlyFollowing) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+
     try {
       if (isCurrentlyFollowing) {
         await api.follows.unfollow(username);
-        setFollowingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(userId);
-          return next;
-        });
       } else {
         await api.follows.follow(username);
-        setFollowingIds((prev) => new Set(prev).add(userId));
       }
     } catch (err) {
+      // Revert on failure
+      setFollowingIds((prev) => {
+        const next = new Set(prev);
+        if (isCurrentlyFollowing) next.add(userId);
+        else next.delete(userId);
+        return next;
+      });
       console.error('Follow/unfollow failed:', err);
     }
   };
@@ -268,10 +279,12 @@ function NearbyUserCard({
         <Link href={`/profile/${user.username}`}>
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-400 to-purple-500 text-lg font-bold text-white ring-2 ring-white">
             {user.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={api.getImageUrl(user.avatarUrl)}
                 alt={user.username}
                 className="h-full w-full rounded-full object-cover"
+                loading="lazy"
               />
             ) : (
               user.username[0].toUpperCase()

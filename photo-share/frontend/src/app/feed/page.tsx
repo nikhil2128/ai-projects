@@ -78,6 +78,12 @@ export default function FeedPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="mx-auto max-w-lg px-4 py-6">
+        {user?.verificationStatus === 'pending_review' && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Your profile is being verified automatically. You can browse the app now, and posting/following unlocks once verification completes.
+          </div>
+        )}
+
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-pink-500 border-t-transparent" />

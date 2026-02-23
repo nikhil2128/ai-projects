@@ -5,6 +5,7 @@ import { User } from './user.entity';
 import { Neo4jService } from '../neo4j/neo4j.service';
 import { CacheService } from '../cache/cache.service';
 import { SearchService } from '../search/search.service';
+import { ProfileVerificationStatus } from './profile-verification-status.enum';
 
 @Injectable()
 export class UsersService {
@@ -26,6 +27,13 @@ export class UsersService {
     } & User>(username);
 
     if (cached && currentUserId) {
+      if (
+        cached.verificationStatus !== ProfileVerificationStatus.VERIFIED
+        && cached.id !== currentUserId
+      ) {
+        throw new NotFoundException('User not found');
+      }
+
       // Re-check isFollowing for current user since it's user-specific
       const isFollowing = await this.checkIsFollowing(currentUserId, cached.id);
       return { ...cached, isFollowing };
@@ -33,6 +41,13 @@ export class UsersService {
 
     const user = await this.userRepository.findOne({ where: { username } });
     if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (
+      user.verificationStatus !== ProfileVerificationStatus.VERIFIED
+      && (!currentUserId || user.id !== currentUserId)
+    ) {
       throw new NotFoundException('User not found');
     }
 
@@ -85,8 +100,10 @@ export class UsersService {
     // Fallback to database LIKE query
     return this.userRepository
       .createQueryBuilder('user')
-      .where('user.username LIKE :query', { query: `%${query}%` })
-      .orWhere('user.displayName LIKE :query', { query: `%${query}%` })
+      .where('user.isDiscoverable = :isDiscoverable', { isDiscoverable: true })
+      .andWhere('(user.username LIKE :query OR user.displayName LIKE :query)', {
+        query: `%${query}%`,
+      })
       .limit(20)
       .getMany();
   }

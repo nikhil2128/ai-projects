@@ -72,10 +72,12 @@ describe('AuthProvider', () => {
     (api.auth.me as jest.Mock).mockResolvedValue(null);
     (api.auth.login as jest.Mock).mockResolvedValue({
       accessToken: 'token-login',
+      refreshToken: 'refresh-login',
       user: { id: 1, username: 'alice', email: 'alice@example.com' },
     });
     (api.auth.register as jest.Mock).mockResolvedValue({
       accessToken: 'token-register',
+      refreshToken: 'refresh-register',
       user: { id: 2, username: 'bob', email: 'bob@example.com' },
     });
     const user = userEvent.setup();

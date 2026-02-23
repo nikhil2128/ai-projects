@@ -5,6 +5,8 @@ import { Repository, In } from 'typeorm';
 import { Queue } from 'bullmq';
 import { Post } from './post.entity';
 import { Reaction } from '../reactions/reaction.entity';
+import { User } from '../users/user.entity';
+import { ProfileVerificationStatus } from '../users/profile-verification-status.enum';
 import { Neo4jService } from '../neo4j/neo4j.service';
 import { CacheService } from '../cache/cache.service';
 import { StorageService } from '../storage/storage.service';
@@ -18,6 +20,8 @@ export class PostsService {
     private readonly postRepository: Repository<Post>,
     @InjectRepository(Reaction)
     private readonly reactionRepository: Repository<Reaction>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly neo4jService: Neo4jService,
     private readonly cacheService: CacheService,
     private readonly storageService: StorageService,
@@ -31,6 +35,21 @@ export class PostsService {
     dto: CreatePostDto,
     file: Express.Multer.File,
   ) {
+    const author = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'verificationStatus'],
+    });
+
+    if (!author) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (author.verificationStatus === ProfileVerificationStatus.PENDING_REVIEW) {
+      throw new ForbiddenException(
+        'Your profile is under automated review. Posting will be enabled once verification completes.',
+      );
+    }
+
     const uploadTimer = this.metricsService.imageUploadDuration.startTimer();
 
     // Upload to S3 with thumbnail generation

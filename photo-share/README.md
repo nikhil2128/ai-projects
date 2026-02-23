@@ -4,7 +4,7 @@ An Instagram-like photo sharing platform built to handle **2 billion monthly act
 
 ## Features
 
-- **Authentication** — JWT access + refresh tokens, rate-limited auth endpoints, bcrypt (12 rounds)
+- **Authentication** — JWT access + refresh tokens, rate-limited auth endpoints, bcrypt (12 rounds), automated profile screening
 - **Follow/Unfollow** — Neo4j graph database for social relationships, cached following lists
 - **Photo Sharing** — S3 object storage with CDN, automatic WebP conversion, multi-size thumbnails (150/480/1080px)
 - **Photo Filters** — Apply filters (grayscale, sepia, warm, cool, vintage, etc.) before sharing
@@ -191,6 +191,8 @@ npm run dev        # runs on http://localhost:3001
 - **Short-lived access tokens** (15 min) + refresh token rotation (7 day)
 - **Bcrypt 12 rounds** for password hashing
 - **Input validation** with class-validator whitelist mode
+- **Automated profile verification** at signup with risk scoring (email quality, bot patterns, IP velocity)
+- **Low-friction trust model**: legit users are auto-approved, suspicious accounts are hidden or restricted pending review
 
 ### Monitoring
 - **Prometheus metrics**: HTTP request duration/count, cache hit/miss rates, image upload duration, feed load duration, posts created

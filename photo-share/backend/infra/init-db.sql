@@ -69,10 +69,16 @@ CREATE TABLE IF NOT EXISTS users (
     display_name VARCHAR(100),
     bio TEXT,
     avatar_url VARCHAR(500),
+    verification_status VARCHAR(30) NOT NULL DEFAULT 'verified',
+    verification_score INTEGER NOT NULL DEFAULT 0,
+    verification_reasons VARCHAR(500),
+    is_discoverable BOOLEAN NOT NULL DEFAULT TRUE,
+    verified_at TIMESTAMPTZ,
     location GEOGRAPHY(POINT, 4326),
     location_name VARCHAR(255),
     location_updated_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_users_verification_status CHECK (verification_status IN ('verified', 'pending_review'))
 );
 
 -- Performance indexes
@@ -80,6 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_users_username_trgm ON users USING gin (username 
 CREATE INDEX IF NOT EXISTS idx_users_display_name_trgm ON users USING gin (display_name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_users_location ON users USING gist (location);
 CREATE INDEX IF NOT EXISTS idx_users_created_at ON users (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_users_discoverable ON users (is_discoverable, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts (user_id);
 CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts (created_at DESC);

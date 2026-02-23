@@ -6,6 +6,14 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
+interface RegisterRequest {
+  ip?: string;
+  headers: {
+    'x-forwarded-for'?: string | string[];
+    'user-agent'?: string;
+  };
+}
+
 @ApiTags('Auth')
 @Controller('api/auth')
 export class AuthController {
@@ -13,8 +21,14 @@ export class AuthController {
 
   @Post('register')
   @Throttle({ default: { ttl: 3600000, limit: 5 } })
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  register(@Body() dto: RegisterDto, @Request() req: RegisterRequest) {
+    const forwarded = req.headers['x-forwarded-for'];
+    const ipFromHeader = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+
+    return this.authService.register(dto, {
+      ipAddress: ipFromHeader ?? req.ip,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Post('login')

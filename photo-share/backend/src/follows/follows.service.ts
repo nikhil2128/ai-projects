@@ -3,6 +3,7 @@ import {
   ConflictException,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,6 +11,7 @@ import { Neo4jService } from '../neo4j/neo4j.service';
 import { CacheService } from '../cache/cache.service';
 import { User } from '../users/user.entity';
 import { FollowedUser } from './follow.interface';
+import { ProfileVerificationStatus } from '../users/profile-verification-status.enum';
 
 @Injectable()
 export class FollowsService {
@@ -21,7 +23,28 @@ export class FollowsService {
   ) {}
 
   async follow(followerId: number, username: string) {
-    const targetUser = await this.userRepository.findOne({ where: { username } });
+    const follower = await this.userRepository.findOne({
+      where: { id: followerId },
+      select: ['id', 'verificationStatus'],
+    });
+
+    if (!follower) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (follower.verificationStatus === ProfileVerificationStatus.PENDING_REVIEW) {
+      throw new ForbiddenException(
+        'Your profile is under automated review. Follow actions will unlock after verification.',
+      );
+    }
+
+    const targetUser = await this.userRepository.findOne({
+      where: {
+        username,
+        isDiscoverable: true,
+      },
+    });
+
     if (!targetUser) {
       throw new NotFoundException('User not found');
     }
@@ -128,6 +151,7 @@ export class FollowsService {
       const users = await this.userRepository
         .createQueryBuilder('user')
         .where('user.id IN (:...ids)', { ids: followerIds })
+        .andWhere('user.isDiscoverable = :isDiscoverable', { isDiscoverable: true })
         .getMany();
 
       const userMap = new Map(users.map((u) => [u.id, u]));
@@ -191,6 +215,7 @@ export class FollowsService {
       const users = await this.userRepository
         .createQueryBuilder('user')
         .where('user.id IN (:...ids)', { ids: followingIds })
+        .andWhere('user.isDiscoverable = :isDiscoverable', { isDiscoverable: true })
         .getMany();
 
       const userMap = new Map(users.map((u) => [u.id, u]));

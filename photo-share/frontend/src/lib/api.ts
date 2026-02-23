@@ -73,12 +73,15 @@ async function request<T>(
   return res.json();
 }
 
+export type VerificationStatus = 'verified' | 'pending_review';
+
 export interface AuthUser {
   id: number;
   username: string;
   email: string;
   displayName?: string;
   avatarUrl?: string;
+  verificationStatus?: VerificationStatus;
 }
 
 export interface AuthResponse {

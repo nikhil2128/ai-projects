@@ -76,6 +76,7 @@ export class RecommendationsService {
     const candidates = await this.userRepository
       .createQueryBuilder('user')
       .where('user.id != :currentUserId', { currentUserId })
+      .andWhere('user.isDiscoverable = :isDiscoverable', { isDiscoverable: true })
       .andWhere('user.latitude IS NOT NULL')
       .andWhere('user.longitude IS NOT NULL')
       .andWhere('user.latitude BETWEEN :minLat AND :maxLat', {

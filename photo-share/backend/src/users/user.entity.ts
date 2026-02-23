@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { Post } from '../posts/post.entity';
 import { Reaction } from '../reactions/reaction.entity';
+import { ProfileVerificationStatus } from './profile-verification-status.enum';
 
 @Entity('users')
 export class User {
@@ -33,6 +34,22 @@ export class User {
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   avatarUrl!: string;
+
+  @Column({ type: 'varchar', length: 30, default: ProfileVerificationStatus.VERIFIED })
+  verificationStatus!: ProfileVerificationStatus;
+
+  @Column({ type: 'int', default: 0 })
+  verificationScore!: number;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  verificationReasons!: string | null;
+
+  @Index()
+  @Column({ type: 'boolean', default: true })
+  isDiscoverable!: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  verifiedAt!: Date | null;
 
   @Index()
   @Column({ type: 'float', nullable: true })

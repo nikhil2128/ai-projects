@@ -1,7 +1,12 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
+import { ProfileVerificationStatus } from '../users/profile-verification-status.enum';
 
 describe('AuthService', () => {
   const repo = {
@@ -10,13 +15,31 @@ describe('AuthService', () => {
     save: jest.fn(),
     findOneOrFail: jest.fn(),
   };
-  const jwt = { sign: jest.fn() } as unknown as JwtService;
+  const jwt = { sign: jest.fn(), verify: jest.fn() } as unknown as JwtService;
+  const config = { get: jest.fn().mockReturnValue('refresh-secret') };
+  const search = { indexUser: jest.fn() };
+  const neo4j = {
+    write: jest.fn(async (work: (tx: { run: jest.Mock }) => Promise<void>) =>
+      work({ run: jest.fn() }),
+    ),
+  };
+  const screening = { screenNewProfile: jest.fn() };
+
   let service: AuthService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new AuthService(repo as never, jwt);
-    (jwt.sign as jest.Mock) = jest.fn().mockReturnValue('token-1');
+    service = new AuthService(
+      repo as never,
+      jwt,
+      config as never,
+      search as never,
+      neo4j as never,
+      screening as never,
+    );
+    (jwt.sign as jest.Mock)
+      .mockReturnValueOnce('access-token')
+      .mockReturnValueOnce('refresh-token');
   });
 
   it('register throws when username/email already exists', async () => {
@@ -31,8 +54,32 @@ describe('AuthService', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('register rejects high-risk signups', async () => {
+    repo.findOne.mockResolvedValue(null);
+    screening.screenNewProfile.mockResolvedValue({
+      score: 91,
+      status: ProfileVerificationStatus.PENDING_REVIEW,
+      reasons: ['email domain is disposable'],
+      isRejected: true,
+    });
+
+    await expect(
+      service.register({
+        username: 'bot_123456',
+        email: 'bot@mailinator.com',
+        password: 'secret',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('register hashes password and returns auth response', async () => {
     repo.findOne.mockResolvedValue(null);
+    screening.screenNewProfile.mockResolvedValue({
+      score: 18,
+      status: ProfileVerificationStatus.VERIFIED,
+      reasons: [],
+      isRejected: false,
+    });
     jest.spyOn(bcrypt, 'hash').mockResolvedValue('hashed' as never);
     repo.create.mockImplementation((d) => d);
     repo.save.mockResolvedValue({
@@ -41,6 +88,8 @@ describe('AuthService', () => {
       email: 'alice@example.com',
       displayName: 'Alice',
       avatarUrl: null,
+      verificationStatus: ProfileVerificationStatus.VERIFIED,
+      isDiscoverable: true,
     });
 
     const res = await service.register({
@@ -51,16 +100,22 @@ describe('AuthService', () => {
     });
 
     expect(repo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ password: 'hashed' }),
+      expect.objectContaining({
+        password: 'hashed',
+        verificationStatus: ProfileVerificationStatus.VERIFIED,
+      }),
     );
+    expect(search.indexUser).toHaveBeenCalledTimes(1);
     expect(res).toEqual({
-      accessToken: 'token-1',
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
       user: {
         id: 12,
         username: 'alice',
         email: 'alice@example.com',
         displayName: 'Alice',
         avatarUrl: null,
+        verificationStatus: ProfileVerificationStatus.VERIFIED,
       },
     });
   });
@@ -95,13 +150,15 @@ describe('AuthService', () => {
       password: 'hash',
       displayName: 'Alice',
       avatarUrl: '/a.png',
+      verificationStatus: ProfileVerificationStatus.PENDING_REVIEW,
     });
     jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
 
     const res = await service.login({ username: 'alice', password: 'secret' });
 
-    expect(res.accessToken).toBe('token-1');
-    expect(res.user.username).toBe('alice');
+    expect(res.accessToken).toBe('access-token');
+    expect(res.refreshToken).toBe('refresh-token');
+    expect(res.user.verificationStatus).toBe(ProfileVerificationStatus.PENDING_REVIEW);
   });
 
   it('getProfile returns user from repository', async () => {

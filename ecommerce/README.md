@@ -1,59 +1,135 @@
-# E-commerce Application
+# E-commerce Microservices
 
-A TDD-built e-commerce web application covering the full purchase flow:
+A microservice-based e-commerce application covering the full purchase flow:
 **Registration -> Search Products -> Add to Cart -> Order -> Payment**
 
 ## Architecture
 
-- **Runtime**: Node.js + Express + TypeScript
-- **Testing**: Vitest + Supertest
-- **Data**: In-memory store (no database required)
+```
+┌─────────────┐
+│  API Gateway │  :3000  ─ Routes requests, validates auth tokens
+└──────┬──────┘
+       │
+       ├──────────────────────────────────────────────┐
+       │              │              │                │
+┌──────▼──────┐ ┌─────▼─────┐ ┌─────▼─────┐ ┌───────▼───────┐
+│ Auth Service│ │  Product  │ │   Cart    │ │    Order      │
+│    :3001    │ │  Service  │ │  Service  │ │   Service     │
+│             │ │   :3002   │ │   :3003   │ │    :3004      │
+│ Users       │ │ Products  │ │ Carts     │ │ Orders        │
+│ Tokens      │ │ Stock     │ │           │ │               │
+└─────────────┘ └───────────┘ └─────┬─────┘ └──┬────────┬───┘
+                      ▲             │           │        │
+                      │         calls Product   │    calls Cart
+                      │             │           │    calls Product
+                      └─────────────┘           │        │
+                      ▲                         │        │
+                      │              ┌──────────▼────────▼──┐
+                      │              │   Payment Service     │
+                      └──────────────│       :3005           │
+                         calls       │  Payments             │
+                         Product     └──────────┬────────────┘
+                                                │
+                                           calls Order
+                                           calls Product
+```
+
+### Microservices
+
+| Service | Port | Responsibilities | Data Owned |
+|---------|------|-----------------|------------|
+| **API Gateway** | 3000 | Request routing, auth validation | None |
+| **Auth Service** | 3001 | Registration, login, token management | Users, Tokens |
+| **Product Service** | 3002 | Product catalog, search, stock | Products |
+| **Cart Service** | 3003 | Shopping cart management | Carts |
+| **Order Service** | 3004 | Order lifecycle management | Orders |
+| **Payment Service** | 3005 | Payment processing, refunds | Payments |
+
+### Design Principles
+
+- **Single Responsibility**: Each service owns its domain data and logic
+- **Data Isolation**: Each service has its own in-memory store
+- **Loose Coupling**: Services communicate via HTTP (service client interfaces)
+- **Dependency Injection**: Services accept client interfaces, enabling mock-based unit testing
+- **API Gateway Pattern**: Single entry point handles auth and routing
 
 ## Project Structure
 
 ```
-src/
-  types.ts                          Domain types/interfaces
-  app.ts                            Express app factory
-  index.ts                          Server entry point
-  store/
-    in-memory-store.ts              In-memory data persistence
-  services/
-    auth.service.ts                 Registration & login
-    auth.service.test.ts            Auth unit tests (11 tests)
-    product.service.ts              Product catalog & search
-    product.service.test.ts         Product unit tests (16 tests)
-    cart.service.ts                 Shopping cart management
-    cart.service.test.ts            Cart unit tests (16 tests)
-    order.service.ts                Order creation & management
-    order.service.test.ts           Order unit tests (15 tests)
-    payment.service.ts              Payment processing & refunds
-    payment.service.test.ts         Payment unit tests (15 tests)
-  routes/
-    auth.routes.ts                  POST /api/auth/register, /login
-    product.routes.ts               GET/POST /api/products
-    cart.routes.ts                  CRUD /api/cart (auth required)
-    order.routes.ts                 CRUD /api/orders (auth required)
-    payment.routes.ts               POST /api/payments (auth required)
-    integration.test.ts             End-to-end integration tests (14 tests)
-  middleware/
-    auth.middleware.ts              Bearer token authentication
+shared/
+  types.ts                          Shared domain types + service client interfaces
+  http-clients.ts                   HTTP implementations of service client interfaces
+gateway/
+  app.ts                            API Gateway (auth validation + request proxying)
+  index.ts                          Gateway entry point
+services/
+  auth/src/
+    store.ts                        In-memory user/token storage
+    service.ts                      Auth business logic
+    service.test.ts                 Unit tests (11 tests)
+    routes.ts                       HTTP routes + /validate-token internal endpoint
+    app.ts                          Express app factory
+    index.ts                        Service entry point
+  product/src/
+    store.ts                        In-memory product storage
+    service.ts                      Product catalog + search logic
+    service.test.ts                 Unit tests (16 tests)
+    routes.ts                       HTTP routes + internal stock endpoints
+    app.ts                          Express app factory
+    index.ts                        Service entry point
+  cart/src/
+    store.ts                        In-memory cart storage
+    service.ts                      Cart management (calls Product Service)
+    service.test.ts                 Unit tests (16 tests)
+    routes.ts                       HTTP routes + internal cart endpoints
+    app.ts                          Express app factory
+    index.ts                        Service entry point
+  order/src/
+    store.ts                        In-memory order storage
+    service.ts                      Order lifecycle (calls Cart + Product Services)
+    service.test.ts                 Unit tests (15 tests)
+    routes.ts                       HTTP routes + internal order endpoints
+    app.ts                          Express app factory
+    index.ts                        Service entry point
+  payment/src/
+    store.ts                        In-memory payment storage
+    service.ts                      Payment processing (calls Order + Product Services)
+    service.test.ts                 Unit tests (15 tests)
+    routes.ts                       HTTP routes
+    app.ts                          Express app factory
+    index.ts                        Service entry point
+tests/
+  integration.test.ts               End-to-end integration tests (10 tests)
 ```
 
 ## Quick Start
 
 ```bash
 npm install
-npm test          # Run all 87 tests
-npm run dev       # Start dev server on :3000
-npm run typecheck # TypeScript type checking
-npm run lint      # ESLint
+npm test                # Run all tests (unit + integration)
+npm run test:unit       # Unit tests only
+npm run test:integration # Integration tests only
+npm run dev             # Start all services + gateway
+npm run typecheck       # TypeScript type checking
+npm run lint            # ESLint
 ```
 
-## API Endpoints
+### Start Individual Services
+
+```bash
+npm run dev:auth        # Auth service on :3001
+npm run dev:product     # Product service on :3002
+npm run dev:cart        # Cart service on :3003
+npm run dev:order       # Order service on :3004
+npm run dev:payment     # Payment service on :3005
+npm run dev:gateway     # API Gateway on :3000
+```
+
+## API Endpoints (via Gateway :3000)
 
 | Method | Endpoint                     | Auth | Description               |
 |--------|------------------------------|------|---------------------------|
+| GET    | /health                      | No   | Gateway health check      |
 | POST   | /api/auth/register           | No   | Register a new user       |
 | POST   | /api/auth/login              | No   | Login, get bearer token   |
 | GET    | /api/products                | No   | Search/list products      |
@@ -73,14 +149,31 @@ npm run lint      # ESLint
 | GET    | /api/payments/order/:orderId | Yes  | Get payment by order      |
 | POST   | /api/payments/:id/refund     | Yes  | Refund a payment          |
 
-## TDD Approach
+## Inter-Service Communication
 
-All 87 tests were written **before** the implementation:
+Services communicate via HTTP using typed client interfaces (`ProductServiceClient`, `CartServiceClient`, `OrderServiceClient`). Each interface has:
 
-1. **RED** - Tests written first defining expected behavior
-2. **GREEN** - Minimal implementation to make tests pass
-3. **REFACTOR** - Code cleaned up while keeping tests green
+- **HTTP implementation** (`shared/http-clients.ts`) for production use
+- **Mock implementation** (in test files) for isolated unit testing
 
-Test breakdown:
-- 73 unit tests across 5 service modules
-- 14 integration tests covering HTTP routes and the full e-commerce flow
+### Internal Endpoints (not exposed via gateway)
+
+| Service | Endpoint | Purpose |
+|---------|----------|---------|
+| Auth | POST /validate-token | Token validation for gateway |
+| Product | GET /internal/:id | Product lookup for other services |
+| Product | PUT /internal/stock/:id | Stock updates from Order/Payment |
+| Cart | GET /internal/:userId | Cart retrieval for Order Service |
+| Cart | DELETE /internal/:userId | Cart clearing after order |
+| Order | GET /internal/:id | Order lookup for Payment Service |
+| Order | PUT /internal/:id/status | Order status updates |
+
+## Testing
+
+All services have comprehensive unit tests using mock implementations of their dependencies. Integration tests spin up all services on random ports and test the full flow through the gateway.
+
+```
+Unit tests:    73 tests across 5 service modules
+Integration:   10 tests covering full e-commerce flows
+Total:         83 tests
+```

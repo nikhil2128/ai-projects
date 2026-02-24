@@ -748,13 +748,13 @@ All service-to-service communication uses **synchronous HTTP calls** through typ
 
 ```mermaid
 graph TB
-    subgraph Interfaces["Client Interfaces (shared/types.ts)"]
+    subgraph Interfaces["Client Interfaces (backend/shared/types.ts)"]
         I1["ProductServiceClient"]
         I2["CartServiceClient"]
         I3["OrderServiceClient"]
     end
 
-    subgraph HttpClients["HTTP Implementations (shared/http-clients.ts)"]
+    subgraph HttpClients["HTTP Implementations (backend/shared/http-clients.ts)"]
         H1["HttpProductClient"]
         H2["HttpCartClient"]
         H3["HttpOrderClient"]
@@ -798,7 +798,7 @@ These endpoints are used exclusively for service-to-service communication and ar
 
 | Pattern | Where | Why |
 |---------|-------|-----|
-| **API Gateway** | `gateway/app.ts` | Single entry point for all clients; centralizes auth, routing, and cross-cutting concerns |
+| **API Gateway** | `backend/gateway/app.ts` | Single entry point for all clients; centralizes auth, routing, and cross-cutting concerns |
 | **Dependency Injection** | All services | Services accept client interfaces in constructors, enabling mock-based testing |
 | **Factory Pattern** | `createApp()` in each service | Produces Express apps with injected dependencies for testability |
 | **Service Result** | `ServiceResult<T>` | Consistent `{success, data?, error?, statusCode}` pattern across all service methods |
@@ -857,9 +857,14 @@ graph TB
 ### Running Tests
 
 ```bash
+# From project root
 npm test                 # All tests (unit + integration)
 npm run test:unit        # Unit tests only
 npm run test:integration # Integration tests only
+
+# Or from backend/
+cd backend
+npm test
 ```
 
 ---

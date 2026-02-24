@@ -1,6 +1,6 @@
-# E-commerce Microservices
+# E-commerce Application
 
-A microservice-based e-commerce application covering the full purchase flow:
+A full-stack e-commerce application with a React frontend and microservice-based backend covering the full purchase flow:
 **Registration -> Search Products -> Add to Cart -> Order -> Payment**
 
 ## Documentation
@@ -11,13 +11,49 @@ A microservice-based e-commerce application covering the full purchase flow:
 | [API Reference](docs/API.md) | Complete API documentation with request/response examples and curl commands |
 | This README | Quick start guide and project overview |
 
+## Project Structure
+
+```
+ecommerce/
+├── backend/                    Backend microservices (Node.js + Express)
+│   ├── gateway/                  API Gateway (:3000)
+│   ├── services/                 Domain microservices
+│   │   ├── auth/src/               Auth Service (:3001)
+│   │   ├── product/src/            Product Service (:3002)
+│   │   ├── cart/src/               Cart Service (:3003)
+│   │   ├── order/src/              Order Service (:3004)
+│   │   └── payment/src/            Payment Service (:3005)
+│   ├── shared/                   Shared types & inter-service HTTP clients
+│   ├── tests/                    Integration tests
+│   ├── scripts/                  Utility scripts (seed data)
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── eslint.config.mjs
+│
+├── frontend/                   React SPA (Vite + Tailwind CSS)
+│   ├── src/
+│   │   ├── components/           Reusable UI components
+│   │   ├── context/              React context (auth state)
+│   │   └── pages/                Route pages
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── tsconfig.json
+│
+├── docs/                       Documentation
+│   ├── API.md
+│   └── ARCHITECTURE.md
+│
+├── package.json                Root monorepo scripts
+└── README.md
+```
+
 ## Architecture
 
 ```
-┌─────────────┐
-│  API Gateway │  :3000  ─ Routes requests, validates auth tokens
-└──────┬──────┘
-       │
+┌─────────────┐     ┌─────────────┐
+│   React SPA │────▶│  API Gateway │  :3000  ─ Routes requests, validates auth tokens
+│    :5173    │     └──────┬──────┘
+└─────────────┘            │
        ├──────────────────────────────────────────────┐
        │              │              │                │
 ┌──────▼──────┐ ┌─────▼─────┐ ┌─────▼─────┐ ┌───────▼───────┐
@@ -42,89 +78,55 @@ A microservice-based e-commerce application covering the full purchase flow:
                                            calls Product
 ```
 
-### Microservices
-
-| Service | Port | Responsibilities | Data Owned |
-|---------|------|-----------------|------------|
-| **API Gateway** | 3000 | Request routing, auth validation | None |
-| **Auth Service** | 3001 | Registration, login, token management | Users, Tokens |
-| **Product Service** | 3002 | Product catalog, search, stock | Products |
-| **Cart Service** | 3003 | Shopping cart management | Carts |
-| **Order Service** | 3004 | Order lifecycle management | Orders |
-| **Payment Service** | 3005 | Payment processing, refunds | Payments |
-
-### Design Principles
-
-- **Single Responsibility**: Each service owns its domain data and logic
-- **Data Isolation**: Each service has its own in-memory store
-- **Loose Coupling**: Services communicate via HTTP (service client interfaces)
-- **Dependency Injection**: Services accept client interfaces, enabling mock-based unit testing
-- **API Gateway Pattern**: Single entry point handles auth and routing
-
-## Project Structure
-
-```
-shared/
-  types.ts                          Shared domain types + service client interfaces
-  http-clients.ts                   HTTP implementations of service client interfaces
-gateway/
-  app.ts                            API Gateway (auth validation + request proxying)
-  index.ts                          Gateway entry point
-services/
-  auth/src/
-    store.ts                        In-memory user/token storage
-    service.ts                      Auth business logic
-    service.test.ts                 Unit tests (11 tests)
-    routes.ts                       HTTP routes + /validate-token internal endpoint
-    app.ts                          Express app factory
-    index.ts                        Service entry point
-  product/src/
-    store.ts                        In-memory product storage
-    service.ts                      Product catalog + search logic
-    service.test.ts                 Unit tests (16 tests)
-    routes.ts                       HTTP routes + internal stock endpoints
-    app.ts                          Express app factory
-    index.ts                        Service entry point
-  cart/src/
-    store.ts                        In-memory cart storage
-    service.ts                      Cart management (calls Product Service)
-    service.test.ts                 Unit tests (16 tests)
-    routes.ts                       HTTP routes + internal cart endpoints
-    app.ts                          Express app factory
-    index.ts                        Service entry point
-  order/src/
-    store.ts                        In-memory order storage
-    service.ts                      Order lifecycle (calls Cart + Product Services)
-    service.test.ts                 Unit tests (15 tests)
-    routes.ts                       HTTP routes + internal order endpoints
-    app.ts                          Express app factory
-    index.ts                        Service entry point
-  payment/src/
-    store.ts                        In-memory payment storage
-    service.ts                      Payment processing (calls Order + Product Services)
-    service.test.ts                 Unit tests (15 tests)
-    routes.ts                       HTTP routes
-    app.ts                          Express app factory
-    index.ts                        Service entry point
-tests/
-  integration.test.ts               End-to-end integration tests (10 tests)
-```
-
 ## Quick Start
 
+### Install everything
+
 ```bash
-npm install
+npm run install:all
+```
+
+### Run the full stack (backend + frontend)
+
+```bash
+npm run dev
+```
+
+### Run backend or frontend individually
+
+```bash
+npm run dev:backend     # All microservices + gateway
+npm run dev:frontend    # React dev server on :5173
+```
+
+### Seed product data
+
+```bash
+npm run seed            # Requires backend to be running
+```
+
+### Testing
+
+```bash
 npm test                # Run all tests (unit + integration)
 npm run test:unit       # Unit tests only
 npm run test:integration # Integration tests only
-npm run dev             # Start all services + gateway
-npm run typecheck       # TypeScript type checking
-npm run lint            # ESLint
 ```
 
-### Start Individual Services
+### Other commands
 
 ```bash
+npm run typecheck       # TypeScript type checking (backend)
+npm run lint            # ESLint (backend)
+npm run build:frontend  # Production build of frontend
+```
+
+## Backend Details
+
+See `backend/package.json` for the full list of backend-specific scripts. You can run them directly:
+
+```bash
+cd backend
 npm run dev:auth        # Auth service on :3001
 npm run dev:product     # Product service on :3002
 npm run dev:cart        # Cart service on :3003
@@ -156,25 +158,6 @@ npm run dev:gateway     # API Gateway on :3000
 | GET    | /api/payments/:id            | Yes  | Get payment details       |
 | GET    | /api/payments/order/:orderId | Yes  | Get payment by order      |
 | POST   | /api/payments/:id/refund     | Yes  | Refund a payment          |
-
-## Inter-Service Communication
-
-Services communicate via HTTP using typed client interfaces (`ProductServiceClient`, `CartServiceClient`, `OrderServiceClient`). Each interface has:
-
-- **HTTP implementation** (`shared/http-clients.ts`) for production use
-- **Mock implementation** (in test files) for isolated unit testing
-
-### Internal Endpoints (not exposed via gateway)
-
-| Service | Endpoint | Purpose |
-|---------|----------|---------|
-| Auth | POST /validate-token | Token validation for gateway |
-| Product | GET /internal/:id | Product lookup for other services |
-| Product | PUT /internal/stock/:id | Stock updates from Order/Payment |
-| Cart | GET /internal/:userId | Cart retrieval for Order Service |
-| Cart | DELETE /internal/:userId | Cart clearing after order |
-| Order | GET /internal/:id | Order lookup for Payment Service |
-| Order | PUT /internal/:id/status | Order status updates |
 
 ## Testing
 

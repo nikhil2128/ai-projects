@@ -1,43 +1,22 @@
 {
-  "name": "ecommerce-microservices",
+  "name": "ecommerce",
+  "private": true,
   "version": "2.0.0",
-  "description": "E-commerce application with microservice architecture",
+  "description": "E-commerce application with React frontend and microservice backend",
   "scripts": {
-    "dev": "concurrently --names auth,product,cart,order,payment,gateway -c blue,green,yellow,magenta,cyan,white \"npm run dev:auth\" \"npm run dev:product\" \"npm run dev:cart\" \"npm run dev:order\" \"npm run dev:payment\" \"npm run dev:gateway\"",
-    "dev:auth": "PORT=3001 ts-node-dev services/auth/src/index.ts",
-    "dev:product": "PORT=3002 ts-node-dev services/product/src/index.ts",
-    "dev:cart": "PORT=3003 ts-node-dev services/cart/src/index.ts",
-    "dev:order": "PORT=3004 ts-node-dev services/order/src/index.ts",
-    "dev:payment": "PORT=3005 ts-node-dev services/payment/src/index.ts",
-    "dev:gateway": "PORT=3000 ts-node-dev gateway/index.ts",
-    "build": "tsc",
-    "test": "vitest run --passWithNoTests",
-    "test:unit": "vitest run services/ --passWithNoTests",
-    "test:integration": "vitest run tests/ --passWithNoTests",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "lint": "eslint shared/ gateway/ services/ tests/",
-    "lint:fix": "eslint shared/ gateway/ services/ tests/ --fix",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "express": "^4.19.2",
-    "uuid": "^9.0.1"
+    "dev": "concurrently --names backend,frontend -c cyan,magenta \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend",
+    "test": "npm test --prefix backend",
+    "test:unit": "npm run test:unit --prefix backend",
+    "test:integration": "npm run test:integration --prefix backend",
+    "lint": "npm run lint --prefix backend",
+    "typecheck": "npm run typecheck --prefix backend",
+    "seed": "npm run seed --prefix backend",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend"
   },
   "devDependencies": {
-    "@eslint/js": "^9.19.0",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/express": "^4.17.21",
-    "@types/supertest": "^6.0.2",
-    "@types/uuid": "^10.0.0",
-    "concurrently": "^9.1.2",
-    "eslint": "^9.19.0",
-    "globals": "^15.14.0",
-    "supertest": "^7.0.0",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.3.3",
-    "typescript-eslint": "^8.22.0",
-    "vitest": "^3.0.5"
+    "concurrently": "^9.1.2"
   }
 }

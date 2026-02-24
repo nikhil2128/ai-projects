@@ -9,11 +9,6 @@
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true
 	},
-	"include": [
-		"backend/shared/**/*",
-		"backend/gateway/**/*",
-		"backend/services/**/*",
-		"backend/tests/**/*"
-	],
+	"include": ["shared/**/*", "gateway/**/*", "services/**/*", "tests/**/*"],
 	"exclude": ["node_modules", "dist"]
 }

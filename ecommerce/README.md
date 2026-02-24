@@ -3,6 +3,14 @@
 A microservice-based e-commerce application covering the full purchase flow:
 **Registration -> Search Products -> Add to Cart -> Order -> Payment**
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture Guide](docs/ARCHITECTURE.md) | System design, Mermaid diagrams, data models, service details, and design patterns |
+| [API Reference](docs/API.md) | Complete API documentation with request/response examples and curl commands |
+| This README | Quick start guide and project overview |
+
 ## Architecture
 
 ```

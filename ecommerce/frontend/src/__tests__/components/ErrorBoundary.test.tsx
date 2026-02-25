@@ -54,4 +54,24 @@ describe("ErrorBoundary", () => {
     );
     expect(firstArg).toBeDefined();
   });
+
+  it("calls window.location.reload when refresh button is clicked", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const reloadMock = vi.fn();
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, reload: reloadMock },
+      writable: true,
+    });
+
+    const user = (await import("@testing-library/user-event")).default.setup();
+
+    render(
+      <ErrorBoundary>
+        <ThrowingComponent error />
+      </ErrorBoundary>
+    );
+
+    await user.click(screen.getByText("Refresh Page"));
+    expect(reloadMock).toHaveBeenCalled();
+  });
 });

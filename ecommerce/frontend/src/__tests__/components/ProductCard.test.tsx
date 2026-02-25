@@ -72,4 +72,11 @@ describe("ProductCard", () => {
     );
     expect(screen.getByText("$10.00")).toBeInTheDocument();
   });
+
+  it("falls back to placeholder on image error", () => {
+    renderWithRouter(<ProductCard product={mockProduct} />);
+    const img = screen.getByAltText("Wireless Headphones") as HTMLImageElement;
+    img.dispatchEvent(new Event("error"));
+    expect(img.src).toContain("data:image/svg+xml");
+  });
 });

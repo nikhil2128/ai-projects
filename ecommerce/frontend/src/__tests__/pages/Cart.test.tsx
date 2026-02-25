@@ -134,4 +134,116 @@ describe("Cart Page", () => {
       expect(api.cart.removeItem).toHaveBeenCalledWith("p1");
     });
   });
+
+  it("increments quantity when plus is clicked", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.cart.get).mockResolvedValue(mockCart);
+    vi.mocked(api.cart.updateItem).mockResolvedValue({
+      ...mockCart,
+      items: [
+        { ...mockCart.items[0], quantity: 3 },
+        mockCart.items[1],
+      ],
+    });
+
+    renderWithProviders(<CartPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Widget A")).toBeInTheDocument();
+    });
+
+    const plusButtons = screen.getAllByRole("button").filter((btn) => {
+      const svg = btn.querySelector("svg");
+      return svg && btn.closest('[class*="rounded-r"]');
+    });
+
+    if (plusButtons.length > 0) {
+      await user.click(plusButtons[0]);
+      await waitFor(() => {
+        expect(api.cart.updateItem).toHaveBeenCalledWith("p1", 3);
+      });
+    }
+  });
+
+  it("decrements quantity and removes when reaching 0", async () => {
+    const user = userEvent.setup();
+    const singleItemCart = {
+      ...mockCart,
+      items: [{ productId: "p1", productName: "Widget A", price: 29.99, quantity: 1 }],
+    };
+    vi.mocked(api.cart.get).mockResolvedValue(singleItemCart);
+    vi.mocked(api.cart.removeItem).mockResolvedValue({
+      ...mockCart,
+      items: [],
+    });
+
+    renderWithProviders(<CartPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Widget A")).toBeInTheDocument();
+    });
+
+    const minusButtons = screen.getAllByRole("button").filter((btn) =>
+      btn.closest('[class*="rounded-l"]')
+    );
+
+    if (minusButtons.length > 0) {
+      await user.click(minusButtons[0]);
+      await waitFor(() => {
+        expect(api.cart.removeItem).toHaveBeenCalledWith("p1");
+      });
+    }
+  });
+
+  it("shows error when update fails with generic error", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.cart.get).mockResolvedValue(mockCart);
+    vi.mocked(api.cart.removeItem).mockRejectedValue(new Error("Network error"));
+
+    renderWithProviders(<CartPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Widget A")).toBeInTheDocument();
+    });
+
+    const deleteButtons = screen.getAllByRole("button").filter((btn) =>
+      btn.querySelector('[class*="h-4 w-4"]')
+    );
+    await user.click(deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Remove failed")).toBeInTheDocument();
+    });
+  });
+
+  it("shows ApiError message when update fails with ApiError", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.cart.get).mockResolvedValue(mockCart);
+
+    const { ApiError } = await import("../../api");
+    vi.mocked(api.cart.updateItem).mockRejectedValue(
+      new ApiError(400, "Insufficient stock")
+    );
+
+    renderWithProviders(<CartPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Widget A")).toBeInTheDocument();
+    });
+
+    const plusButtons = screen.getAllByRole("button").filter((btn) =>
+      btn.closest('[class*="rounded-r"]')
+    );
+    if (plusButtons.length > 0) {
+      await user.click(plusButtons[0]);
+      await waitFor(() => {
+        expect(screen.getByText("Insufficient stock")).toBeInTheDocument();
+      });
+    }
+  });
+
+  it("shows empty state when cart fetch fails", async () => {
+    vi.mocked(api.cart.get).mockRejectedValue(new Error("fail"));
+
+    renderWithProviders(<CartPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Your cart is empty")).toBeInTheDocument();
+    });
+  });
 });

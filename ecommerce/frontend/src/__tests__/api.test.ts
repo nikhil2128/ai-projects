@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { api, ApiError } from "../api";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { api } from "../api";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -163,6 +163,13 @@ describe("API client", () => {
       expect(mockFetch.mock.calls[0][0]).toBe("/api/orders");
     });
 
+    it("get fetches single order", async () => {
+      mockFetch.mockReturnValue(jsonResponse({ id: "o1", status: "pending" }));
+      const result = await api.orders.get("o1");
+      expect(result.id).toBe("o1");
+      expect(mockFetch.mock.calls[0][0]).toBe("/api/orders/o1");
+    });
+
     it("cancel sends POST to cancel endpoint", async () => {
       mockFetch.mockReturnValue(jsonResponse({ id: "o1", status: "cancelled" }));
       await api.orders.cancel("o1");
@@ -182,6 +189,20 @@ describe("API client", () => {
           body: JSON.stringify({ orderId: "o1", method: "credit_card" }),
         })
       );
+    });
+
+    it("get fetches payment by id", async () => {
+      mockFetch.mockReturnValue(jsonResponse({ id: "pay1", amount: 50 }));
+      const result = await api.payments.get("pay1");
+      expect(result.id).toBe("pay1");
+      expect(mockFetch.mock.calls[0][0]).toBe("/api/payments/pay1");
+    });
+
+    it("getByOrder fetches payment by order id", async () => {
+      mockFetch.mockReturnValue(jsonResponse({ id: "pay1", orderId: "o1" }));
+      const result = await api.payments.getByOrder("o1");
+      expect(result.orderId).toBe("o1");
+      expect(mockFetch.mock.calls[0][0]).toBe("/api/payments/order/o1");
     });
 
     it("refund sends POST to refund endpoint", async () => {
@@ -225,6 +246,46 @@ describe("API client", () => {
       );
 
       await expect(api.products.get("p1")).rejects.toThrow("Request failed");
+    });
+
+    it("deduplicates concurrent GET requests to the same URL", async () => {
+      let resolvePromise: (value: unknown) => void;
+      const pending = new Promise((r) => { resolvePromise = r; });
+
+      mockFetch.mockReturnValue(
+        pending.then((val) => ({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(val),
+        }))
+      );
+
+      const p1 = api.products.get("p1");
+      const p2 = api.products.get("p1");
+
+      resolvePromise!({ id: "p1", name: "Widget" });
+
+      const [r1, r2] = await Promise.all([p1, p2]);
+      expect(r1).toEqual(r2);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not send body for GET requests", async () => {
+      mockFetch.mockReturnValue(jsonResponse({ data: [] }));
+      await api.products.list();
+      const opts = mockFetch.mock.calls[0][1];
+      expect(opts.body).toBeUndefined();
+    });
+
+    it("includes price params when provided", async () => {
+      mockFetch.mockReturnValue(
+        jsonResponse({ data: [], total: 0, page: 1, limit: 24, totalPages: 0 })
+      );
+
+      await api.products.list({ minPrice: 10, maxPrice: 200 });
+      const url = mockFetch.mock.calls[0][0];
+      expect(url).toContain("minPrice=10");
+      expect(url).toContain("maxPrice=200");
     });
   });
 });

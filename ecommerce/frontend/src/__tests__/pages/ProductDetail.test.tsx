@@ -113,18 +113,11 @@ describe("ProductDetail Page", () => {
   });
 
   it("allows quantity adjustment", async () => {
-    const user = userEvent.setup();
     vi.mocked(api.products.get).mockResolvedValue(mockProduct);
 
     renderWithProviders(<ProductDetail />);
     await waitFor(() => {
       expect(screen.getByText("1")).toBeInTheDocument();
-    });
-
-    const buttons = screen.getAllByRole("button");
-    const plusButton = buttons.find((btn) => {
-      const svg = btn.querySelector("svg");
-      return svg && btn.textContent === "";
     });
 
     const qtyDisplay = screen.getByText("1");
@@ -170,6 +163,149 @@ describe("ProductDetail Page", () => {
     });
     await waitFor(() => {
       expect(screen.getByText("Added to Cart")).toBeInTheDocument();
+    });
+  });
+
+  it("navigates back when back button is clicked", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.products.get).mockResolvedValue(mockProduct);
+
+    renderWithProviders(<ProductDetail />);
+    await waitFor(() => {
+      expect(screen.getByText("Back")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Back"));
+    expect(mockNavigate).toHaveBeenCalledWith(-1);
+  });
+
+  it("navigates to home from product not found page", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.products.get).mockRejectedValue(new Error("Not found"));
+
+    renderWithProviders(<ProductDetail />);
+    await waitFor(() => {
+      expect(screen.getByText("Back to products")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Back to products"));
+    expect(mockNavigate).toHaveBeenCalledWith("/");
+  });
+
+  it("increments quantity with plus button", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.products.get).mockResolvedValue(mockProduct);
+
+    renderWithProviders(<ProductDetail />);
+    await waitFor(() => {
+      expect(screen.getByText("Qty:")).toBeInTheDocument();
+    });
+
+    const buttons = screen.getAllByRole("button");
+    const plusButton = buttons.find((btn) =>
+      btn.className.includes("rounded-r")
+    );
+    if (plusButton) {
+      await user.click(plusButton);
+      await waitFor(() => {
+        expect(screen.getByText("2")).toBeInTheDocument();
+      });
+    }
+  });
+
+  it("does not decrement quantity below 1", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.products.get).mockResolvedValue(mockProduct);
+
+    renderWithProviders(<ProductDetail />);
+    await waitFor(() => {
+      expect(screen.getByText("Qty:")).toBeInTheDocument();
+    });
+
+    const buttons = screen.getAllByRole("button");
+    const minusButton = buttons.find((btn) =>
+      btn.className.includes("rounded-l")
+    );
+    if (minusButton) {
+      await user.click(minusButton);
+      expect(screen.getByText("1")).toBeInTheDocument();
+    }
+  });
+
+  it("shows error when add to cart fails", async () => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("email", "test@test.com");
+
+    const user = userEvent.setup();
+    vi.mocked(api.products.get).mockResolvedValue(mockProduct);
+    vi.mocked(api.cart.addItem).mockRejectedValue(new Error("Out of stock"));
+
+    renderWithProviders(<ProductDetail />);
+    await waitFor(() => {
+      expect(screen.getByText("Add to Cart")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Add to Cart"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed to add to cart")).toBeInTheDocument();
+    });
+  });
+
+  it("renders product image", async () => {
+    vi.mocked(api.products.get).mockResolvedValue(mockProduct);
+
+    renderWithProviders(<ProductDetail />);
+    await waitFor(() => {
+      const img = screen.getByAltText("Premium Headphones");
+      expect(img).toHaveAttribute("src", "https://example.com/headphones.jpg");
+    });
+  });
+
+  it("uses placeholder when no image URL", async () => {
+    vi.mocked(api.products.get).mockResolvedValue({ ...mockProduct, imageUrl: "" });
+
+    renderWithProviders(<ProductDetail />);
+    await waitFor(() => {
+      const img = screen.getByAltText("Premium Headphones");
+      expect(img.getAttribute("src")).toContain("data:image/svg+xml");
+    });
+  });
+
+  it("falls back to placeholder on image load error", async () => {
+    vi.mocked(api.products.get).mockResolvedValue(mockProduct);
+
+    renderWithProviders(<ProductDetail />);
+    await waitFor(() => {
+      const img = screen.getByAltText("Premium Headphones") as HTMLImageElement;
+      img.dispatchEvent(new Event("error"));
+      expect(img.src).toContain("data:image/svg+xml");
+    });
+  });
+
+  it("shows ApiError message when add to cart fails with ApiError", async () => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("email", "test@test.com");
+
+    const user = userEvent.setup();
+    vi.mocked(api.products.get).mockResolvedValue(mockProduct);
+
+    const { ApiError } = await import("../../api");
+    vi.mocked(api.cart.addItem).mockRejectedValue(
+      new ApiError(400, "Item out of stock")
+    );
+
+    renderWithProviders(<ProductDetail />);
+    await waitFor(() => {
+      expect(screen.getByText("Add to Cart")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Add to Cart"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Item out of stock")).toBeInTheDocument();
     });
   });
 });

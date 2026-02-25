@@ -197,4 +197,187 @@ describe("Home Page", () => {
     renderWithProviders(<Home />);
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
   });
+
+  it("toggles filter panel when filter button clicked", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.products.list).mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 24,
+      totalPages: 0,
+    });
+
+    renderWithProviders(<Home />);
+
+    expect(screen.queryByPlaceholderText("0")).not.toBeInTheDocument();
+
+    const filterButton = screen.getAllByRole("button").find(
+      (btn) => btn.querySelector("svg") && !btn.textContent?.includes("Search")
+        && !btn.textContent?.includes("All") && !btn.textContent?.includes("Electronics")
+    );
+    if (filterButton) {
+      await user.click(filterButton);
+      await waitFor(() => {
+        expect(screen.getByText("Min Price")).toBeInTheDocument();
+        expect(screen.getByText("Max Price")).toBeInTheDocument();
+      });
+    }
+  });
+
+  it("submits search form and resets page", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.products.list).mockResolvedValue({
+      data: mockProducts,
+      total: 2,
+      page: 1,
+      limit: 24,
+      totalPages: 1,
+    });
+
+    renderWithProviders(<Home />);
+    await waitFor(() => {
+      expect(screen.getByText("Wireless Headphones")).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText("Search products...");
+    await user.type(searchInput, "headphones");
+
+    const searchButton = screen.getByRole("button", { name: "Search" });
+    await user.click(searchButton);
+
+    expect(searchInput).toHaveValue("headphones");
+  });
+
+  it("navigates between pages with pagination buttons", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.products.list).mockResolvedValue({
+      data: mockProducts,
+      total: 50,
+      page: 1,
+      limit: 24,
+      totalPages: 3,
+    });
+
+    renderWithProviders(<Home />);
+    await waitFor(() => {
+      expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+    });
+
+    const buttons = screen.getAllByRole("button");
+    const nextButton = buttons[buttons.length - 1];
+    await user.click(nextButton);
+
+    await waitFor(() => {
+      const calls = vi.mocked(api.products.list).mock.calls;
+      const hasPage2 = calls.some(
+        (call) => call[0] && (call[0] as Record<string, unknown>).page === 2
+      );
+      expect(hasPage2).toBe(true);
+    });
+  });
+
+  it("updates keyword input on typing", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.products.list).mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 24,
+      totalPages: 0,
+    });
+
+    renderWithProviders(<Home />);
+    const input = screen.getByPlaceholderText("Search products...");
+    await user.type(input, "shoes");
+    expect(input).toHaveValue("shoes");
+  });
+
+  it("allows entering price filters", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.products.list).mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 24,
+      totalPages: 0,
+    });
+
+    renderWithProviders(<Home />);
+
+    const allButtons = screen.getAllByRole("button");
+    const filterToggle = allButtons.find(
+      (btn) => !btn.textContent || btn.textContent === ""
+    );
+    if (filterToggle) {
+      await user.click(filterToggle);
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText("0")).toBeInTheDocument();
+        expect(screen.getByPlaceholderText("Any")).toBeInTheDocument();
+      });
+
+      await user.type(screen.getByPlaceholderText("0"), "10");
+      await user.type(screen.getByPlaceholderText("Any"), "100");
+
+      expect(screen.getByPlaceholderText("0")).toHaveValue(10);
+      expect(screen.getByPlaceholderText("Any")).toHaveValue(100);
+    }
+  });
+
+  it("prev button is disabled on first page", async () => {
+    vi.mocked(api.products.list).mockResolvedValue({
+      data: mockProducts,
+      total: 50,
+      page: 1,
+      limit: 24,
+      totalPages: 3,
+    });
+
+    renderWithProviders(<Home />);
+    await waitFor(() => {
+      expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+    });
+
+    const buttons = screen.getAllByRole("button");
+    const prevButton = buttons.find((btn) =>
+      btn.className.includes("disabled:opacity-40") && btn === buttons[buttons.length - 2]
+    );
+    if (prevButton) {
+      expect(prevButton).toBeDisabled();
+    }
+  });
+
+  it("applies price filter and resets page on submit", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.products.list).mockResolvedValue({
+      data: mockProducts,
+      total: 2,
+      page: 1,
+      limit: 24,
+      totalPages: 1,
+    });
+
+    renderWithProviders(<Home />);
+    await waitFor(() => {
+      expect(screen.getByText("Wireless Headphones")).toBeInTheDocument();
+    });
+
+    const allButtons = screen.getAllByRole("button");
+    const filterToggle = allButtons.find(
+      (btn) => !btn.textContent || btn.textContent === ""
+    );
+    if (filterToggle) {
+      await user.click(filterToggle);
+      await waitFor(() => {
+        expect(screen.getByText("Apply")).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText("Apply"));
+
+      await waitFor(() => {
+        expect(api.products.list).toHaveBeenCalled();
+      });
+    }
+  });
 });

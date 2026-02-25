@@ -221,4 +221,40 @@ describe("Checkout Page", () => {
     await user.click(paypalRadio);
     expect(paypalRadio).toBeChecked();
   });
+
+  it("shows generic error for non-ApiError failures", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.cart.get).mockResolvedValue(mockCart);
+    vi.mocked(api.orders.create).mockRejectedValue(new Error("Network timeout"));
+
+    renderWithProviders(<Checkout />);
+    await waitFor(() => {
+      expect(screen.getByText("Order Summary")).toBeInTheDocument();
+    });
+
+    await user.type(
+      screen.getByPlaceholderText("123 Main St, Springfield, IL 62701"),
+      "456 Test Ave"
+    );
+    await user.click(screen.getByRole("button", { name: /Pay/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Checkout failed")).toBeInTheDocument();
+    });
+  });
+
+  it("redirects to cart when cart fetch fails", async () => {
+    vi.mocked(api.cart.get).mockRejectedValue(new Error("fail"));
+
+    renderWithProviders(<Checkout />);
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/cart");
+    });
+  });
+
+  it("shows loading state initially", () => {
+    vi.mocked(api.cart.get).mockReturnValue(new Promise(() => {}));
+    renderWithProviders(<Checkout />);
+    expect(document.querySelector(".animate-spin")).toBeInTheDocument();
+  });
 });

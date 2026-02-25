@@ -58,6 +58,14 @@ describe("useQuery", () => {
     expect(onError.mock.calls[0][0].message).toBe("fail");
   });
 
+  it("wraps non-Error rejections in Error", async () => {
+    const fetcher = vi.fn().mockRejectedValue("string-error");
+    const { result } = renderHook(() => useQuery("non-error-key", fetcher));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error?.message).toBe("Fetch failed");
+  });
+
   it("uses cached data within stale time", async () => {
     const fetcher = vi.fn().mockResolvedValue("fresh");
     const { result } = renderHook(() =>

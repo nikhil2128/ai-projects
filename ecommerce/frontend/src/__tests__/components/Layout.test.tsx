@@ -1,13 +1,25 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import Layout from "../../components/Layout";
 import { renderWithProviders } from "../helpers";
+
+const mockNavigate = vi.fn();
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual("react-router-dom");
+  return { ...actual, useNavigate: () => mockNavigate };
+});
 
 vi.mock("../../api", () => ({
   api: {
     auth: { login: vi.fn(), register: vi.fn() },
     cart: {
-      get: vi.fn().mockResolvedValue({ id: "c1", userId: "u1", items: [], updatedAt: "" }),
+      get: vi.fn().mockResolvedValue({
+        id: "c1",
+        userId: "u1",
+        items: [{ productId: "p1", productName: "Item", price: 10, quantity: 3 }],
+        updatedAt: "",
+      }),
     },
   },
   ApiError: class extends Error {},
@@ -89,5 +101,41 @@ describe("Layout", () => {
     );
     const homeLink = screen.getByText("ShopHub").closest("a");
     expect(homeLink).toHaveAttribute("href", "/");
+  });
+
+  it("logs out and navigates to / when logout clicked", async () => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("email", "user@test.com");
+    const user = userEvent.setup();
+
+    renderWithProviders(
+      <Layout>
+        <div>Content</div>
+      </Layout>
+    );
+
+    const logoutButton = screen.getAllByRole("button").find(
+      (btn) => btn.querySelector("svg")
+    );
+    expect(logoutButton).toBeDefined();
+    await user.click(logoutButton!);
+
+    expect(mockNavigate).toHaveBeenCalledWith("/");
+    expect(localStorage.getItem("token")).toBeNull();
+  });
+
+  it("does not show Sign In when logged in", () => {
+    localStorage.setItem("token", "test-token");
+    localStorage.setItem("userId", "u1");
+    localStorage.setItem("email", "user@test.com");
+
+    renderWithProviders(
+      <Layout>
+        <div>Content</div>
+      </Layout>
+    );
+
+    expect(screen.queryByText("Sign In")).not.toBeInTheDocument();
   });
 });

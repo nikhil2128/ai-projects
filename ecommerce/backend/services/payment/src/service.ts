@@ -100,15 +100,21 @@ export class PaymentService {
     if (order) {
       await this.orderClient.updateOrderStatus(payment.orderId, "cancelled");
 
-      for (const item of order.items) {
-        const product = await this.productClient.getProduct(item.productId);
-        if (product) {
-          await this.productClient.updateStock(
-            item.productId,
-            product.stock + item.quantity
-          );
-        }
-      }
+      const productIds = order.items.map((item) => item.productId);
+      const products = await this.productClient.getProducts(productIds);
+
+      await Promise.all(
+        order.items.map((item) => {
+          const product = products.get(item.productId);
+          if (product) {
+            return this.productClient.updateStock(
+              item.productId,
+              product.stock + item.quantity
+            );
+          }
+          return Promise.resolve();
+        })
+      );
     }
 
     return { success: true, data: payment };

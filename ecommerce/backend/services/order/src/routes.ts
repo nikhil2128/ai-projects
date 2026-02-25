@@ -56,7 +56,9 @@ export function createOrderRoutes(orderService: OrderService): Router {
       res.status(401).json({ error: "User ID required" });
       return;
     }
-    const result = orderService.getUserOrders(userId);
+    const page = req.query.page ? Number(req.query.page) : 1;
+    const limit = req.query.limit ? Number(req.query.limit) : 20;
+    const result = orderService.getUserOrders(userId, page, limit);
     res.json(result.data);
   });
 

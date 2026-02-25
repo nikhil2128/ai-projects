@@ -14,6 +14,15 @@ class MockProductClient implements ProductServiceClient {
     return this.products.get(productId) ?? null;
   }
 
+  async getProducts(productIds: string[]): Promise<Map<string, Product>> {
+    const result = new Map<string, Product>();
+    for (const id of productIds) {
+      const p = this.products.get(id);
+      if (p) result.set(id, p);
+    }
+    return result;
+  }
+
   async updateStock(productId: string, newStock: number): Promise<boolean> {
     const product = this.products.get(productId);
     if (!product) return false;

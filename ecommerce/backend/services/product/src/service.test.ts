@@ -124,27 +124,28 @@ describe("ProductService", () => {
     it("should return all products when no filters given", () => {
       const result = productService.searchProducts({});
       expect(result.success).toBe(true);
-      expect(result.data!.length).toBe(4);
+      expect(result.data!.data.length).toBe(4);
+      expect(result.data!.total).toBe(4);
     });
 
     it("should search products by keyword in name", () => {
       const result = productService.searchProducts({ keyword: "mouse" });
       expect(result.success).toBe(true);
-      expect(result.data!.length).toBe(1);
-      expect(result.data![0].name).toBe("Wireless Mouse");
+      expect(result.data!.data.length).toBe(1);
+      expect(result.data!.data[0].name).toBe("Wireless Mouse");
     });
 
     it("should search products by keyword in description", () => {
       const result = productService.searchProducts({ keyword: "mechanical" });
       expect(result.success).toBe(true);
-      expect(result.data!.length).toBe(1);
-      expect(result.data![0].name).toBe("Gaming Keyboard");
+      expect(result.data!.data.length).toBe(1);
+      expect(result.data!.data[0].name).toBe("Gaming Keyboard");
     });
 
     it("should search products by keyword case-insensitively", () => {
       const result = productService.searchProducts({ keyword: "WIRELESS" });
       expect(result.success).toBe(true);
-      expect(result.data!.length).toBe(1);
+      expect(result.data!.data.length).toBe(1);
     });
 
     it("should filter products by category", () => {
@@ -152,7 +153,7 @@ describe("ProductService", () => {
         category: "Clothing",
       });
       expect(result.success).toBe(true);
-      expect(result.data!.length).toBe(2);
+      expect(result.data!.data.length).toBe(2);
     });
 
     it("should filter products by price range", () => {
@@ -161,8 +162,8 @@ describe("ProductService", () => {
         maxPrice: 60,
       });
       expect(result.success).toBe(true);
-      expect(result.data!.length).toBe(2);
-      expect(result.data!.map((p) => p.name).sort()).toEqual([
+      expect(result.data!.data.length).toBe(2);
+      expect(result.data!.data.map((p) => p.name).sort()).toEqual([
         "Running Shoes",
         "Wireless Mouse",
       ]);
@@ -174,8 +175,8 @@ describe("ProductService", () => {
         category: "Electronics",
       });
       expect(result.success).toBe(true);
-      expect(result.data!.length).toBe(1);
-      expect(result.data![0].name).toBe("Gaming Keyboard");
+      expect(result.data!.data.length).toBe(1);
+      expect(result.data!.data[0].name).toBe("Gaming Keyboard");
     });
 
     it("should return empty array when no products match", () => {
@@ -183,7 +184,7 @@ describe("ProductService", () => {
         keyword: "nonexistent",
       });
       expect(result.success).toBe(true);
-      expect(result.data!.length).toBe(0);
+      expect(result.data!.data.length).toBe(0);
     });
   });
 

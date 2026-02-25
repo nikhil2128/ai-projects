@@ -1,25 +1,23 @@
 import { Link, useNavigate } from "react-router-dom";
 import { ShoppingCart, Package, LogOut, LogIn, Store } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { useState, useEffect } from "react";
+import { useQuery, invalidateQuery } from "../hooks/useQuery";
 import { api } from "../api";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { isLoggedIn, email, logout } = useAuth();
   const navigate = useNavigate();
-  const [cartCount, setCartCount] = useState(0);
 
-  useEffect(() => {
-    if (!isLoggedIn) {
-      setCartCount(0);
-      return;
-    }
-    api.cart.get().then((cart) => {
-      setCartCount(cart.items.reduce((sum, i) => sum + i.quantity, 0));
-    }).catch(() => setCartCount(0));
-  }, [isLoggedIn]);
+  const { data: cart } = useQuery(
+    "cart:layout",
+    () => api.cart.get(),
+    { enabled: isLoggedIn, staleTime: 10_000 }
+  );
+
+  const cartCount = cart?.items.reduce((sum, i) => sum + i.quantity, 0) ?? 0;
 
   const handleLogout = () => {
+    invalidateQuery("cart:");
     logout();
     navigate("/");
   };

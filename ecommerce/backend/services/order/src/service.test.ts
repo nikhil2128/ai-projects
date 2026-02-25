@@ -19,6 +19,15 @@ class MockProductClient implements ProductServiceClient {
     return this.products.get(productId) ?? null;
   }
 
+  async getProducts(productIds: string[]): Promise<Map<string, Product>> {
+    const result = new Map<string, Product>();
+    for (const id of productIds) {
+      const p = this.products.get(id);
+      if (p) result.set(id, p);
+    }
+    return result;
+  }
+
   async updateStock(productId: string, newStock: number): Promise<boolean> {
     const product = this.products.get(productId);
     if (!product) return false;
@@ -246,13 +255,15 @@ describe("OrderService", () => {
 
       const result = orderService.getUserOrders(userId);
       expect(result.success).toBe(true);
-      expect(result.data!.length).toBe(2);
+      expect(result.data!.data.length).toBe(2);
+      expect(result.data!.total).toBe(2);
     });
 
     it("should return empty array for user with no orders", () => {
       const result = orderService.getUserOrders("new-user");
       expect(result.success).toBe(true);
-      expect(result.data!.length).toBe(0);
+      expect(result.data!.data.length).toBe(0);
+      expect(result.data!.total).toBe(0);
     });
   });
 

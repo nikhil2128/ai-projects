@@ -173,7 +173,8 @@ describe("E-commerce Microservices Integration Tests", () => {
 				"/api/products?category=ListTest",
 			);
 			expect(res.status).toBe(200);
-			expect(res.body.length).toBeGreaterThanOrEqual(1);
+			expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+			expect(res.body.total).toBeGreaterThanOrEqual(1);
 		});
 	});
 
@@ -237,12 +238,12 @@ describe("E-commerce Microservices Integration Tests", () => {
 				"/api/products?category=FlowTest",
 			);
 			expect(searchRes.status).toBe(200);
-			expect(searchRes.body.length).toBe(2);
+			expect(searchRes.body.data.length).toBe(2);
 
-			const mouseId = searchRes.body.find(
+			const mouseId = searchRes.body.data.find(
 				(p: { name: string }) => p.name === "Wireless Mouse",
 			).id;
-			const keyboardId = searchRes.body.find(
+			const keyboardId = searchRes.body.data.find(
 				(p: { name: string }) => p.name === "Mechanical Keyboard",
 			).id;
 
@@ -304,7 +305,7 @@ describe("E-commerce Microservices Integration Tests", () => {
 			const ordersRes = await request(gatewayApp)
 				.get("/api/orders")
 				.set("Authorization", `Bearer ${token}`);
-			expect(ordersRes.body.length).toBe(1);
+			expect(ordersRes.body.data.length).toBe(1);
 
 			// 10. Verify product stock was reduced
 			const mouseAfterRes = await request(gatewayApp).get(
@@ -333,7 +334,7 @@ describe("E-commerce Microservices Integration Tests", () => {
 			const products = await request(gatewayApp).get(
 				"/api/products?category=FlowTest",
 			);
-			const mouseId = products.body.find(
+			const mouseId = products.body.data.find(
 				(p: { name: string }) => p.name === "Wireless Mouse",
 			).id;
 
@@ -392,14 +393,14 @@ describe("E-commerce Microservices Integration Tests", () => {
 			const products = await request(gatewayApp).get(
 				"/api/products?category=FlowTest",
 			);
-			const mouseId = products.body.find(
+			const mouseId = products.body.data.find(
 				(p: { name: string }) => p.name === "Wireless Mouse",
 			).id;
 
 			const clothing = await request(gatewayApp).get(
 				"/api/products?category=FlowClothing",
 			);
-			const shirtId = clothing.body.find(
+			const shirtId = clothing.body.data.find(
 				(p: { name: string }) => p.name === "Cotton T-Shirt",
 			).id;
 

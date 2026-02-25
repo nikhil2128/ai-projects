@@ -1,10 +1,11 @@
 import { createGateway } from "./app";
+import { setupGracefulShutdown } from "../shared/graceful-shutdown";
 
 const PORT = process.env.PORT ?? 3000;
 
 const { app } = createGateway();
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`API Gateway running on http://localhost:${PORT}`);
   console.log("Routing to microservices:");
   console.log("  /api/auth     -> Auth Service     (3001)");
@@ -13,3 +14,5 @@ app.listen(PORT, () => {
   console.log("  /api/orders   -> Order Service     (3004)");
   console.log("  /api/payments -> Payment Service   (3005)");
 });
+
+setupGracefulShutdown(server, "gateway");

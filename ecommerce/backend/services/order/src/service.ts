@@ -26,8 +26,11 @@ export class OrderService {
       return { success: false, error: "Cart is empty" };
     }
 
+    const productIds = cart.items.map((item) => item.productId);
+    const products = await this.productClient.getProducts(productIds);
+
     for (const item of cart.items) {
-      const product = await this.productClient.getProduct(item.productId);
+      const product = products.get(item.productId);
       if (!product || product.stock < item.quantity) {
         return {
           success: false,
@@ -36,15 +39,15 @@ export class OrderService {
       }
     }
 
-    for (const item of cart.items) {
-      const product = await this.productClient.getProduct(item.productId);
-      if (product) {
-        await this.productClient.updateStock(
+    await Promise.all(
+      cart.items.map((item) => {
+        const product = products.get(item.productId)!;
+        return this.productClient.updateStock(
           item.productId,
           product.stock - item.quantity
         );
-      }
-    }
+      })
+    );
 
     const totalAmount = cart.items.reduce(
       (sum, item) => sum + item.price * item.quantity,
@@ -90,9 +93,20 @@ export class OrderService {
     return { success: true, data: order };
   }
 
-  getUserOrders(userId: string): ServiceResult<Order[]> {
-    const orders = this.store.findOrdersByUserId(userId);
-    return { success: true, data: orders };
+  getUserOrders(
+    userId: string,
+    page = 1,
+    limit = 20
+  ): ServiceResult<{ data: Order[]; total: number; page: number; limit: number; totalPages: number }> {
+    const allOrders = this.store.findOrdersByUserId(userId);
+    const total = allOrders.length;
+    const totalPages = Math.ceil(total / limit);
+    const offset = (page - 1) * limit;
+    const orders = allOrders.slice(offset, offset + limit);
+    return {
+      success: true,
+      data: { data: orders, total, page, limit, totalPages },
+    };
   }
 
   updateOrderStatus(
@@ -134,15 +148,21 @@ export class OrderService {
       };
     }
 
-    for (const item of order.items) {
-      const product = await this.productClient.getProduct(item.productId);
-      if (product) {
-        await this.productClient.updateStock(
-          item.productId,
-          product.stock + item.quantity
-        );
-      }
-    }
+    const productIds = order.items.map((item) => item.productId);
+    const products = await this.productClient.getProducts(productIds);
+
+    await Promise.all(
+      order.items.map((item) => {
+        const product = products.get(item.productId);
+        if (product) {
+          return this.productClient.updateStock(
+            item.productId,
+            product.stock + item.quantity
+          );
+        }
+        return Promise.resolve();
+      })
+    );
 
     order.status = "cancelled";
     order.updatedAt = new Date();

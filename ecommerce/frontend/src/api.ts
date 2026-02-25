@@ -6,6 +6,8 @@ class ApiError extends Error {
   }
 }
 
+const pendingRequests = new Map<string, Promise<unknown>>();
+
 async function request<T>(
   url: string,
   options: RequestInit = {}
@@ -20,14 +22,48 @@ async function request<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, { ...options, headers });
+  const isGet = !options.method || options.method === "GET";
+  const dedupeKey = isGet ? url : "";
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: "Request failed" }));
-    throw new ApiError(res.status, body.error ?? "Request failed");
+  if (dedupeKey) {
+    const inflight = pendingRequests.get(dedupeKey);
+    if (inflight) return inflight as Promise<T>;
   }
 
-  return res.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  const promise = (async () => {
+    try {
+      const res = await fetch(url, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: "Request failed" }));
+        throw new ApiError(res.status, body.error ?? "Request failed");
+      }
+
+      return res.json();
+    } finally {
+      clearTimeout(timeout);
+      if (dedupeKey) pendingRequests.delete(dedupeKey);
+    }
+  })();
+
+  if (dedupeKey) pendingRequests.set(dedupeKey, promise);
+
+  return promise;
+}
+
+interface PaginatedProducts {
+  data: Product[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export const api = {
@@ -47,14 +83,16 @@ export const api = {
   },
 
   products: {
-    list(params?: { keyword?: string; category?: string; minPrice?: number; maxPrice?: number }) {
+    list(params?: { keyword?: string; category?: string; minPrice?: number; maxPrice?: number; page?: number; limit?: number }) {
       const query = new URLSearchParams();
       if (params?.keyword) query.set("keyword", params.keyword);
       if (params?.category) query.set("category", params.category);
       if (params?.minPrice !== undefined) query.set("minPrice", String(params.minPrice));
       if (params?.maxPrice !== undefined) query.set("maxPrice", String(params.maxPrice));
+      if (params?.page !== undefined) query.set("page", String(params.page));
+      if (params?.limit !== undefined) query.set("limit", String(params.limit));
       const qs = query.toString();
-      return request<Product[]>(`/api/products${qs ? `?${qs}` : ""}`);
+      return request<PaginatedProducts>(`/api/products${qs ? `?${qs}` : ""}`);
     },
     get(id: string) {
       return request<Product>(`/api/products/${id}`);

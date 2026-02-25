@@ -48,6 +48,16 @@ export interface ProductSearchQuery {
   category?: string;
   minPrice?: number;
   maxPrice?: number;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface CartItem {
@@ -126,6 +136,7 @@ export interface ServiceResult<T> {
 
 export interface ProductServiceClient {
   getProduct(productId: string): Promise<Product | null>;
+  getProducts(productIds: string[]): Promise<Map<string, Product>>;
   updateStock(productId: string, newStock: number): Promise<boolean>;
 }
 

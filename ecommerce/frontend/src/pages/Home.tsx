@@ -1,44 +1,57 @@
-import { useState, useEffect } from "react";
-import { Search, SlidersHorizontal, Loader2 } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Search, SlidersHorizontal, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "../api";
 import type { Product } from "../types";
 import ProductCard from "../components/ProductCard";
+import { useQuery } from "../hooks/useQuery";
+import { useDebounce } from "../hooks/useDebounce";
 
 const CATEGORIES = ["All", "Electronics", "Sports", "Home & Kitchen", "Accessories"];
 
 export default function Home() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState("");
   const [category, setCategory] = useState("All");
   const [showFilters, setShowFilters] = useState(false);
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
+  const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    fetchProducts();
-  }, [category]);
+  const debouncedKeyword = useDebounce(keyword, 300);
 
-  async function fetchProducts() {
-    setLoading(true);
-    try {
-      const params: Record<string, string | number> = {};
-      if (keyword) params.keyword = keyword;
+  const queryKey = useMemo(() => {
+    const params: string[] = [];
+    if (debouncedKeyword) params.push(`k=${debouncedKeyword}`);
+    if (category !== "All") params.push(`c=${category}`);
+    if (minPrice) params.push(`min=${minPrice}`);
+    if (maxPrice) params.push(`max=${maxPrice}`);
+    params.push(`p=${page}`);
+    return `products:${params.join("&")}`;
+  }, [debouncedKeyword, category, minPrice, maxPrice, page]);
+
+  const { data: result, loading } = useQuery(
+    queryKey,
+    () => {
+      const params: Record<string, string | number> = { page, limit: 24 };
+      if (debouncedKeyword) params.keyword = debouncedKeyword;
       if (category !== "All") params.category = category;
       if (minPrice) params.minPrice = Number(minPrice);
       if (maxPrice) params.maxPrice = Number(maxPrice);
-      const data = await api.products.list(params);
-      setProducts(data);
-    } catch {
-      setProducts([]);
-    } finally {
-      setLoading(false);
-    }
+      return api.products.list(params);
+    },
+    { staleTime: 15_000 }
+  );
+
+  const products: Product[] = result?.data ?? [];
+  const totalPages = result?.totalPages ?? 1;
+
+  function handleCategoryChange(cat: string) {
+    setCategory(cat);
+    setPage(1);
   }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    fetchProducts();
+    setPage(1);
   }
 
   return (
@@ -117,7 +130,7 @@ export default function Home() {
         {CATEGORIES.map((cat) => (
           <button
             key={cat}
-            onClick={() => setCategory(cat)}
+            onClick={() => handleCategoryChange(cat)}
             className={`px-4 py-2 rounded-full text-sm font-medium transition ${
               category === cat
                 ? "bg-indigo-600 text-white"
@@ -141,11 +154,35 @@ export default function Home() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {products.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {products.map((product) => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-10">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <span className="px-4 py-2 text-sm font-medium text-gray-700">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="p-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

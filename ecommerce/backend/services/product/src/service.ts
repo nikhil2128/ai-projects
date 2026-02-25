@@ -3,9 +3,13 @@ import {
   Product,
   ProductCreateInput,
   ProductSearchQuery,
+  PaginatedResult,
   ServiceResult,
 } from "../../../shared/types";
 import { ProductStore } from "./store";
+
+const DEFAULT_PAGE_LIMIT = 24;
+const MAX_PAGE_LIMIT = 100;
 
 export class ProductService {
   constructor(private store: ProductStore) {}
@@ -46,7 +50,16 @@ export class ProductService {
     return { success: true, data: product };
   }
 
-  searchProducts(query: ProductSearchQuery): ServiceResult<Product[]> {
+  getProductsByIds(ids: string[]): ServiceResult<Product[]> {
+    const products = ids
+      .map((id) => this.store.findProductById(id))
+      .filter((p): p is Product => p !== undefined);
+    return { success: true, data: products };
+  }
+
+  searchProducts(
+    query: ProductSearchQuery
+  ): ServiceResult<PaginatedResult<Product>> {
     let products = this.store.getAllProducts();
 
     if (query.keyword) {
@@ -70,7 +83,23 @@ export class ProductService {
       products = products.filter((p) => p.price <= query.maxPrice!);
     }
 
-    return { success: true, data: products };
+    const total = products.length;
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(MAX_PAGE_LIMIT, Math.max(1, query.limit ?? DEFAULT_PAGE_LIMIT));
+    const totalPages = Math.ceil(total / limit);
+    const offset = (page - 1) * limit;
+    const paginatedProducts = products.slice(offset, offset + limit);
+
+    return {
+      success: true,
+      data: {
+        data: paginatedProducts,
+        total,
+        page,
+        limit,
+        totalPages,
+      },
+    };
   }
 
   updateStock(productId: string, newStock: number): ServiceResult<Product> {

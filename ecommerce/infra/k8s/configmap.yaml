@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: service-config
+  namespace: ecommerce
+data:
+  AUTH_SERVICE_URL: "http://auth-service:3001"
+  PRODUCT_SERVICE_URL: "http://product-service:3002"
+  CART_SERVICE_URL: "http://cart-service:3003"
+  ORDER_SERVICE_URL: "http://order-service:3004"
+  PAYMENT_SERVICE_URL: "http://payment-service:3005"
+  CORS_ORIGIN: "*"
+  NODE_ENV: "production"

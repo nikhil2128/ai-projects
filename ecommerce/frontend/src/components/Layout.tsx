@@ -1,11 +1,13 @@
 import { Link, useNavigate } from "react-router-dom";
-import { ShoppingCart, Package, LogOut, LogIn, Store } from "lucide-react";
+import { ShoppingCart, Package, LogOut, LogIn, Store, Heart } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useFavorites } from "../context/FavoritesContext";
 import { useQuery, invalidateQuery } from "../hooks/useQuery";
 import { api } from "../api";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { isLoggedIn, email, logout } = useAuth();
+  const { favoritesCount, animating } = useFavorites();
   const navigate = useNavigate();
 
   const { data: cart } = useQuery(
@@ -38,6 +40,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <span className="hidden sm:block text-sm text-gray-500 mr-2">
                     {email}
                   </span>
+                  <Link
+                    to="/favorites"
+                    className={`relative p-2 rounded-lg text-gray-600 hover:bg-red-50 hover:text-red-500 transition ${
+                      animating ? "animate-nav-heart-bounce" : ""
+                    }`}
+                  >
+                    <Heart
+                      className={`h-5 w-5 transition-colors ${
+                        favoritesCount > 0 ? "fill-red-500 text-red-500" : ""
+                      }`}
+                    />
+                    {favoritesCount > 0 && (
+                      <span
+                        className={`absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center ${
+                          animating ? "animate-badge-pulse" : ""
+                        }`}
+                      >
+                        {favoritesCount > 9 ? "9+" : favoritesCount}
+                      </span>
+                    )}
+                  </Link>
                   <Link
                     to="/cart"
                     className="relative p-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-indigo-600 transition"

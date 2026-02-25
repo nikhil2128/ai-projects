@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ShoppingCart, ArrowLeft, Loader2, Minus, Plus, Check } from "lucide-react";
+import { ShoppingCart, ArrowLeft, Loader2, Minus, Plus, Check, Heart } from "lucide-react";
 import { api, ApiError } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { useFavorites } from "../context/FavoritesContext";
 import type { Product } from "../types";
 
 const PLACEHOLDER =
@@ -12,12 +13,27 @@ export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { isLoggedIn } = useAuth();
+  const { isFavorite, toggleFavorite } = useFavorites();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
   const [error, setError] = useState("");
+  const [heartPopping, setHeartPopping] = useState(false);
+
+  const favorited = product ? isFavorite(product.id) : false;
+
+  function handleFavoriteClick() {
+    if (!isLoggedIn) {
+      navigate("/login");
+      return;
+    }
+    if (!product) return;
+    setHeartPopping(true);
+    setTimeout(() => setHeartPopping(false), 450);
+    toggleFavorite(product.id);
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -95,9 +111,26 @@ export default function ProductDetail() {
             {product.category}
           </span>
 
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            {product.name}
-          </h1>
+          <div className="flex items-start gap-3 mb-2">
+            <h1 className="text-3xl font-bold text-gray-900 flex-1">
+              {product.name}
+            </h1>
+            <button
+              onClick={handleFavoriteClick}
+              className="flex-shrink-0 p-2.5 rounded-full border border-gray-200 hover:border-red-300 hover:bg-red-50 transition-all"
+              aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
+            >
+              <Heart
+                className={`h-6 w-6 transition-colors ${
+                  heartPopping ? "animate-heart-pop" : ""
+                } ${
+                  favorited
+                    ? "fill-red-500 text-red-500"
+                    : "text-gray-400 hover:text-red-400"
+                }`}
+              />
+            </button>
+          </div>
 
           <p className="text-gray-500 text-lg leading-relaxed mb-6">
             {product.description}

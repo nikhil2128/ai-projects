@@ -158,6 +158,15 @@ export function createGateway(config?: Partial<GatewayConfig>) {
   const auth = createAuthMiddleware();
 
   app.use(
+    "/api/favorites",
+    auth,
+    (req: AuthenticatedRequest, res: Response) => {
+      req.url = `/favorites${req.url}`;
+      proxy(cfg.productServiceUrl, req, res);
+    }
+  );
+
+  app.use(
     "/api/cart",
     auth,
     (req: AuthenticatedRequest, res: Response) => {

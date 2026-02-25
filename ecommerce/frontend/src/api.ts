@@ -143,6 +143,31 @@ export const api = {
     },
   },
 
+  favorites: {
+    list() {
+      return request<{ productIds: string[] }>("/api/favorites");
+    },
+    products() {
+      return request<Product[]>("/api/favorites/products");
+    },
+    check(productIds: string[]) {
+      return request<{ favorited: string[] }>("/api/favorites/check", {
+        method: "POST",
+        body: JSON.stringify({ productIds }),
+      });
+    },
+    add(productId: string) {
+      return request<{ success: boolean }>(`/api/favorites/${productId}`, {
+        method: "POST",
+      });
+    },
+    remove(productId: string) {
+      return request<{ success: boolean }>(`/api/favorites/${productId}`, {
+        method: "DELETE",
+      });
+    },
+  },
+
   payments: {
     process(orderId: string, method: PaymentMethod) {
       return request<Payment>("/api/payments", {

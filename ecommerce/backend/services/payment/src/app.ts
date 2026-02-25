@@ -1,4 +1,5 @@
 import express from "express";
+import { Pool } from "pg";
 import { OrderServiceClient, ProductServiceClient } from "../../../shared/types";
 import { HttpOrderClient, HttpProductClient } from "../../../shared/http-clients";
 import { PaymentStore } from "./store";
@@ -11,15 +12,15 @@ const PRODUCT_SERVICE_URL =
   process.env.PRODUCT_SERVICE_URL ?? "http://localhost:3002";
 
 export function createApp(
-  store?: PaymentStore,
+  pool: Pool,
   orderClient?: OrderServiceClient,
   productClient?: ProductServiceClient
 ) {
   const app = express();
-  const appStore = store ?? new PaymentStore();
+  const store = new PaymentStore(pool);
   const order = orderClient ?? new HttpOrderClient(ORDER_SERVICE_URL);
   const product = productClient ?? new HttpProductClient(PRODUCT_SERVICE_URL);
-  const paymentService = new PaymentService(appStore, order, product);
+  const service = new PaymentService(store, order, product);
 
   app.use(express.json());
 
@@ -27,7 +28,7 @@ export function createApp(
     res.json({ status: "ok", service: "payment" });
   });
 
-  app.use("/", createPaymentRoutes(paymentService));
+  app.use("/", createPaymentRoutes(service));
 
-  return { app, store: appStore, service: paymentService };
+  return { app, store, service };
 }

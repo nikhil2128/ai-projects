@@ -33,7 +33,7 @@ export class AuthService {
       };
     }
 
-    if (this.store.findUserByEmail(input.email)) {
+    if (await this.store.findUserByEmail(input.email)) {
       return { success: false, error: "Email is already registered" };
     }
 
@@ -47,7 +47,7 @@ export class AuthService {
       createdAt: new Date(),
     };
 
-    this.store.addUser(user);
+    await this.store.addUser(user);
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash: _hash, ...userWithoutPassword } = user;
@@ -55,7 +55,7 @@ export class AuthService {
   }
 
   async login(input: UserLoginInput): Promise<ServiceResult<AuthToken>> {
-    const user = this.store.findUserByEmail(input.email);
+    const user = await this.store.findUserByEmail(input.email);
     if (!user) {
       return { success: false, error: "Invalid credentials" };
     }
@@ -69,7 +69,7 @@ export class AuthService {
     }
 
     const token = uuidv4();
-    this.store.storeToken(token, user.id);
+    await this.store.storeToken(token, user.id);
 
     return {
       success: true,
@@ -81,7 +81,7 @@ export class AuthService {
     };
   }
 
-  validateToken(token: string): string | null {
-    return this.store.getUserIdByToken(token) ?? null;
+  async validateToken(token: string): Promise<string | null> {
+    return (await this.store.getUserIdByToken(token)) ?? null;
   }
 }

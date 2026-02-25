@@ -71,34 +71,34 @@ export class OrderService {
       updatedAt: now,
     };
 
-    this.store.addOrder(order);
+    await this.store.addOrder(order);
     await this.cartClient.clearCart(input.userId);
 
     return { success: true, data: order };
   }
 
-  getOrder(orderId: string, userId: string): ServiceResult<Order> {
-    const order = this.store.findOrderById(orderId);
+  async getOrder(orderId: string, userId: string): Promise<ServiceResult<Order>> {
+    const order = await this.store.findOrderById(orderId);
     if (!order || order.userId !== userId) {
       return { success: false, error: "Order not found" };
     }
     return { success: true, data: order };
   }
 
-  getOrderInternal(orderId: string): ServiceResult<Order> {
-    const order = this.store.findOrderById(orderId);
+  async getOrderInternal(orderId: string): Promise<ServiceResult<Order>> {
+    const order = await this.store.findOrderById(orderId);
     if (!order) {
       return { success: false, error: "Order not found" };
     }
     return { success: true, data: order };
   }
 
-  getUserOrders(
+  async getUserOrders(
     userId: string,
     page = 1,
     limit = 20
-  ): ServiceResult<{ data: Order[]; total: number; page: number; limit: number; totalPages: number }> {
-    const allOrders = this.store.findOrdersByUserId(userId);
+  ): Promise<ServiceResult<{ data: Order[]; total: number; page: number; limit: number; totalPages: number }>> {
+    const allOrders = await this.store.findOrdersByUserId(userId);
     const total = allOrders.length;
     const totalPages = Math.ceil(total / limit);
     const offset = (page - 1) * limit;
@@ -109,12 +109,12 @@ export class OrderService {
     };
   }
 
-  updateOrderStatus(
+  async updateOrderStatus(
     orderId: string,
     status: OrderStatus,
     paymentId?: string
-  ): ServiceResult<Order> {
-    const order = this.store.findOrderById(orderId);
+  ): Promise<ServiceResult<Order>> {
+    const order = await this.store.findOrderById(orderId);
     if (!order) {
       return { success: false, error: "Order not found" };
     }
@@ -128,7 +128,7 @@ export class OrderService {
       order.paymentId = paymentId;
     }
     order.updatedAt = new Date();
-    this.store.updateOrder(order);
+    await this.store.updateOrder(order);
     return { success: true, data: order };
   }
 
@@ -136,7 +136,7 @@ export class OrderService {
     orderId: string,
     userId: string
   ): Promise<ServiceResult<Order>> {
-    const order = this.store.findOrderById(orderId);
+    const order = await this.store.findOrderById(orderId);
     if (!order || order.userId !== userId) {
       return { success: false, error: "Order not found" };
     }
@@ -166,7 +166,7 @@ export class OrderService {
 
     order.status = "cancelled";
     order.updatedAt = new Date();
-    this.store.updateOrder(order);
+    await this.store.updateOrder(order);
     return { success: true, data: order };
   }
 }

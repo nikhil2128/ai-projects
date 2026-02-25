@@ -1,6 +1,16 @@
 version: "3.8"
 
 services:
+  postgres:
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+        reservations:
+          memory: 512M
+          cpus: "1.0"
+
   gateway:
     deploy:
       replicas: 3

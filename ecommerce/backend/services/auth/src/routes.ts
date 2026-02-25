@@ -28,9 +28,9 @@ export function createAuthRoutes(authService: AuthService): Router {
     res.json(result.data);
   });
 
-  router.post("/validate-token", (req: Request, res: Response) => {
+  router.post("/validate-token", async (req: Request, res: Response) => {
     const { token } = req.body;
-    const userId = authService.validateToken(token);
+    const userId = await authService.validateToken(token);
 
     if (!userId) {
       res.status(401).json({ error: "Invalid or expired token" });

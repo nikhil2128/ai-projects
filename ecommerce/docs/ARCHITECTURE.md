@@ -39,7 +39,7 @@ This is a **microservices-based e-commerce application** built with TypeScript a
 
 > **Register → Browse Products → Add to Cart → Place Order → Pay**
 
-The system is composed of **5 domain services** and an **API Gateway**, each running as an independent process with its own in-memory data store.
+The system is composed of **5 domain services** and an **API Gateway**, each running as an independent process backed by **PostgreSQL** for persistent storage.
 
 ---
 
@@ -61,12 +61,12 @@ graph TB
         PAY["Payment Service<br/>:3005"]
     end
 
-    subgraph DataStores["In-Memory Data Stores"]
-        DS_AUTH["Users<br/>Tokens"]
-        DS_PROD["Products"]
-        DS_CART["Carts"]
-        DS_ORD["Orders"]
-        DS_PAY["Payments"]
+    subgraph DataStores["PostgreSQL Database"]
+        DS_AUTH["users<br/>auth_tokens"]
+        DS_PROD["products"]
+        DS_CART["carts<br/>cart_items"]
+        DS_ORD["orders<br/>order_items"]
+        DS_PAY["payments"]
     end
 
     Client -->|"HTTP Requests"| GW
@@ -226,7 +226,7 @@ sequenceDiagram
 |---------|---------------|
 | Password storage | bcrypt hash (salt rounds: 10) |
 | Token format | UUID v4 |
-| Token storage | In-memory map (token → userId) |
+| Token storage | PostgreSQL `auth_tokens` table (token → userId) |
 | Email validation | Regex pattern matching |
 | Password policy | Minimum 8 characters |
 | User isolation | `x-user-id` header enforced per request |
@@ -588,25 +588,29 @@ Each service owns its data exclusively. No service reads or writes another servi
 
 ```mermaid
 graph TB
-    subgraph AuthService["Auth Service"]
-        AU["Users (Map)"]
-        AT["Tokens (Map)"]
-    end
+    subgraph PG["PostgreSQL"]
+        subgraph AuthService["Auth Service Tables"]
+            AU["users"]
+            AT["auth_tokens"]
+        end
 
-    subgraph ProductService["Product Service"]
-        PP["Products (Map)"]
-    end
+        subgraph ProductService["Product Service Tables"]
+            PP["products"]
+        end
 
-    subgraph CartService["Cart Service"]
-        CC["Carts (Map)"]
-    end
+        subgraph CartService["Cart Service Tables"]
+            CC["carts"]
+            CI["cart_items"]
+        end
 
-    subgraph OrderService["Order Service"]
-        OO["Orders (Map)"]
-    end
+        subgraph OrderService["Order Service Tables"]
+            OO["orders"]
+            OI["order_items"]
+        end
 
-    subgraph PaymentService["Payment Service"]
-        PM["Payments (Map)<br/>+ OrderId Index (Map)"]
+        subgraph PaymentService["Payment Service Tables"]
+            PM["payments"]
+        end
     end
 
     style AuthService fill:#FFF3E0,stroke:#E8A838
@@ -820,7 +824,7 @@ These endpoints are used exclusively for service-to-service communication and ar
 | **Linting** | ESLint + typescript-eslint |
 | **Dev Server** | ts-node-dev (hot reload) |
 | **Process Manager** | concurrently (multi-service dev) |
-| **Storage** | In-memory (JavaScript `Map`) |
+| **Database** | PostgreSQL 16 (via `pg` driver) |
 
 ---
 
@@ -993,13 +997,84 @@ kubectl apply -f infra/k8s/ingress.yaml
 
 ---
 
+## Database Configuration & Costing
+
+### PostgreSQL Schema
+
+All services share a single PostgreSQL 16 instance with 8 tables:
+
+| Table | Owner Service | Indexes | Purpose |
+|-------|--------------|---------|---------|
+| `users` | Auth | PK, UNIQUE(email) | User accounts |
+| `auth_tokens` | Auth | PK, idx(user_id) | Session tokens |
+| `products` | Product | PK, idx(category), GIN(name) | Product catalog |
+| `carts` | Cart | PK, UNIQUE(user_id) | Shopping carts |
+| `cart_items` | Cart | PK, UNIQUE(cart_id, product_id) | Cart line items |
+| `orders` | Order | PK, idx(user_id) | Purchase orders |
+| `order_items` | Order | PK, FK(order_id) | Order line items |
+| `payments` | Payment | PK, idx(order_id), idx(user_id) | Payment records |
+
+### Connection Configuration
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `DB_HOST` | `localhost` | PostgreSQL hostname |
+| `DB_PORT` | `5432` | PostgreSQL port |
+| `DB_NAME` | `ecommerce` | Database name |
+| `DB_USER` | `ecommerce` | Database user |
+| `DB_PASSWORD` | `ecommerce` | Database password |
+| `DB_POOL_MAX` | `10` | Max connections per service pool |
+| `DB_IDLE_TIMEOUT` | `30000` | Idle connection timeout (ms) |
+| `DB_CONNECT_TIMEOUT` | `5000` | Connection timeout (ms) |
+
+### Resource Requirements
+
+**Development (Docker Compose):**
+
+| Component | CPU | Memory | Storage |
+|-----------|-----|--------|---------|
+| PostgreSQL 16 | 0.5-1.0 vCPU | 256-512 MB | ~100 MB (data + WAL) |
+| Each microservice | 0.25-0.5 vCPU | 128-256 MB | — |
+| Redis | 0.25 vCPU | 256-300 MB | — |
+| Nginx | 0.25 vCPU | 128 MB | — |
+| **Total (dev)** | **~3.5 vCPU** | **~2.5 GB** | **~100 MB** |
+
+**Production (1M+ MAU):**
+
+| Component | Configuration | Monthly Cost (AWS) |
+|-----------|--------------|-------------------|
+| PostgreSQL (RDS) | `db.r6g.large` (2 vCPU, 16 GB), Multi-AZ, 100 GB gp3 | ~$450-550 |
+| PostgreSQL (RDS) read replica | `db.r6g.large` for read scaling | ~$250-300 |
+| EKS cluster | 3-5 `m6i.large` nodes | ~$300-500 |
+| Redis (ElastiCache) | `cache.r6g.large`, single node | ~$180-220 |
+| ALB (Load Balancer) | Application Load Balancer | ~$25-50 |
+| CloudFront (CDN) | 1 TB/month transfer | ~$85-100 |
+| **Total (production)** | | **~$1,300-1,700/mo** |
+
+**Cost optimization strategies:**
+- Use Reserved Instances (1-year) for 30-40% savings on RDS and EC2
+- Enable Aurora Serverless v2 for auto-scaling PostgreSQL (pay per ACU)
+- Use Spot Instances for non-critical service pods
+- Enable connection pooling (PgBouncer) to reduce pool overhead across services
+
+### Scaling PostgreSQL
+
+| Traffic Level | Recommendation | Pool Config |
+|---------------|---------------|-------------|
+| < 100 MAU (dev) | Single instance, default config | `DB_POOL_MAX=5` |
+| 100K MAU | Single instance, tune `shared_buffers`, `work_mem` | `DB_POOL_MAX=10` |
+| 1M MAU | Multi-AZ primary + read replica, PgBouncer | `DB_POOL_MAX=20` |
+| 10M+ MAU | Separate DB per service, sharding consideration | `DB_POOL_MAX=30` |
+
+---
+
 ## Known Limitations & Future Improvements
 
 ### Current Limitations
 
 | Area | Limitation |
 |------|-----------|
-| **Storage** | In-memory only — all data lost on restart. Replace with PostgreSQL/MongoDB for production. |
+| **Storage** | Single shared PostgreSQL instance. In production, consider separate databases per service for stronger isolation. |
 | **Token Expiry** | Tokens never expire. Add JWT with configurable expiration. |
 | **Communication** | Synchronous HTTP only (no async messaging). Add RabbitMQ/Kafka for order processing. |
 | **Observability** | No distributed tracing, structured logging, or metrics. Add Prometheus + Grafana + Jaeger. |
@@ -1010,8 +1085,8 @@ kubectl apply -f infra/k8s/ingress.yaml
 
 ```mermaid
 graph LR
-    subgraph Phase1["Phase 1: Persistence"]
-        DB["Add PostgreSQL / MongoDB"]
+    subgraph Phase1["Phase 1: Production Readiness"]
+        DB["Separate PostgreSQL per service"]
         REDIS2["Migrate to Redis-backed cache"]
     end
 

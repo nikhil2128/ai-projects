@@ -1,18 +1,30 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
+import { Pool } from "pg";
 import { ProductService } from "./service";
 import { ProductStore } from "./store";
+import { getTestPool, cleanTables, closeTestPool } from "../../../shared/test-db";
 
 describe("ProductService", () => {
   let productService: ProductService;
+  let pool: Pool;
 
-  beforeEach(() => {
-    const store = new ProductStore();
+  beforeAll(async () => {
+    pool = await getTestPool();
+  });
+
+  afterAll(async () => {
+    await closeTestPool();
+  });
+
+  beforeEach(async () => {
+    await cleanTables(pool);
+    const store = new ProductStore(pool);
     productService = new ProductService(store);
   });
 
   describe("createProduct", () => {
-    it("should create a product successfully", () => {
-      const result = productService.createProduct({
+    it("should create a product successfully", async () => {
+      const result = await productService.createProduct({
         name: "Wireless Mouse",
         description: "Ergonomic wireless mouse",
         price: 29.99,
@@ -27,8 +39,8 @@ describe("ProductService", () => {
       expect(result.data!.id).toBeDefined();
     });
 
-    it("should reject product with negative price", () => {
-      const result = productService.createProduct({
+    it("should reject product with negative price", async () => {
+      const result = await productService.createProduct({
         name: "Bad Product",
         description: "Has negative price",
         price: -10,
@@ -40,8 +52,8 @@ describe("ProductService", () => {
       expect(result.error).toContain("Price must be positive");
     });
 
-    it("should reject product with negative stock", () => {
-      const result = productService.createProduct({
+    it("should reject product with negative stock", async () => {
+      const result = await productService.createProduct({
         name: "Bad Product",
         description: "Has negative stock",
         price: 10,
@@ -53,8 +65,8 @@ describe("ProductService", () => {
       expect(result.error).toContain("Stock cannot be negative");
     });
 
-    it("should reject product with empty name", () => {
-      const result = productService.createProduct({
+    it("should reject product with empty name", async () => {
+      const result = await productService.createProduct({
         name: "",
         description: "No name product",
         price: 10,
@@ -68,8 +80,8 @@ describe("ProductService", () => {
   });
 
   describe("getProductById", () => {
-    it("should return a product by its ID", () => {
-      const created = productService.createProduct({
+    it("should return a product by its ID", async () => {
+      const created = await productService.createProduct({
         name: "Keyboard",
         description: "Mechanical keyboard",
         price: 79.99,
@@ -77,42 +89,42 @@ describe("ProductService", () => {
         stock: 50,
       });
 
-      const result = productService.getProductById(created.data!.id);
+      const result = await productService.getProductById(created.data!.id);
       expect(result.success).toBe(true);
       expect(result.data!.name).toBe("Keyboard");
     });
 
-    it("should return error for non-existent product", () => {
-      const result = productService.getProductById("non-existent-id");
+    it("should return error for non-existent product", async () => {
+      const result = await productService.getProductById("non-existent-id");
       expect(result.success).toBe(false);
       expect(result.error).toContain("Product not found");
     });
   });
 
   describe("searchProducts", () => {
-    beforeEach(() => {
-      productService.createProduct({
+    beforeEach(async () => {
+      await productService.createProduct({
         name: "Wireless Mouse",
         description: "Ergonomic wireless mouse with USB receiver",
         price: 29.99,
         category: "Electronics",
         stock: 100,
       });
-      productService.createProduct({
+      await productService.createProduct({
         name: "Gaming Keyboard",
         description: "RGB mechanical gaming keyboard",
         price: 89.99,
         category: "Electronics",
         stock: 50,
       });
-      productService.createProduct({
+      await productService.createProduct({
         name: "Cotton T-Shirt",
         description: "Comfortable cotton t-shirt",
         price: 19.99,
         category: "Clothing",
         stock: 200,
       });
-      productService.createProduct({
+      await productService.createProduct({
         name: "Running Shoes",
         description: "Lightweight running shoes",
         price: 59.99,
@@ -121,43 +133,43 @@ describe("ProductService", () => {
       });
     });
 
-    it("should return all products when no filters given", () => {
-      const result = productService.searchProducts({});
+    it("should return all products when no filters given", async () => {
+      const result = await productService.searchProducts({});
       expect(result.success).toBe(true);
       expect(result.data!.data.length).toBe(4);
       expect(result.data!.total).toBe(4);
     });
 
-    it("should search products by keyword in name", () => {
-      const result = productService.searchProducts({ keyword: "mouse" });
+    it("should search products by keyword in name", async () => {
+      const result = await productService.searchProducts({ keyword: "mouse" });
       expect(result.success).toBe(true);
       expect(result.data!.data.length).toBe(1);
       expect(result.data!.data[0].name).toBe("Wireless Mouse");
     });
 
-    it("should search products by keyword in description", () => {
-      const result = productService.searchProducts({ keyword: "mechanical" });
+    it("should search products by keyword in description", async () => {
+      const result = await productService.searchProducts({ keyword: "mechanical" });
       expect(result.success).toBe(true);
       expect(result.data!.data.length).toBe(1);
       expect(result.data!.data[0].name).toBe("Gaming Keyboard");
     });
 
-    it("should search products by keyword case-insensitively", () => {
-      const result = productService.searchProducts({ keyword: "WIRELESS" });
+    it("should search products by keyword case-insensitively", async () => {
+      const result = await productService.searchProducts({ keyword: "WIRELESS" });
       expect(result.success).toBe(true);
       expect(result.data!.data.length).toBe(1);
     });
 
-    it("should filter products by category", () => {
-      const result = productService.searchProducts({
+    it("should filter products by category", async () => {
+      const result = await productService.searchProducts({
         category: "Clothing",
       });
       expect(result.success).toBe(true);
       expect(result.data!.data.length).toBe(2);
     });
 
-    it("should filter products by price range", () => {
-      const result = productService.searchProducts({
+    it("should filter products by price range", async () => {
+      const result = await productService.searchProducts({
         minPrice: 25,
         maxPrice: 60,
       });
@@ -169,8 +181,8 @@ describe("ProductService", () => {
       ]);
     });
 
-    it("should combine keyword and category filters", () => {
-      const result = productService.searchProducts({
+    it("should combine keyword and category filters", async () => {
+      const result = await productService.searchProducts({
         keyword: "keyboard",
         category: "Electronics",
       });
@@ -179,8 +191,8 @@ describe("ProductService", () => {
       expect(result.data!.data[0].name).toBe("Gaming Keyboard");
     });
 
-    it("should return empty array when no products match", () => {
-      const result = productService.searchProducts({
+    it("should return empty array when no products match", async () => {
+      const result = await productService.searchProducts({
         keyword: "nonexistent",
       });
       expect(result.success).toBe(true);
@@ -189,8 +201,8 @@ describe("ProductService", () => {
   });
 
   describe("updateStock", () => {
-    it("should update product stock", () => {
-      const created = productService.createProduct({
+    it("should update product stock", async () => {
+      const created = await productService.createProduct({
         name: "Headphones",
         description: "Noise cancelling headphones",
         price: 199.99,
@@ -198,13 +210,13 @@ describe("ProductService", () => {
         stock: 30,
       });
 
-      const result = productService.updateStock(created.data!.id, 25);
+      const result = await productService.updateStock(created.data!.id, 25);
       expect(result.success).toBe(true);
       expect(result.data!.stock).toBe(25);
     });
 
-    it("should reject negative stock update", () => {
-      const created = productService.createProduct({
+    it("should reject negative stock update", async () => {
+      const created = await productService.createProduct({
         name: "Headphones",
         description: "Noise cancelling headphones",
         price: 199.99,
@@ -212,7 +224,7 @@ describe("ProductService", () => {
         stock: 30,
       });
 
-      const result = productService.updateStock(created.data!.id, -5);
+      const result = await productService.updateStock(created.data!.id, -5);
       expect(result.success).toBe(false);
       expect(result.error).toContain("Stock cannot be negative");
     });

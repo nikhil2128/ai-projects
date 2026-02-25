@@ -14,7 +14,7 @@ const MAX_PAGE_LIMIT = 100;
 export class ProductService {
   constructor(private store: ProductStore) {}
 
-  createProduct(input: ProductCreateInput): ServiceResult<Product> {
+  async createProduct(input: ProductCreateInput): Promise<ServiceResult<Product>> {
     if (!input.name.trim()) {
       return { success: false, error: "Product name is required" };
     }
@@ -38,29 +38,31 @@ export class ProductService {
       createdAt: new Date(),
     };
 
-    this.store.addProduct(product);
+    await this.store.addProduct(product);
     return { success: true, data: product };
   }
 
-  getProductById(id: string): ServiceResult<Product> {
-    const product = this.store.findProductById(id);
+  async getProductById(id: string): Promise<ServiceResult<Product>> {
+    const product = await this.store.findProductById(id);
     if (!product) {
       return { success: false, error: "Product not found" };
     }
     return { success: true, data: product };
   }
 
-  getProductsByIds(ids: string[]): ServiceResult<Product[]> {
-    const products = ids
-      .map((id) => this.store.findProductById(id))
-      .filter((p): p is Product => p !== undefined);
+  async getProductsByIds(ids: string[]): Promise<ServiceResult<Product[]>> {
+    const products: Product[] = [];
+    for (const id of ids) {
+      const p = await this.store.findProductById(id);
+      if (p) products.push(p);
+    }
     return { success: true, data: products };
   }
 
-  searchProducts(
+  async searchProducts(
     query: ProductSearchQuery
-  ): ServiceResult<PaginatedResult<Product>> {
-    let products = this.store.getAllProducts();
+  ): Promise<ServiceResult<PaginatedResult<Product>>> {
+    let products = await this.store.getAllProducts();
 
     if (query.keyword) {
       const kw = query.keyword.toLowerCase();
@@ -102,18 +104,18 @@ export class ProductService {
     };
   }
 
-  updateStock(productId: string, newStock: number): ServiceResult<Product> {
+  async updateStock(productId: string, newStock: number): Promise<ServiceResult<Product>> {
     if (newStock < 0) {
       return { success: false, error: "Stock cannot be negative" };
     }
 
-    const product = this.store.findProductById(productId);
+    const product = await this.store.findProductById(productId);
     if (!product) {
       return { success: false, error: "Product not found" };
     }
 
     product.stock = newStock;
-    this.store.updateProduct(product);
+    await this.store.updateProduct(product);
     return { success: true, data: product };
   }
 }

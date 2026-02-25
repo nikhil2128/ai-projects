@@ -1,13 +1,25 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
+import { Pool } from "pg";
 import { AuthService } from "./service";
 import { AuthStore } from "./store";
+import { getTestPool, cleanTables, closeTestPool } from "../../../shared/test-db";
 
 describe("AuthService", () => {
   let authService: AuthService;
   let store: AuthStore;
+  let pool: Pool;
 
-  beforeEach(() => {
-    store = new AuthStore();
+  beforeAll(async () => {
+    pool = await getTestPool();
+  });
+
+  afterAll(async () => {
+    await closeTestPool();
+  });
+
+  beforeEach(async () => {
+    await cleanTables(pool);
+    store = new AuthStore(pool);
     authService = new AuthService(store);
   });
 
@@ -34,7 +46,7 @@ describe("AuthService", () => {
       });
 
       expect(result.success).toBe(true);
-      const user = store.findUserByEmail("alice@example.com");
+      const user = await store.findUserByEmail("alice@example.com");
       expect(user).toBeDefined();
       expect(user!.passwordHash).not.toBe("securePass123");
     });
@@ -146,12 +158,12 @@ describe("AuthService", () => {
         password: "securePass123",
       });
 
-      const userId = authService.validateToken(loginResult.data!.token);
+      const userId = await authService.validateToken(loginResult.data!.token);
       expect(userId).toBe(loginResult.data!.userId);
     });
 
-    it("should return null for an invalid token", () => {
-      const userId = authService.validateToken("invalid-token");
+    it("should return null for an invalid token", async () => {
+      const userId = await authService.validateToken("invalid-token");
       expect(userId).toBeNull();
     });
   });

@@ -22,7 +22,44 @@ x-backend-common: &backend-common
         memory: 128M
         cpus: "0.25"
 
+x-db-env: &db-env
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: ecommerce
+  DB_USER: ecommerce
+  DB_PASSWORD: ecommerce
+  DB_POOL_MAX: "10"
+
 services:
+  # ── PostgreSQL Database ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ecommerce
+      POSTGRES_USER: ecommerce
+      POSTGRES_PASSWORD: ecommerce
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecommerce -d ecommerce"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+        reservations:
+          memory: 256M
+          cpus: "0.5"
+
   # ── Reverse Proxy ──────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
@@ -104,6 +141,10 @@ services:
         SERVICE_PATH: services/auth/src/index.js
     environment:
       PORT: 3001
+      <<: *db-env
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
 
@@ -117,6 +158,10 @@ services:
         SERVICE_PATH: services/product/src/index.js
     environment:
       PORT: 3002
+      <<: *db-env
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/health"]
 
@@ -131,6 +176,10 @@ services:
     environment:
       PORT: 3003
       PRODUCT_SERVICE_URL: http://product:3002
+      <<: *db-env
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3003/health"]
 
@@ -146,6 +195,10 @@ services:
       PORT: 3004
       CART_SERVICE_URL: http://cart:3003
       PRODUCT_SERVICE_URL: http://product:3002
+      <<: *db-env
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3004/health"]
 
@@ -161,6 +214,10 @@ services:
       PORT: 3005
       ORDER_SERVICE_URL: http://order:3004
       PRODUCT_SERVICE_URL: http://product:3002
+      <<: *db-env
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3005/health"]
 
@@ -177,6 +234,9 @@ services:
         limits:
           memory: 64M
           cpus: "0.1"
+
+volumes:
+  pgdata:
 
 networks:
   app-network:

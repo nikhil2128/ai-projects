@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import http from "http";
+import { Pool } from "pg";
 import { createApp as createAuthApp } from "../services/auth/src/app";
 import { createApp as createProductApp } from "../services/product/src/app";
 import { createApp as createCartApp } from "../services/cart/src/app";
@@ -12,6 +13,7 @@ import {
 	HttpCartClient,
 	HttpOrderClient,
 } from "../shared/http-clients";
+import { getTestPool, cleanTables, closeTestPool } from "../shared/test-db";
 
 function startServer(
 	app: Express.Application,
@@ -31,24 +33,28 @@ function startServer(
 describe("E-commerce Microservices Integration Tests", () => {
 	let servers: http.Server[] = [];
 	let gatewayApp: ReturnType<typeof createGateway>["app"];
+	let pool: Pool;
 
 	beforeAll(async () => {
-		const auth = await startServer(createAuthApp().app);
-		const product = await startServer(createProductApp().app);
+		pool = await getTestPool();
+		await cleanTables(pool);
+
+		const auth = await startServer(createAuthApp(pool).app);
+		const product = await startServer(createProductApp(pool).app);
 
 		const productClient = new HttpProductClient(
 			`http://localhost:${product.port}`,
 		);
-		const cart = await startServer(createCartApp(undefined, productClient).app);
+		const cart = await startServer(createCartApp(pool, productClient).app);
 
 		const cartClient = new HttpCartClient(`http://localhost:${cart.port}`);
 		const order = await startServer(
-			createOrderApp(undefined, cartClient, productClient).app,
+			createOrderApp(pool, cartClient, productClient).app,
 		);
 
 		const orderClient = new HttpOrderClient(`http://localhost:${order.port}`);
 		const payment = await startServer(
-			createPaymentApp(undefined, orderClient, productClient).app,
+			createPaymentApp(pool, orderClient, productClient).app,
 		);
 
 		const { app: gw } = createGateway({
@@ -77,6 +83,7 @@ describe("E-commerce Microservices Integration Tests", () => {
 				(s) => new Promise<void>((resolve) => s.close(() => resolve())),
 			),
 		);
+		await closeTestPool();
 	});
 
 	describe("Health Check", () => {
@@ -220,7 +227,6 @@ describe("E-commerce Microservices Integration Tests", () => {
 		});
 
 		it("should complete the full purchase flow", async () => {
-			// 1. Register and login
 			await request(gatewayApp).post("/api/auth/register").send({
 				email: "full-flow@test.com",
 				name: "FullFlow",
@@ -233,7 +239,6 @@ describe("E-commerce Microservices Integration Tests", () => {
 			token = loginRes.body.token;
 			expect(token).toBeDefined();
 
-			// 2. Search for products
 			const searchRes = await request(gatewayApp).get(
 				"/api/products?category=FlowTest",
 			);
@@ -247,7 +252,6 @@ describe("E-commerce Microservices Integration Tests", () => {
 				(p: { name: string }) => p.name === "Mechanical Keyboard",
 			).id;
 
-			// 3. Add products to cart
 			const addMouseRes = await request(gatewayApp)
 				.post("/api/cart/items")
 				.set("Authorization", `Bearer ${token}`)
@@ -260,14 +264,12 @@ describe("E-commerce Microservices Integration Tests", () => {
 				.send({ productId: keyboardId, quantity: 1 });
 			expect(addKeyboardRes.status).toBe(200);
 
-			// 4. Verify cart contents
 			const cartRes = await request(gatewayApp)
 				.get("/api/cart")
 				.set("Authorization", `Bearer ${token}`);
 			expect(cartRes.status).toBe(200);
 			expect(cartRes.body.items.length).toBe(2);
 
-			// 5. Create order
 			const orderRes = await request(gatewayApp)
 				.post("/api/orders")
 				.set("Authorization", `Bearer ${token}`)
@@ -278,13 +280,11 @@ describe("E-commerce Microservices Integration Tests", () => {
 
 			const orderId = orderRes.body.id;
 
-			// 6. Cart should be empty after order
 			const emptyCartRes = await request(gatewayApp)
 				.get("/api/cart")
 				.set("Authorization", `Bearer ${token}`);
 			expect(emptyCartRes.body.items.length).toBe(0);
 
-			// 7. Process payment
 			const paymentRes = await request(gatewayApp)
 				.post("/api/payments")
 				.set("Authorization", `Bearer ${token}`)
@@ -293,7 +293,6 @@ describe("E-commerce Microservices Integration Tests", () => {
 			expect(paymentRes.body.status).toBe("completed");
 			expect(paymentRes.body.amount).toBeCloseTo(29.99 * 2 + 89.99, 2);
 
-			// 8. Order should now be confirmed
 			const confirmedOrderRes = await request(gatewayApp)
 				.get(`/api/orders/${orderId}`)
 				.set("Authorization", `Bearer ${token}`);
@@ -301,13 +300,11 @@ describe("E-commerce Microservices Integration Tests", () => {
 			expect(confirmedOrderRes.body.status).toBe("confirmed");
 			expect(confirmedOrderRes.body.paymentId).toBeDefined();
 
-			// 9. Verify order history
 			const ordersRes = await request(gatewayApp)
 				.get("/api/orders")
 				.set("Authorization", `Bearer ${token}`);
 			expect(ordersRes.body.data.length).toBe(1);
 
-			// 10. Verify product stock was reduced
 			const mouseAfterRes = await request(gatewayApp).get(
 				`/api/products/${mouseId}`,
 			);

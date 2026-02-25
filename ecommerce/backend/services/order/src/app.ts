@@ -1,4 +1,5 @@
 import express from "express";
+import { Pool } from "pg";
 import { CartServiceClient, ProductServiceClient } from "../../../shared/types";
 import { HttpCartClient, HttpProductClient } from "../../../shared/http-clients";
 import { OrderStore } from "./store";
@@ -11,15 +12,15 @@ const PRODUCT_SERVICE_URL =
   process.env.PRODUCT_SERVICE_URL ?? "http://localhost:3002";
 
 export function createApp(
-  store?: OrderStore,
+  pool: Pool,
   cartClient?: CartServiceClient,
   productClient?: ProductServiceClient
 ) {
   const app = express();
-  const appStore = store ?? new OrderStore();
+  const store = new OrderStore(pool);
   const cart = cartClient ?? new HttpCartClient(CART_SERVICE_URL);
   const product = productClient ?? new HttpProductClient(PRODUCT_SERVICE_URL);
-  const orderService = new OrderService(appStore, cart, product);
+  const service = new OrderService(store, cart, product);
 
   app.use(express.json());
 
@@ -27,7 +28,7 @@ export function createApp(
     res.json({ status: "ok", service: "order" });
   });
 
-  app.use("/", createOrderRoutes(orderService));
+  app.use("/", createOrderRoutes(service));
 
-  return { app, store: appStore, service: orderService };
+  return { app, store, service };
 }

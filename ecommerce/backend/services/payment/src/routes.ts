@@ -24,13 +24,13 @@ export function createPaymentRoutes(paymentService: PaymentService): Router {
     res.status(201).json(result.data);
   });
 
-  router.get("/:id", (req: Request, res: Response) => {
+  router.get("/:id", async (req: Request, res: Response) => {
     const userId = req.headers["x-user-id"] as string;
     if (!userId) {
       res.status(401).json({ error: "User ID required" });
       return;
     }
-    const result = paymentService.getPayment(req.params.id, userId);
+    const result = await paymentService.getPayment(req.params.id, userId);
     if (!result.success) {
       res.status(404).json({ error: result.error });
       return;
@@ -38,13 +38,13 @@ export function createPaymentRoutes(paymentService: PaymentService): Router {
     res.json(result.data);
   });
 
-  router.get("/order/:orderId", (req: Request, res: Response) => {
+  router.get("/order/:orderId", async (req: Request, res: Response) => {
     const userId = req.headers["x-user-id"] as string;
     if (!userId) {
       res.status(401).json({ error: "User ID required" });
       return;
     }
-    const result = paymentService.getPaymentByOrderId(
+    const result = await paymentService.getPaymentByOrderId(
       req.params.orderId,
       userId
     );

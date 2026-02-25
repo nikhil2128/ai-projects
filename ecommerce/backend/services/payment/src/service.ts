@@ -28,7 +28,7 @@ export class PaymentService {
       };
     }
 
-    const existingPayment = this.store.findPaymentByOrderId(input.orderId);
+    const existingPayment = await this.store.findPaymentByOrderId(input.orderId);
     if (existingPayment && existingPayment.status === "completed") {
       return {
         success: false,
@@ -47,7 +47,7 @@ export class PaymentService {
       createdAt: new Date(),
     };
 
-    this.store.addPayment(payment);
+    await this.store.addPayment(payment);
 
     await this.orderClient.updateOrderStatus(
       input.orderId,
@@ -58,19 +58,19 @@ export class PaymentService {
     return { success: true, data: payment };
   }
 
-  getPayment(paymentId: string, userId: string): ServiceResult<Payment> {
-    const payment = this.store.findPaymentById(paymentId);
+  async getPayment(paymentId: string, userId: string): Promise<ServiceResult<Payment>> {
+    const payment = await this.store.findPaymentById(paymentId);
     if (!payment || payment.userId !== userId) {
       return { success: false, error: "Payment not found" };
     }
     return { success: true, data: payment };
   }
 
-  getPaymentByOrderId(
+  async getPaymentByOrderId(
     orderId: string,
     userId: string
-  ): ServiceResult<Payment> {
-    const payment = this.store.findPaymentByOrderId(orderId);
+  ): Promise<ServiceResult<Payment>> {
+    const payment = await this.store.findPaymentByOrderId(orderId);
     if (!payment || payment.userId !== userId) {
       return { success: false, error: "Payment not found for this order" };
     }
@@ -81,7 +81,7 @@ export class PaymentService {
     paymentId: string,
     userId: string
   ): Promise<ServiceResult<Payment>> {
-    const payment = this.store.findPaymentById(paymentId);
+    const payment = await this.store.findPaymentById(paymentId);
     if (!payment || payment.userId !== userId) {
       return { success: false, error: "Payment not found" };
     }
@@ -94,7 +94,7 @@ export class PaymentService {
     }
 
     payment.status = "refunded";
-    this.store.updatePayment(payment);
+    await this.store.updatePayment(payment);
 
     const order = await this.orderClient.getOrder(payment.orderId);
     if (order) {

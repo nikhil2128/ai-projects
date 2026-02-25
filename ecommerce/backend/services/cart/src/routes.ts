@@ -6,25 +6,25 @@ export function createCartRoutes(cartService: CartService): Router {
 
   // ── Internal endpoints (service-to-service) ──────────────────────
 
-  router.get("/internal/:userId", (req: Request, res: Response) => {
-    const result = cartService.getCart(req.params.userId);
+  router.get("/internal/:userId", async (req: Request, res: Response) => {
+    const result = await cartService.getCart(req.params.userId);
     res.json(result.data);
   });
 
-  router.delete("/internal/:userId", (req: Request, res: Response) => {
-    const result = cartService.clearCart(req.params.userId);
+  router.delete("/internal/:userId", async (req: Request, res: Response) => {
+    const result = await cartService.clearCart(req.params.userId);
     res.json(result.data);
   });
 
   // ── Public endpoints (via gateway, x-user-id header required) ───
 
-  router.get("/", (req: Request, res: Response) => {
+  router.get("/", async (req: Request, res: Response) => {
     const userId = req.headers["x-user-id"] as string;
     if (!userId) {
       res.status(401).json({ error: "User ID required" });
       return;
     }
-    const result = cartService.getCart(userId);
+    const result = await cartService.getCart(userId);
     res.json(result.data);
   });
 
@@ -64,13 +64,13 @@ export function createCartRoutes(cartService: CartService): Router {
     res.json(result.data);
   });
 
-  router.delete("/items/:productId", (req: Request, res: Response) => {
+  router.delete("/items/:productId", async (req: Request, res: Response) => {
     const userId = req.headers["x-user-id"] as string;
     if (!userId) {
       res.status(401).json({ error: "User ID required" });
       return;
     }
-    const result = cartService.removeFromCart(userId, req.params.productId);
+    const result = await cartService.removeFromCart(userId, req.params.productId);
 
     if (!result.success) {
       res.status(400).json({ error: result.error });
@@ -79,13 +79,13 @@ export function createCartRoutes(cartService: CartService): Router {
     res.json(result.data);
   });
 
-  router.delete("/", (req: Request, res: Response) => {
+  router.delete("/", async (req: Request, res: Response) => {
     const userId = req.headers["x-user-id"] as string;
     if (!userId) {
       res.status(401).json({ error: "User ID required" });
       return;
     }
-    const result = cartService.clearCart(userId);
+    const result = await cartService.clearCart(userId);
     res.json(result.data);
   });
 

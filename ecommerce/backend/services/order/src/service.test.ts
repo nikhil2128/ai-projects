@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
+import { Pool } from "pg";
 import { OrderService } from "./service";
 import { OrderStore } from "./store";
 import {
@@ -7,6 +8,7 @@ import {
   ProductServiceClient,
   CartServiceClient,
 } from "../../../shared/types";
+import { getTestPool, cleanTables, closeTestPool } from "../../../shared/test-db";
 
 class MockProductClient implements ProductServiceClient {
   private products: Map<string, Product> = new Map();
@@ -60,13 +62,23 @@ describe("OrderService", () => {
   let orderService: OrderService;
   let productClient: MockProductClient;
   let cartClient: MockCartClient;
+  let pool: Pool;
   const userId = "user-1";
 
   const mouseId = "product-mouse";
   const keyboardId = "product-keyboard";
 
-  beforeEach(() => {
-    const store = new OrderStore();
+  beforeAll(async () => {
+    pool = await getTestPool();
+  });
+
+  afterAll(async () => {
+    await closeTestPool();
+  });
+
+  beforeEach(async () => {
+    await cleanTables(pool);
+    const store = new OrderStore(pool);
     productClient = new MockProductClient();
     cartClient = new MockCartClient();
 
@@ -208,7 +220,7 @@ describe("OrderService", () => {
         shippingAddress: "123 Main St",
       });
 
-      const result = orderService.getOrder(created.data!.id, userId);
+      const result = await orderService.getOrder(created.data!.id, userId);
       expect(result.success).toBe(true);
       expect(result.data!.id).toBe(created.data!.id);
     });
@@ -223,13 +235,13 @@ describe("OrderService", () => {
         shippingAddress: "123 Main St",
       });
 
-      const result = orderService.getOrder(created.data!.id, "other-user");
+      const result = await orderService.getOrder(created.data!.id, "other-user");
       expect(result.success).toBe(false);
       expect(result.error).toContain("Order not found");
     });
 
-    it("should return error for non-existent order", () => {
-      const result = orderService.getOrder("fake-id", userId);
+    it("should return error for non-existent order", async () => {
+      const result = await orderService.getOrder("fake-id", userId);
       expect(result.success).toBe(false);
       expect(result.error).toContain("Order not found");
     });
@@ -253,14 +265,14 @@ describe("OrderService", () => {
         shippingAddress: "456 Oak Ave",
       });
 
-      const result = orderService.getUserOrders(userId);
+      const result = await orderService.getUserOrders(userId);
       expect(result.success).toBe(true);
       expect(result.data!.data.length).toBe(2);
       expect(result.data!.total).toBe(2);
     });
 
-    it("should return empty array for user with no orders", () => {
-      const result = orderService.getUserOrders("new-user");
+    it("should return empty array for user with no orders", async () => {
+      const result = await orderService.getUserOrders("new-user");
       expect(result.success).toBe(true);
       expect(result.data!.data.length).toBe(0);
       expect(result.data!.total).toBe(0);
@@ -278,7 +290,7 @@ describe("OrderService", () => {
         shippingAddress: "123 Main St",
       });
 
-      const result = orderService.updateOrderStatus(
+      const result = await orderService.updateOrderStatus(
         created.data!.id,
         "confirmed"
       );
@@ -296,9 +308,9 @@ describe("OrderService", () => {
         shippingAddress: "123 Main St",
       });
 
-      orderService.updateOrderStatus(created.data!.id, "cancelled");
+      await orderService.updateOrderStatus(created.data!.id, "cancelled");
 
-      const result = orderService.updateOrderStatus(
+      const result = await orderService.updateOrderStatus(
         created.data!.id,
         "confirmed"
       );
@@ -336,7 +348,7 @@ describe("OrderService", () => {
         shippingAddress: "123 Main St",
       });
 
-      orderService.updateOrderStatus(created.data!.id, "shipped");
+      await orderService.updateOrderStatus(created.data!.id, "shipped");
 
       const result = await orderService.cancelOrder(created.data!.id, userId);
       expect(result.success).toBe(false);

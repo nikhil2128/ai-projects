@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
+import { Pool } from "pg";
 import { PaymentService } from "./service";
 import { PaymentStore } from "./store";
 import {
@@ -8,6 +9,7 @@ import {
   OrderServiceClient,
   ProductServiceClient,
 } from "../../../shared/types";
+import { getTestPool, cleanTables, closeTestPool } from "../../../shared/test-db";
 
 class MockOrderClient implements OrderServiceClient {
   private orders: Map<string, Order> = new Map();
@@ -66,12 +68,22 @@ describe("PaymentService", () => {
   let paymentService: PaymentService;
   let orderClient: MockOrderClient;
   let productClient: MockProductClient;
+  let pool: Pool;
   const userId = "user-1";
   let orderId: string;
   const mouseId = "product-mouse";
 
-  beforeEach(() => {
-    const store = new PaymentStore();
+  beforeAll(async () => {
+    pool = await getTestPool();
+  });
+
+  afterAll(async () => {
+    await closeTestPool();
+  });
+
+  beforeEach(async () => {
+    await cleanTables(pool);
+    const store = new PaymentStore(pool);
     orderClient = new MockOrderClient();
     productClient = new MockProductClient();
 
@@ -208,7 +220,7 @@ describe("PaymentService", () => {
         method: "credit_card",
       });
 
-      const result = paymentService.getPayment(paid.data!.id, userId);
+      const result = await paymentService.getPayment(paid.data!.id, userId);
       expect(result.success).toBe(true);
       expect(result.data!.id).toBe(paid.data!.id);
     });
@@ -220,7 +232,7 @@ describe("PaymentService", () => {
         method: "credit_card",
       });
 
-      const result = paymentService.getPayment(paid.data!.id, "other-user");
+      const result = await paymentService.getPayment(paid.data!.id, "other-user");
       expect(result.success).toBe(false);
       expect(result.error).toContain("Payment not found");
     });
@@ -289,13 +301,13 @@ describe("PaymentService", () => {
         method: "credit_card",
       });
 
-      const result = paymentService.getPaymentByOrderId(orderId, userId);
+      const result = await paymentService.getPaymentByOrderId(orderId, userId);
       expect(result.success).toBe(true);
       expect(result.data!.orderId).toBe(orderId);
     });
 
-    it("should return error when no payment exists for order", () => {
-      const result = paymentService.getPaymentByOrderId(orderId, userId);
+    it("should return error when no payment exists for order", async () => {
+      const result = await paymentService.getPaymentByOrderId(orderId, userId);
       expect(result.success).toBe(false);
       expect(result.error).toContain("Payment not found");
     });

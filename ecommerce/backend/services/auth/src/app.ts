@@ -1,12 +1,13 @@
 import express from "express";
+import { Pool } from "pg";
 import { AuthStore } from "./store";
 import { AuthService } from "./service";
 import { createAuthRoutes } from "./routes";
 
-export function createApp(store?: AuthStore) {
+export function createApp(pool: Pool) {
   const app = express();
-  const appStore = store ?? new AuthStore();
-  const authService = new AuthService(appStore);
+  const store = new AuthStore(pool);
+  const service = new AuthService(store);
 
   app.use(express.json());
 
@@ -14,7 +15,7 @@ export function createApp(store?: AuthStore) {
     res.json({ status: "ok", service: "auth" });
   });
 
-  app.use("/", createAuthRoutes(authService));
+  app.use("/", createAuthRoutes(service));
 
-  return { app, store: appStore, service: authService };
+  return { app, store, service };
 }

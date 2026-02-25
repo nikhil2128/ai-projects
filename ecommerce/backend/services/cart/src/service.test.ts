@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
+import { Pool } from "pg";
 import { CartService } from "./service";
 import { CartStore } from "./store";
 import { Product, ProductServiceClient } from "../../../shared/types";
+import { getTestPool, cleanTables, closeTestPool } from "../../../shared/test-db";
 
 class MockProductClient implements ProductServiceClient {
   private products: Map<string, Product> = new Map();
@@ -34,13 +36,23 @@ class MockProductClient implements ProductServiceClient {
 describe("CartService", () => {
   let cartService: CartService;
   let productClient: MockProductClient;
+  let pool: Pool;
   const userId = "user-1";
 
   let mouseId: string;
   let keyboardId: string;
 
-  beforeEach(() => {
-    const store = new CartStore();
+  beforeAll(async () => {
+    pool = await getTestPool();
+  });
+
+  afterAll(async () => {
+    await closeTestPool();
+  });
+
+  beforeEach(async () => {
+    await cleanTables(pool);
+    const store = new CartStore(pool);
     productClient = new MockProductClient();
 
     mouseId = "product-mouse";
@@ -125,14 +137,14 @@ describe("CartService", () => {
       await cartService.addToCart(userId, mouseId, 1);
       await cartService.addToCart(userId, keyboardId, 1);
 
-      const result = cartService.removeFromCart(userId, mouseId);
+      const result = await cartService.removeFromCart(userId, mouseId);
       expect(result.success).toBe(true);
       expect(result.data!.items.length).toBe(1);
       expect(result.data!.items[0].productId).toBe(keyboardId);
     });
 
-    it("should return error when removing non-existent cart item", () => {
-      const result = cartService.removeFromCart(userId, "fake-id");
+    it("should return error when removing non-existent cart item", async () => {
+      const result = await cartService.removeFromCart(userId, "fake-id");
       expect(result.success).toBe(false);
       expect(result.error).toContain("not found in cart");
     });
@@ -180,14 +192,14 @@ describe("CartService", () => {
     it("should return the user's cart", async () => {
       await cartService.addToCart(userId, mouseId, 3);
 
-      const result = cartService.getCart(userId);
+      const result = await cartService.getCart(userId);
       expect(result.success).toBe(true);
       expect(result.data!.userId).toBe(userId);
       expect(result.data!.items.length).toBe(1);
     });
 
-    it("should return an empty cart for a new user", () => {
-      const result = cartService.getCart("new-user");
+    it("should return an empty cart for a new user", async () => {
+      const result = await cartService.getCart("new-user");
       expect(result.success).toBe(true);
       expect(result.data!.items.length).toBe(0);
     });
@@ -198,7 +210,7 @@ describe("CartService", () => {
       await cartService.addToCart(userId, mouseId, 1);
       await cartService.addToCart(userId, keyboardId, 1);
 
-      const result = cartService.clearCart(userId);
+      const result = await cartService.clearCart(userId);
       expect(result.success).toBe(true);
       expect(result.data!.items.length).toBe(0);
     });
@@ -209,12 +221,12 @@ describe("CartService", () => {
       await cartService.addToCart(userId, mouseId, 2);
       await cartService.addToCart(userId, keyboardId, 1);
 
-      const total = cartService.getCartTotal(userId);
+      const total = await cartService.getCartTotal(userId);
       expect(total).toBeCloseTo(29.99 * 2 + 89.99, 2);
     });
 
-    it("should return 0 for an empty cart", () => {
-      const total = cartService.getCartTotal("new-user");
+    it("should return 0 for an empty cart", async () => {
+      const total = await cartService.getCartTotal("new-user");
       expect(total).toBe(0);
     });
   });

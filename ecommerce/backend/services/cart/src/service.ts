@@ -22,7 +22,7 @@ export class CartService {
       return { success: false, error: "Product not found" };
     }
 
-    const cart = this.getOrCreateCart(userId);
+    const cart = await this.getOrCreateCart(userId);
     const existingItem = cart.items.find((i) => i.productId === productId);
     const currentQty = existingItem ? existingItem.quantity : 0;
 
@@ -45,12 +45,12 @@ export class CartService {
     }
 
     cart.updatedAt = new Date();
-    this.store.saveCart(cart);
+    await this.store.saveCart(cart);
     return { success: true, data: cart };
   }
 
-  removeFromCart(userId: string, productId: string): ServiceResult<Cart> {
-    const cart = this.getOrCreateCart(userId);
+  async removeFromCart(userId: string, productId: string): Promise<ServiceResult<Cart>> {
+    const cart = await this.getOrCreateCart(userId);
     const idx = cart.items.findIndex((i) => i.productId === productId);
 
     if (idx === -1) {
@@ -59,7 +59,7 @@ export class CartService {
 
     cart.items.splice(idx, 1);
     cart.updatedAt = new Date();
-    this.store.saveCart(cart);
+    await this.store.saveCart(cart);
     return { success: true, data: cart };
   }
 
@@ -84,7 +84,7 @@ export class CartService {
       };
     }
 
-    const cart = this.getOrCreateCart(userId);
+    const cart = await this.getOrCreateCart(userId);
     const item = cart.items.find((i) => i.productId === productId);
 
     if (!item) {
@@ -93,33 +93,33 @@ export class CartService {
 
     item.quantity = quantity;
     cart.updatedAt = new Date();
-    this.store.saveCart(cart);
+    await this.store.saveCart(cart);
     return { success: true, data: cart };
   }
 
-  getCart(userId: string): ServiceResult<Cart> {
-    const cart = this.getOrCreateCart(userId);
+  async getCart(userId: string): Promise<ServiceResult<Cart>> {
+    const cart = await this.getOrCreateCart(userId);
     return { success: true, data: cart };
   }
 
-  clearCart(userId: string): ServiceResult<Cart> {
-    const cart = this.getOrCreateCart(userId);
+  async clearCart(userId: string): Promise<ServiceResult<Cart>> {
+    const cart = await this.getOrCreateCart(userId);
     cart.items = [];
     cart.updatedAt = new Date();
-    this.store.saveCart(cart);
+    await this.store.saveCart(cart);
     return { success: true, data: cart };
   }
 
-  getCartTotal(userId: string): number {
-    const cart = this.getOrCreateCart(userId);
+  async getCartTotal(userId: string): Promise<number> {
+    const cart = await this.getOrCreateCart(userId);
     return cart.items.reduce(
       (total, item) => total + item.price * item.quantity,
       0
     );
   }
 
-  private getOrCreateCart(userId: string): Cart {
-    let cart = this.store.getCart(userId);
+  private async getOrCreateCart(userId: string): Promise<Cart> {
+    let cart = await this.store.getCart(userId);
     if (!cart) {
       cart = {
         id: uuidv4(),
@@ -127,7 +127,7 @@ export class CartService {
         items: [],
         updatedAt: new Date(),
       };
-      this.store.saveCart(cart);
+      await this.store.saveCart(cart);
     }
     return cart;
   }

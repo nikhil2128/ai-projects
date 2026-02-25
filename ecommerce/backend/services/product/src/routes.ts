@@ -4,8 +4,8 @@ import { ProductService } from "./service";
 export function createProductRoutes(productService: ProductService): Router {
   const router = Router();
 
-  router.get("/internal/:id", (req: Request, res: Response) => {
-    const result = productService.getProductById(req.params.id);
+  router.get("/internal/:id", async (req: Request, res: Response) => {
+    const result = await productService.getProductById(req.params.id);
     if (!result.success) {
       res.status(404).json({ error: result.error });
       return;
@@ -13,7 +13,7 @@ export function createProductRoutes(productService: ProductService): Router {
     res.json(result.data);
   });
 
-  router.post("/internal/batch", (req: Request, res: Response) => {
+  router.post("/internal/batch", async (req: Request, res: Response) => {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
       res.status(400).json({ error: "ids array is required" });
@@ -23,13 +23,13 @@ export function createProductRoutes(productService: ProductService): Router {
       res.status(400).json({ error: "Maximum 100 ids per batch request" });
       return;
     }
-    const result = productService.getProductsByIds(ids);
+    const result = await productService.getProductsByIds(ids);
     res.json(result.data);
   });
 
-  router.put("/internal/stock/:id", (req: Request, res: Response) => {
+  router.put("/internal/stock/:id", async (req: Request, res: Response) => {
     const { stock } = req.body;
-    const result = productService.updateStock(req.params.id, stock);
+    const result = await productService.updateStock(req.params.id, stock);
     if (!result.success) {
       res.status(400).json({ error: result.error });
       return;
@@ -37,9 +37,9 @@ export function createProductRoutes(productService: ProductService): Router {
     res.json(result.data);
   });
 
-  router.get("/", (req: Request, res: Response) => {
+  router.get("/", async (req: Request, res: Response) => {
     const { keyword, category, minPrice, maxPrice, page, limit } = req.query;
-    const result = productService.searchProducts({
+    const result = await productService.searchProducts({
       keyword: keyword as string | undefined,
       category: category as string | undefined,
       minPrice: minPrice ? Number(minPrice) : undefined,
@@ -50,8 +50,8 @@ export function createProductRoutes(productService: ProductService): Router {
     res.json(result.data);
   });
 
-  router.get("/:id", (req: Request, res: Response) => {
-    const result = productService.getProductById(req.params.id);
+  router.get("/:id", async (req: Request, res: Response) => {
+    const result = await productService.getProductById(req.params.id);
     if (!result.success) {
       res.status(404).json({ error: result.error });
       return;
@@ -59,8 +59,8 @@ export function createProductRoutes(productService: ProductService): Router {
     res.json(result.data);
   });
 
-  router.post("/", (req: Request, res: Response) => {
-    const result = productService.createProduct(req.body);
+  router.post("/", async (req: Request, res: Response) => {
+    const result = await productService.createProduct(req.body);
     if (!result.success) {
       res.status(400).json({ error: result.error });
       return;

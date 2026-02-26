@@ -39,11 +39,14 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(input.password, 10);
 
+    const role = input.role === "seller" ? "seller" : "buyer";
+
     const user: User = {
       id: uuidv4(),
       email: input.email,
       name: input.name,
       passwordHash,
+      role,
       createdAt: new Date(),
     };
 
@@ -76,12 +79,16 @@ export class AuthService {
       data: {
         userId: user.id,
         email: user.email,
+        role: user.role,
         token,
       },
     };
   }
 
-  async validateToken(token: string): Promise<string | null> {
-    return (await this.store.getUserIdByToken(token)) ?? null;
+  async validateToken(token: string): Promise<{ userId: string; role: string } | null> {
+    const userId = await this.store.getUserIdByToken(token);
+    if (!userId) return null;
+    const role = (await this.store.getUserRoleById(userId)) ?? "buyer";
+    return { userId, role };
   }
 }

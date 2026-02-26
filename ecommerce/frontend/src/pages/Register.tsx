@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { UserPlus, Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { ApiError } from "../api";
+import type { UserRole } from "../types";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -10,6 +11,7 @@ export default function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState<UserRole>("buyer");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -18,7 +20,7 @@ export default function Register() {
     setLoading(true);
     setError("");
     try {
-      await register(email, name, password);
+      await register(email, name, password, role);
       navigate("/login");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Registration failed");
@@ -47,8 +49,38 @@ export default function Register() {
           )}
 
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              I want to
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setRole("buyer")}
+                className={`px-4 py-3 rounded-xl border-2 text-sm font-medium transition ${
+                  role === "buyer"
+                    ? "border-indigo-600 bg-indigo-50 text-indigo-700"
+                    : "border-gray-200 text-gray-600 hover:border-gray-300"
+                }`}
+              >
+                Buy Products
+              </button>
+              <button
+                type="button"
+                onClick={() => setRole("seller")}
+                className={`px-4 py-3 rounded-xl border-2 text-sm font-medium transition ${
+                  role === "seller"
+                    ? "border-emerald-600 bg-emerald-50 text-emerald-700"
+                    : "border-gray-200 text-gray-600 hover:border-gray-300"
+                }`}
+              >
+                Sell Products
+              </button>
+            </div>
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Full Name
+              {role === "seller" ? "Business Name" : "Full Name"}
             </label>
             <input
               type="text"
@@ -56,7 +88,7 @@ export default function Register() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
-              placeholder="Alice Johnson"
+              placeholder={role === "seller" ? "Your Store Name" : "Alice Johnson"}
             />
           </div>
 
@@ -92,10 +124,16 @@ export default function Register() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 transition disabled:opacity-60"
+            className={`w-full flex items-center justify-center gap-2 py-3 text-white font-medium rounded-xl transition disabled:opacity-60 ${
+              role === "seller"
+                ? "bg-emerald-600 hover:bg-emerald-700"
+                : "bg-indigo-600 hover:bg-indigo-700"
+            }`}
           >
             {loading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
+            ) : role === "seller" ? (
+              "Create Seller Account"
             ) : (
               "Create Account"
             )}

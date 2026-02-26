@@ -1,12 +1,12 @@
 import { Link, useNavigate } from "react-router-dom";
-import { ShoppingCart, Package, LogOut, LogIn, Store, Heart } from "lucide-react";
+import { ShoppingCart, Package, LogOut, LogIn, Store, Heart, LayoutDashboard } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useFavorites } from "../context/FavoritesContext";
 import { useQuery, invalidateQuery } from "../hooks/useQuery";
 import { api } from "../api";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const { isLoggedIn, email, logout } = useAuth();
+  const { isLoggedIn, isSeller, email, logout } = useAuth();
   const { favoritesCount, animating } = useFavorites();
   const navigate = useNavigate();
 
@@ -40,6 +40,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <span className="hidden sm:block text-sm text-gray-500 mr-2">
                     {email}
                   </span>
+                  {isSeller && (
+                    <Link
+                      to="/seller"
+                      className="p-2 rounded-lg text-gray-600 hover:bg-emerald-50 hover:text-emerald-600 transition"
+                      title="Seller Dashboard"
+                    >
+                      <LayoutDashboard className="h-5 w-5" />
+                    </Link>
+                  )}
                   <Link
                     to="/favorites"
                     className={`relative p-2 rounded-lg text-gray-600 hover:bg-red-50 hover:text-red-500 transition ${

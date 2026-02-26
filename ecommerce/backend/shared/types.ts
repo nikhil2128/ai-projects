@@ -1,8 +1,11 @@
+export type UserRole = "buyer" | "seller";
+
 export interface User {
   id: string;
   email: string;
   name: string;
   passwordHash: string;
+  role: UserRole;
   createdAt: Date;
 }
 
@@ -10,6 +13,7 @@ export interface UserRegistrationInput {
   email: string;
   name: string;
   password: string;
+  role?: UserRole;
 }
 
 export interface UserLoginInput {
@@ -20,6 +24,7 @@ export interface UserLoginInput {
 export interface AuthToken {
   userId: string;
   email: string;
+  role: UserRole;
   token: string;
 }
 
@@ -31,6 +36,7 @@ export interface Product {
   category: string;
   stock: number;
   imageUrl: string;
+  sellerId?: string;
   createdAt: Date;
 }
 
@@ -152,4 +158,26 @@ export interface OrderServiceClient {
     status: OrderStatus,
     paymentId?: string
   ): Promise<boolean>;
+}
+
+// ── Seller-specific types ──────────────────────────────────────────
+
+export interface SellerSale {
+  orderId: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: number;
+  total: number;
+  orderStatus: OrderStatus;
+  buyerId: string;
+  createdAt: Date;
+}
+
+export interface SellerDashboardStats {
+  totalProducts: number;
+  totalSales: number;
+  totalRevenue: number;
+  recentSales: SellerSale[];
+  topProducts: { productId: string; productName: string; totalSold: number; revenue: number }[];
 }

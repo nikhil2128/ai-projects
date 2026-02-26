@@ -6,8 +6,8 @@ export class ProductStore {
 
   async addProduct(product: Product): Promise<void> {
     await this.pool.query(
-      `INSERT INTO products (id, name, description, price, category, stock, image_url, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      `INSERT INTO products (id, name, description, price, category, stock, image_url, seller_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         product.id,
         product.name,
@@ -16,6 +16,7 @@ export class ProductStore {
         product.category,
         product.stock,
         product.imageUrl,
+        product.sellerId ?? null,
         product.createdAt,
       ]
     );
@@ -63,6 +64,7 @@ export class ProductStore {
       category: row.category as string,
       stock: row.stock as number,
       imageUrl: row.image_url as string,
+      sellerId: row.seller_id as string | undefined,
       createdAt: new Date(row.created_at as string),
     };
   }

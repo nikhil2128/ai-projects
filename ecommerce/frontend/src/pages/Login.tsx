@@ -18,7 +18,8 @@ export default function Login() {
     setError("");
     try {
       await login(email, password);
-      navigate("/");
+      const role = localStorage.getItem("role");
+      navigate(role === "seller" ? "/seller" : "/");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Login failed");
     } finally {

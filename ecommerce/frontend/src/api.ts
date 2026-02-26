@@ -1,4 +1,16 @@
-import type { AuthToken, Product, Cart, Order, Payment, PaymentMethod } from "./types";
+import type {
+  AuthToken,
+  Product,
+  Cart,
+  Order,
+  Payment,
+  PaymentMethod,
+  SellerDashboardStats,
+  SellerSale,
+  ProductCreateInput,
+  BatchUploadResult,
+  PaginatedResult,
+} from "./types";
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -68,10 +80,10 @@ interface PaginatedProducts {
 
 export const api = {
   auth: {
-    register(email: string, name: string, password: string) {
+    register(email: string, name: string, password: string, role: string = "buyer") {
       return request<{ id: string; email: string; name: string }>("/api/auth/register", {
         method: "POST",
-        body: JSON.stringify({ email, name, password }),
+        body: JSON.stringify({ email, name, password, role }),
       });
     },
     login(email: string, password: string) {
@@ -165,6 +177,49 @@ export const api = {
       return request<{ success: boolean }>(`/api/favorites/${productId}`, {
         method: "DELETE",
       });
+    },
+  },
+
+  seller: {
+    dashboard() {
+      return request<SellerDashboardStats>("/api/seller/dashboard");
+    },
+    products(params?: { page?: number; limit?: number }) {
+      const query = new URLSearchParams();
+      if (params?.page !== undefined) query.set("page", String(params.page));
+      if (params?.limit !== undefined) query.set("limit", String(params.limit));
+      const qs = query.toString();
+      return request<PaginatedResult<Product>>(`/api/seller/products${qs ? `?${qs}` : ""}`);
+    },
+    createProduct(input: ProductCreateInput) {
+      return request<Product>("/api/seller/products", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+    },
+    batchCreateProducts(products: ProductCreateInput[]) {
+      return request<BatchUploadResult>("/api/seller/products/batch", {
+        method: "POST",
+        body: JSON.stringify({ products }),
+      });
+    },
+    updateProduct(id: string, updates: Partial<ProductCreateInput>) {
+      return request<Product>(`/api/seller/products/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(updates),
+      });
+    },
+    deleteProduct(id: string) {
+      return request<{ success: boolean }>(`/api/seller/products/${id}`, {
+        method: "DELETE",
+      });
+    },
+    sales(params?: { page?: number; limit?: number }) {
+      const query = new URLSearchParams();
+      if (params?.page !== undefined) query.set("page", String(params.page));
+      if (params?.limit !== undefined) query.set("limit", String(params.limit));
+      const qs = query.toString();
+      return request<PaginatedResult<SellerSale>>(`/api/seller/sales${qs ? `?${qs}` : ""}`);
     },
   },
 

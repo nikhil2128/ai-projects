@@ -15,10 +15,12 @@ export interface GatewayConfig {
   cartServiceUrl: string;
   orderServiceUrl: string;
   paymentServiceUrl: string;
+  sellerServiceUrl: string;
 }
 
 interface AuthenticatedRequest extends Request {
   userId?: string;
+  userRole?: string;
 }
 
 const DEFAULT_CONFIG: GatewayConfig = {
@@ -27,9 +29,10 @@ const DEFAULT_CONFIG: GatewayConfig = {
   cartServiceUrl: process.env.CART_SERVICE_URL ?? "http://localhost:3003",
   orderServiceUrl: process.env.ORDER_SERVICE_URL ?? "http://localhost:3004",
   paymentServiceUrl: process.env.PAYMENT_SERVICE_URL ?? "http://localhost:3005",
+  sellerServiceUrl: process.env.SELLER_SERVICE_URL ?? "http://localhost:3006",
 };
 
-const tokenCache = new TTLCache<string>(60_000);
+const tokenCache = new TTLCache<{ userId: string; role: string }>(60_000);
 
 export function createGateway(config?: Partial<GatewayConfig>) {
   const app = express();
@@ -39,7 +42,7 @@ export function createGateway(config?: Partial<GatewayConfig>) {
   app.use(corsMiddleware);
   app.use(compressionMiddleware);
   app.use(requestLogger);
-  app.use(express.json({ limit: "1mb" }));
+  app.use(express.json({ limit: "10mb" }));
 
   app.set("trust proxy", 1);
 
@@ -69,9 +72,10 @@ export function createGateway(config?: Partial<GatewayConfig>) {
 
       const token = authHeader.slice(7);
 
-      const cachedUserId = tokenCache.get(token);
-      if (cachedUserId) {
-        req.userId = cachedUserId;
+      const cached = tokenCache.get(token);
+      if (cached) {
+        req.userId = cached.userId;
+        req.userRole = cached.role;
         next();
         return;
       }
@@ -88,9 +92,10 @@ export function createGateway(config?: Partial<GatewayConfig>) {
           return;
         }
 
-        const { userId } = (await response.json()) as { userId: string };
-        tokenCache.set(token, userId);
+        const { userId, role } = (await response.json()) as { userId: string; role: string };
+        tokenCache.set(token, { userId, role });
         req.userId = userId;
+        req.userRole = role;
         next();
       } catch {
         res.status(503).json({ error: "Auth service unavailable" });
@@ -110,6 +115,9 @@ export function createGateway(config?: Partial<GatewayConfig>) {
 
     if (req.userId) {
       headers["x-user-id"] = req.userId;
+    }
+    if (req.userRole) {
+      headers["x-user-role"] = req.userRole;
     }
 
     const idempotencyKey = req.headers["x-idempotency-key"] as string;
@@ -187,6 +195,18 @@ export function createGateway(config?: Partial<GatewayConfig>) {
     auth,
     (req: AuthenticatedRequest, res: Response) => {
       proxy(cfg.paymentServiceUrl, req, res);
+    }
+  );
+
+  app.use(
+    "/api/seller",
+    auth,
+    (req: AuthenticatedRequest, res: Response) => {
+      if (req.userRole !== "seller") {
+        res.status(403).json({ error: "Seller access required" });
+        return;
+      }
+      proxy(cfg.sellerServiceUrl, req, res);
     }
   );
 

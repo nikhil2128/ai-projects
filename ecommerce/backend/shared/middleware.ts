@@ -32,7 +32,7 @@ export const compressionMiddleware = compression({
 export const corsMiddleware = cors({
   origin: process.env.CORS_ORIGIN ?? "*",
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-user-id", "x-idempotency-key"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-user-id", "x-user-role", "x-idempotency-key"],
   maxAge: 86400,
 });
 

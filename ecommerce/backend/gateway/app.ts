@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from "express";
+import http from "http";
 import {
   createRateLimiter,
   authRateLimiter,
@@ -152,6 +153,51 @@ export function createGateway(config?: Partial<GatewayConfig>) {
     }
   }
 
+  function proxyStream(
+    serviceUrl: string,
+    req: AuthenticatedRequest,
+    res: Response,
+    timeoutMs = 15_000
+  ) {
+    const parsed = new URL(`${serviceUrl}${req.url}`);
+    const fwdHeaders: Record<string, string> = {};
+
+    if (req.headers["content-type"]) fwdHeaders["content-type"] = req.headers["content-type"] as string;
+    if (req.headers["content-length"]) fwdHeaders["content-length"] = req.headers["content-length"] as string;
+    if (req.userId) fwdHeaders["x-user-id"] = req.userId;
+    if (req.userRole) fwdHeaders["x-user-role"] = req.userRole;
+
+    const proxyReq = http.request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: parsed.pathname + parsed.search,
+        method: req.method,
+        headers: fwdHeaders,
+        timeout: timeoutMs,
+      },
+      (proxyRes) => {
+        res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
+        proxyRes.pipe(res);
+      }
+    );
+
+    proxyReq.on("error", () => {
+      if (!res.headersSent) {
+        res.status(503).json({ error: "Service unavailable" });
+      }
+    });
+
+    proxyReq.on("timeout", () => {
+      proxyReq.destroy();
+      if (!res.headersSent) {
+        res.status(504).json({ error: "Service timeout" });
+      }
+    });
+
+    req.pipe(proxyReq);
+  }
+
   app.use(
     "/api/auth",
     authRateLimiter,
@@ -208,7 +254,11 @@ export function createGateway(config?: Partial<GatewayConfig>) {
         return;
       }
       const isBatchUpload = req.url.includes("/batch-upload") && req.method === "POST";
-      proxy(cfg.sellerServiceUrl, req, res, isBatchUpload ? 120_000 : 15_000);
+      if (isBatchUpload) {
+        proxyStream(cfg.sellerServiceUrl, req, res, 120_000);
+      } else {
+        proxy(cfg.sellerServiceUrl, req, res);
+      }
     }
   );
 

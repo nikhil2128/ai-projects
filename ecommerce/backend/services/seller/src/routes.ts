@@ -1,5 +1,8 @@
 import { Router, Request, Response } from "express";
+import multer from "multer";
 import { SellerService } from "./service";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
 export function createSellerRoutes(sellerService: SellerService): Router {
   const router = Router();
@@ -62,18 +65,20 @@ export function createSellerRoutes(sellerService: SellerService): Router {
     res.status(201).json(result.data);
   });
 
-  router.post("/products/batch-upload", async (req: Request, res: Response) => {
+  router.post("/products/batch-upload", upload.single("file"), async (req: Request, res: Response) => {
     const sellerId = getSellerId(req);
     if (!sellerId) {
       res.status(403).json({ error: "Seller access required" });
       return;
     }
-    const { csvData, fileName } = req.body;
-    if (!csvData || typeof csvData !== "string") {
-      res.status(400).json({ error: "csvData is required" });
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "CSV file is required" });
       return;
     }
-    const result = await sellerService.startBatchUpload(sellerId, csvData, fileName ?? "upload.csv");
+    const csvData = file.buffer.toString("utf-8");
+    const fileName = file.originalname || "upload.csv";
+    const result = await sellerService.startBatchUpload(sellerId, csvData, fileName);
     if (!result.success) {
       res.status(400).json({ error: result.error });
       return;

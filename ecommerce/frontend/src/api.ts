@@ -216,11 +216,31 @@ export const api = {
         method: "DELETE",
       });
     },
-    uploadBatchCSV(csvData: string, fileName: string) {
-      return request<{ jobId: string }>("/api/seller/products/batch-upload", {
-        method: "POST",
-        body: JSON.stringify({ csvData, fileName }),
-      }, 120_000);
+    async uploadBatchCSV(file: File): Promise<{ jobId: string }> {
+      const token = localStorage.getItem("token");
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 120_000);
+
+      try {
+        const res = await fetch("/api/seller/products/batch-upload", {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData,
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ error: "Upload failed" }));
+          throw new ApiError(res.status, body.error ?? "Upload failed");
+        }
+
+        return res.json();
+      } finally {
+        clearTimeout(timeout);
+      }
     },
     getBatchJob(jobId: string) {
       return request<BatchJob>(`/api/seller/products/batch-jobs/${jobId}`);

@@ -72,24 +72,49 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-function validateCSVHeaders(text: string): { valid: boolean; rowCount: number; error?: string } {
+function validateCSVHeaders(text: string): { valid: boolean; error?: string } {
   const firstNewline = text.indexOf("\n");
-  if (firstNewline === -1) return { valid: false, rowCount: 0, error: "CSV file is empty" };
+  if (firstNewline === -1) return { valid: false, error: "CSV file is empty" };
 
   const headerLine = text.substring(0, firstNewline);
   const headers = headerLine.split(",").map((h) => h.trim().toLowerCase());
 
   if (!headers.includes("name") || !headers.includes("price")) {
-    return { valid: false, rowCount: 0, error: "CSV must include 'name' and 'price' columns" };
+    return { valid: false, error: "CSV must include 'name' and 'price' columns" };
   }
 
-  let rowCount = 0;
-  for (let i = firstNewline + 1; i < text.length; i++) {
-    if (text[i] === "\n") rowCount++;
-  }
-  if (text[text.length - 1] !== "\n") rowCount++;
+  return { valid: true };
+}
 
-  return { valid: true, rowCount };
+function countRowsInSample(sample: string): number {
+  const firstNewline = sample.indexOf("\n");
+  if (firstNewline === -1) return 0;
+  let count = 0;
+  for (let i = firstNewline + 1; i < sample.length; i++) {
+    if (sample[i] === "\n") count++;
+  }
+  if (sample[sample.length - 1] !== "\n") count++;
+  return count;
+}
+
+function estimateRowCount(sample: string, totalFileSize: number, sampleSize: number): number {
+  if (totalFileSize <= sampleSize) {
+    return countRowsInSample(sample);
+  }
+
+  const firstNewline = sample.indexOf("\n");
+  if (firstNewline === -1) return 0;
+
+  const headerBytes = firstNewline + 1;
+  const dataSampleLength = sample.length - headerBytes;
+  if (dataSampleLength <= 0) return 0;
+
+  const rowsInSample = countRowsInSample(sample);
+  if (rowsInSample === 0) return 0;
+
+  const avgBytesPerRow = dataSampleLength / rowsInSample;
+  const totalDataBytes = totalFileSize - headerBytes;
+  return Math.round(totalDataBytes / avgBytesPerRow);
 }
 
 function formatNumber(n: number): string {
@@ -134,7 +159,7 @@ export default function BatchUpload() {
   const [mode, setMode] = useState<"csv" | "json">("csv");
   const [fileName, setFileName] = useState("");
   const [fileSize, setFileSize] = useState(0);
-  const [csvText, setCsvText] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<BatchUploadResult | null>(null);
   const [error, setError] = useState("");
@@ -191,7 +216,7 @@ export default function BatchUpload() {
     loadBatchJobs();
   }, []);
 
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -201,33 +226,34 @@ export default function BatchUpload() {
     setResult(null);
     setActiveJob(null);
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      setCsvText(text);
+    const SAMPLE_SIZE = 64 * 1024;
+    const sample = await file.slice(0, SAMPLE_SIZE).text();
 
-      const validation = validateCSVHeaders(text);
-      if (!validation.valid) {
-        setError(validation.error ?? "Invalid CSV format");
+    const validation = validateCSVHeaders(sample);
+    if (!validation.valid) {
+      setError(validation.error ?? "Invalid CSV format");
+      return;
+    }
+
+    const estimatedRows = estimateRowCount(sample, file.size, SAMPLE_SIZE);
+
+    if (estimatedRows > SMALL_BATCH_LIMIT) {
+      setIsLargeFile(true);
+      setLargeFileRowCount(estimatedRows);
+      setSelectedFile(file);
+      setProducts([]);
+    } else {
+      setIsLargeFile(false);
+      setLargeFileRowCount(0);
+      setSelectedFile(null);
+      const text = await file.text();
+      const parsed = parseCSV(text);
+      if (parsed.length === 0) {
+        setError("No valid products found. Ensure headers include: name, description, price, category, stock");
         return;
       }
-
-      if (validation.rowCount > SMALL_BATCH_LIMIT) {
-        setIsLargeFile(true);
-        setLargeFileRowCount(validation.rowCount);
-        setProducts([]);
-      } else {
-        setIsLargeFile(false);
-        setLargeFileRowCount(0);
-        const parsed = parseCSV(text);
-        if (parsed.length === 0) {
-          setError("No valid products found. Ensure headers include: name, description, price, category, stock");
-          return;
-        }
-        setProducts(parsed);
-      }
-    };
-    reader.readAsText(file);
+      setProducts(parsed);
+    }
   }
 
   function handleJsonParse() {
@@ -247,7 +273,7 @@ export default function BatchUpload() {
     setProducts([]);
     setFileName("");
     setFileSize(0);
-    setCsvText("");
+    setSelectedFile(null);
     setJsonInput("");
     setResult(null);
     setError("");
@@ -281,13 +307,13 @@ export default function BatchUpload() {
   }
 
   async function handleLargeUpload() {
-    if (!csvText) return;
+    if (!selectedFile) return;
     setUploading(true);
     setError("");
 
     try {
-      const { jobId } = await api.seller.uploadBatchCSV(csvText, fileName);
-      setCsvText("");
+      const { jobId } = await api.seller.uploadBatchCSV(selectedFile);
+      setSelectedFile(null);
       setFileName("");
       setFileSize(0);
       setIsLargeFile(false);

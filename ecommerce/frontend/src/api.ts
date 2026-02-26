@@ -9,6 +9,7 @@ import type {
   SellerSale,
   ProductCreateInput,
   BatchUploadResult,
+  BatchJob,
   PaginatedResult,
 } from "./types";
 
@@ -22,7 +23,8 @@ const pendingRequests = new Map<string, Promise<unknown>>();
 
 async function request<T>(
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  timeoutMs = 15_000
 ): Promise<T> {
   const token = localStorage.getItem("token");
   const headers: Record<string, string> = {
@@ -43,7 +45,7 @@ async function request<T>(
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   const promise = (async () => {
     try {
@@ -213,6 +215,18 @@ export const api = {
       return request<{ success: boolean }>(`/api/seller/products/${id}`, {
         method: "DELETE",
       });
+    },
+    uploadBatchCSV(csvData: string, fileName: string) {
+      return request<{ jobId: string }>("/api/seller/products/batch-upload", {
+        method: "POST",
+        body: JSON.stringify({ csvData, fileName }),
+      }, 120_000);
+    },
+    getBatchJob(jobId: string) {
+      return request<BatchJob>(`/api/seller/products/batch-jobs/${jobId}`);
+    },
+    getBatchJobs() {
+      return request<BatchJob[]>("/api/seller/products/batch-jobs");
     },
     sales(params?: { page?: number; limit?: number }) {
       const query = new URLSearchParams();

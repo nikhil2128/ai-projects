@@ -93,6 +93,22 @@ CREATE TABLE IF NOT EXISTS favorites (
 );
 
 CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
+
+CREATE TABLE IF NOT EXISTS batch_jobs (
+  id UUID PRIMARY KEY,
+  seller_id UUID NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  total_rows INT NOT NULL DEFAULT 0,
+  processed_rows INT NOT NULL DEFAULT 0,
+  created_count INT NOT NULL DEFAULT 0,
+  error_count INT NOT NULL DEFAULT 0,
+  errors JSONB NOT NULL DEFAULT '[]',
+  file_name VARCHAR(255) NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_batch_jobs_seller_id ON batch_jobs(seller_id);
 `;
 
 const SAFE_MIGRATIONS = MIGRATIONS.replace(

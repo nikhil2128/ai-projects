@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import { Product, SellerSale, OrderStatus } from "../../../shared/types";
+import { Product, SellerSale, OrderStatus, BatchJob, BatchJobStatus } from "../../../shared/types";
 
 export class SellerStore {
   constructor(private pool: Pool) {}
@@ -23,16 +23,39 @@ export class SellerStore {
   }
 
   async addProducts(products: Product[]): Promise<void> {
+    if (products.length === 0) return;
+    await this.addProductsBulk(products);
+  }
+
+  async addProductsBulk(products: Product[]): Promise<void> {
+    if (products.length === 0) return;
+
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      for (const p of products) {
+
+      const CHUNK = 1000;
+      for (let offset = 0; offset < products.length; offset += CHUNK) {
+        const chunk = products.slice(offset, offset + CHUNK);
+        const values: unknown[] = [];
+        const placeholders: string[] = [];
+
+        for (let i = 0; i < chunk.length; i++) {
+          const base = i * 9;
+          placeholders.push(
+            `($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9})`
+          );
+          const p = chunk[i];
+          values.push(p.id, p.name, p.description, p.price, p.category, p.stock, p.imageUrl, p.sellerId, p.createdAt);
+        }
+
         await client.query(
           `INSERT INTO products (id, name, description, price, category, stock, image_url, seller_id, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [p.id, p.name, p.description, p.price, p.category, p.stock, p.imageUrl, p.sellerId, p.createdAt]
+           VALUES ${placeholders.join(",")}`,
+          values
         );
       }
+
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");
@@ -178,6 +201,63 @@ export class SellerStore {
       imageUrl: row.image_url as string,
       sellerId: row.seller_id as string | undefined,
       createdAt: new Date(row.created_at as string),
+    };
+  }
+
+  // ── Batch job operations ────────────────────────────────────────
+
+  async createBatchJob(job: BatchJob): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO batch_jobs (id, seller_id, status, total_rows, processed_rows, created_count, error_count, errors, file_name, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [job.id, job.sellerId, job.status, job.totalRows, job.processedRows, job.createdCount, job.errorCount, JSON.stringify(job.errors), job.fileName, job.createdAt, job.updatedAt]
+    );
+  }
+
+  async updateBatchJob(id: string, updates: Partial<Pick<BatchJob, "status" | "processedRows" | "createdCount" | "errorCount" | "errors">>): Promise<void> {
+    const sets: string[] = ["updated_at = NOW()"];
+    const values: unknown[] = [];
+    let idx = 1;
+
+    if (updates.status !== undefined) { sets.push(`status = $${idx++}`); values.push(updates.status); }
+    if (updates.processedRows !== undefined) { sets.push(`processed_rows = $${idx++}`); values.push(updates.processedRows); }
+    if (updates.createdCount !== undefined) { sets.push(`created_count = $${idx++}`); values.push(updates.createdCount); }
+    if (updates.errorCount !== undefined) { sets.push(`error_count = $${idx++}`); values.push(updates.errorCount); }
+    if (updates.errors !== undefined) { sets.push(`errors = $${idx++}`); values.push(JSON.stringify(updates.errors)); }
+
+    values.push(id);
+    await this.pool.query(`UPDATE batch_jobs SET ${sets.join(", ")} WHERE id = $${idx}`, values);
+  }
+
+  async getBatchJob(id: string, sellerId: string): Promise<BatchJob | undefined> {
+    const { rows } = await this.pool.query(
+      "SELECT * FROM batch_jobs WHERE id = $1 AND seller_id = $2",
+      [id, sellerId]
+    );
+    return rows[0] ? this.toBatchJob(rows[0]) : undefined;
+  }
+
+  async getRecentBatchJobs(sellerId: string, limit = 20): Promise<BatchJob[]> {
+    const { rows } = await this.pool.query(
+      "SELECT * FROM batch_jobs WHERE seller_id = $1 ORDER BY created_at DESC LIMIT $2",
+      [sellerId, limit]
+    );
+    return rows.map((r) => this.toBatchJob(r));
+  }
+
+  private toBatchJob(row: Record<string, unknown>): BatchJob {
+    return {
+      id: row.id as string,
+      sellerId: row.seller_id as string,
+      status: row.status as BatchJobStatus,
+      totalRows: row.total_rows as number,
+      processedRows: row.processed_rows as number,
+      createdCount: row.created_count as number,
+      errorCount: row.error_count as number,
+      errors: (typeof row.errors === "string" ? JSON.parse(row.errors) : row.errors) as { row: number; error: string }[],
+      fileName: row.file_name as string,
+      createdAt: new Date(row.created_at as string),
+      updatedAt: new Date(row.updated_at as string),
     };
   }
 

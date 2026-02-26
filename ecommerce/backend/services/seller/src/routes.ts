@@ -62,6 +62,49 @@ export function createSellerRoutes(sellerService: SellerService): Router {
     res.status(201).json(result.data);
   });
 
+  router.post("/products/batch-upload", async (req: Request, res: Response) => {
+    const sellerId = getSellerId(req);
+    if (!sellerId) {
+      res.status(403).json({ error: "Seller access required" });
+      return;
+    }
+    const { csvData, fileName } = req.body;
+    if (!csvData || typeof csvData !== "string") {
+      res.status(400).json({ error: "csvData is required" });
+      return;
+    }
+    const result = await sellerService.startBatchUpload(sellerId, csvData, fileName ?? "upload.csv");
+    if (!result.success) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+    res.status(202).json(result.data);
+  });
+
+  router.get("/products/batch-jobs", async (req: Request, res: Response) => {
+    const sellerId = getSellerId(req);
+    if (!sellerId) {
+      res.status(403).json({ error: "Seller access required" });
+      return;
+    }
+    const result = await sellerService.getRecentBatchJobs(sellerId);
+    res.json(result.data);
+  });
+
+  router.get("/products/batch-jobs/:id", async (req: Request, res: Response) => {
+    const sellerId = getSellerId(req);
+    if (!sellerId) {
+      res.status(403).json({ error: "Seller access required" });
+      return;
+    }
+    const result = await sellerService.getBatchJobStatus(sellerId, req.params.id);
+    if (!result.success) {
+      res.status(404).json({ error: result.error });
+      return;
+    }
+    res.json(result.data);
+  });
+
   router.put("/products/:id", async (req: Request, res: Response) => {
     const sellerId = getSellerId(req);
     if (!sellerId) {

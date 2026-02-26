@@ -115,6 +115,22 @@ export interface BatchUploadResult {
   errors: { index: number; error: string }[];
 }
 
+export type BatchJobStatus = "pending" | "processing" | "completed" | "failed";
+
+export interface BatchJob {
+  id: string;
+  sellerId: string;
+  status: BatchJobStatus;
+  totalRows: number;
+  processedRows: number;
+  createdCount: number;
+  errorCount: number;
+  errors: { row: number; error: string }[];
+  fileName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PaginatedResult<T> {
   data: T[];
   total: number;

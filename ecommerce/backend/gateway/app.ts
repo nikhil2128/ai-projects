@@ -42,7 +42,7 @@ export function createGateway(config?: Partial<GatewayConfig>) {
   app.use(corsMiddleware);
   app.use(compressionMiddleware);
   app.use(requestLogger);
-  app.use(express.json({ limit: "10mb" }));
+  app.use(express.json({ limit: "50mb" }));
 
   app.set("trust proxy", 1);
 
@@ -106,7 +106,8 @@ export function createGateway(config?: Partial<GatewayConfig>) {
   async function proxy(
     serviceUrl: string,
     req: AuthenticatedRequest,
-    res: Response
+    res: Response,
+    timeoutMs = 15_000
   ) {
     const targetUrl = `${serviceUrl}${req.url}`;
     const headers: Record<string, string> = {
@@ -129,7 +130,7 @@ export function createGateway(config?: Partial<GatewayConfig>) {
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15_000);
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       const response = await fetch(targetUrl, {
         method: req.method,
@@ -206,7 +207,8 @@ export function createGateway(config?: Partial<GatewayConfig>) {
         res.status(403).json({ error: "Seller access required" });
         return;
       }
-      proxy(cfg.sellerServiceUrl, req, res);
+      const isBatchUpload = req.url.includes("/batch-upload") && req.method === "POST";
+      proxy(cfg.sellerServiceUrl, req, res, isBatchUpload ? 120_000 : 15_000);
     }
   );
 

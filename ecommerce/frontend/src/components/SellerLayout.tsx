@@ -8,6 +8,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import SellerNotifications from "./SellerNotifications";
 
 const NAV_ITEMS = [
   { to: "/seller", icon: LayoutDashboard, label: "Dashboard", exact: true },
@@ -45,13 +46,14 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
               </span>
             </Link>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <Link
                 to="/"
                 className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
               >
                 View Store <ChevronRight className="h-3.5 w-3.5" />
               </Link>
+              <SellerNotifications />
               <span className="text-sm text-gray-400 hidden sm:block">{email}</span>
               <button
                 onClick={handleLogout}

@@ -12,6 +12,7 @@ import {
   Clock,
   RotateCw,
   Zap,
+  RefreshCw,
 } from "lucide-react";
 import { api, ApiError } from "../../api";
 import { invalidateQuery } from "../../hooks/useQuery";
@@ -169,6 +170,7 @@ export default function BatchUpload() {
   const [activeJob, setActiveJob] = useState<BatchJob | null>(null);
   const [batchJobs, setBatchJobs] = useState<BatchJob[]>([]);
   const [showJobHistory, setShowJobHistory] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -327,6 +329,20 @@ export default function BatchUpload() {
     }
   }
 
+  async function handleRetryJob(jobId: string) {
+    setRetrying(true);
+    setError("");
+
+    try {
+      const { jobId: retriedJobId } = await api.seller.retryBatchJob(jobId);
+      pollJobStatus(retriedJobId);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Retry failed. Please try again.");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   function downloadTemplate() {
     const blob = new Blob([TEMPLATE_CSV], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -402,19 +418,49 @@ export default function BatchUpload() {
           )}
 
           {(activeJob.status === "completed" || activeJob.status === "failed") && (
-            <div className="mt-3 pt-3 border-t border-gray-200/50 space-y-1">
-              <div className="flex gap-4 text-sm">
-                <span className="text-emerald-700">
-                  {formatNumber(activeJob.createdCount)} created
-                </span>
-                {activeJob.errorCount > 0 && (
-                  <span className="text-red-600">
-                    {formatNumber(activeJob.errorCount)} errors
+            <div className="mt-3 pt-3 border-t border-gray-200/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex gap-4 text-sm">
+                  <span className="text-emerald-700">
+                    {formatNumber(activeJob.createdCount)} created
                   </span>
+                  {activeJob.errorCount > 0 && (
+                    <span className="text-red-600">
+                      {formatNumber(activeJob.errorCount)} errors
+                    </span>
+                  )}
+                </div>
+                {activeJob.status === "failed" && activeJob.retryCount < activeJob.maxRetries && (
+                  <button
+                    onClick={() => handleRetryJob(activeJob.id)}
+                    disabled={retrying}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-60"
+                  >
+                    {retrying ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    Retry
+                  </button>
                 )}
               </div>
+
+              {activeJob.retryCount > 0 && (
+                <p className="text-xs text-gray-500">
+                  Attempt {activeJob.retryCount + 1} of {activeJob.maxRetries + 1}
+                  {activeJob.failedAtRow ? ` — resuming from row ${formatNumber(activeJob.failedAtRow)}` : ""}
+                </p>
+              )}
+
+              {activeJob.status === "failed" && activeJob.retryCount >= activeJob.maxRetries && (
+                <p className="text-xs text-red-600 font-medium">
+                  Maximum retry attempts reached. Please re-upload the file.
+                </p>
+              )}
+
               {activeJob.errors.length > 0 && (
-                <details className="mt-2">
+                <details className="mt-1">
                   <summary className="text-sm text-red-600 cursor-pointer hover:text-red-700">
                     View errors ({activeJob.errors.length}{activeJob.errors.length >= 1000 ? "+" : ""})
                   </summary>
@@ -718,6 +764,7 @@ export default function BatchUpload() {
                     <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">Created</th>
                     <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">Errors</th>
                     <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">Date</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -727,7 +774,14 @@ export default function BatchUpload() {
                       className="hover:bg-gray-50 cursor-pointer"
                       onClick={() => { setActiveJob(job); if (job.status === "processing" || job.status === "pending") pollJobStatus(job.id); }}
                     >
-                      <td className="px-4 py-3 text-gray-900 truncate max-w-[180px]">{job.fileName}</td>
+                      <td className="px-4 py-3 text-gray-900 truncate max-w-[180px]">
+                        {job.fileName}
+                        {job.retryCount > 0 && (
+                          <span className="ml-1.5 text-xs text-gray-400">
+                            (attempt {job.retryCount + 1})
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(job.status)}`}>
                           {getStatusIcon(job.status)}
@@ -739,6 +793,18 @@ export default function BatchUpload() {
                       <td className="px-4 py-3 text-right text-red-600">{job.errorCount > 0 ? formatNumber(job.errorCount) : "—"}</td>
                       <td className="px-4 py-3 text-right text-gray-500 text-xs">
                         {new Date(job.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {job.status === "failed" && job.retryCount < job.maxRetries && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleRetryJob(job.id); }}
+                            disabled={retrying}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-600 bg-red-50 rounded-md hover:bg-red-100 transition disabled:opacity-60"
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                            Retry
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -127,8 +127,24 @@ export interface BatchJob {
   errorCount: number;
   errors: { row: number; error: string }[];
   fileName: string;
+  retryCount: number;
+  maxRetries: number;
+  failedAtRow: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type SellerNotificationType = "batch_completed" | "batch_failed" | "batch_completed_with_errors";
+
+export interface SellerNotification {
+  id: string;
+  sellerId: string;
+  type: SellerNotificationType;
+  title: string;
+  message: string;
+  metadata: Record<string, unknown>;
+  read: boolean;
+  createdAt: string;
 }
 
 export interface PaginatedResult<T> {

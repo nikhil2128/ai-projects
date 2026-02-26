@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import { Product, SellerSale, OrderStatus, BatchJob, BatchJobStatus } from "../../../shared/types";
+import { Product, SellerSale, OrderStatus, BatchJob, BatchJobStatus, SellerNotification } from "../../../shared/types";
 
 export class SellerStore {
   constructor(private pool: Pool) {}
@@ -208,13 +208,22 @@ export class SellerStore {
 
   async createBatchJob(job: BatchJob): Promise<void> {
     await this.pool.query(
-      `INSERT INTO batch_jobs (id, seller_id, status, total_rows, processed_rows, created_count, error_count, errors, file_name, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [job.id, job.sellerId, job.status, job.totalRows, job.processedRows, job.createdCount, job.errorCount, JSON.stringify(job.errors), job.fileName, job.createdAt, job.updatedAt]
+      `INSERT INTO batch_jobs (id, seller_id, status, total_rows, processed_rows, created_count,
+        error_count, errors, file_name, retry_count, max_retries, failed_at_row, csv_data, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      [
+        job.id, job.sellerId, job.status, job.totalRows, job.processedRows, job.createdCount,
+        job.errorCount, JSON.stringify(job.errors), job.fileName,
+        job.retryCount, job.maxRetries, job.failedAtRow, job.csvData,
+        job.createdAt, job.updatedAt,
+      ]
     );
   }
 
-  async updateBatchJob(id: string, updates: Partial<Pick<BatchJob, "status" | "processedRows" | "createdCount" | "errorCount" | "errors">>): Promise<void> {
+  async updateBatchJob(
+    id: string,
+    updates: Partial<Pick<BatchJob, "status" | "processedRows" | "createdCount" | "errorCount" | "errors" | "retryCount" | "failedAtRow" | "csvData">>
+  ): Promise<void> {
     const sets: string[] = ["updated_at = NOW()"];
     const values: unknown[] = [];
     let idx = 1;
@@ -224,12 +233,27 @@ export class SellerStore {
     if (updates.createdCount !== undefined) { sets.push(`created_count = $${idx++}`); values.push(updates.createdCount); }
     if (updates.errorCount !== undefined) { sets.push(`error_count = $${idx++}`); values.push(updates.errorCount); }
     if (updates.errors !== undefined) { sets.push(`errors = $${idx++}`); values.push(JSON.stringify(updates.errors)); }
+    if (updates.retryCount !== undefined) { sets.push(`retry_count = $${idx++}`); values.push(updates.retryCount); }
+    if (updates.failedAtRow !== undefined) { sets.push(`failed_at_row = $${idx++}`); values.push(updates.failedAtRow); }
+    if (updates.csvData !== undefined) { sets.push(`csv_data = $${idx++}`); values.push(updates.csvData); }
 
     values.push(id);
     await this.pool.query(`UPDATE batch_jobs SET ${sets.join(", ")} WHERE id = $${idx}`, values);
   }
 
+  async clearBatchJobCsvData(id: string): Promise<void> {
+    await this.pool.query("UPDATE batch_jobs SET csv_data = NULL, updated_at = NOW() WHERE id = $1", [id]);
+  }
+
   async getBatchJob(id: string, sellerId: string): Promise<BatchJob | undefined> {
+    const { rows } = await this.pool.query(
+      "SELECT id, seller_id, status, total_rows, processed_rows, created_count, error_count, errors, file_name, retry_count, max_retries, failed_at_row, created_at, updated_at FROM batch_jobs WHERE id = $1 AND seller_id = $2",
+      [id, sellerId]
+    );
+    return rows[0] ? this.toBatchJob(rows[0]) : undefined;
+  }
+
+  async getBatchJobWithCsv(id: string, sellerId: string): Promise<BatchJob | undefined> {
     const { rows } = await this.pool.query(
       "SELECT * FROM batch_jobs WHERE id = $1 AND seller_id = $2",
       [id, sellerId]
@@ -239,7 +263,7 @@ export class SellerStore {
 
   async getRecentBatchJobs(sellerId: string, limit = 20): Promise<BatchJob[]> {
     const { rows } = await this.pool.query(
-      "SELECT * FROM batch_jobs WHERE seller_id = $1 ORDER BY created_at DESC LIMIT $2",
+      "SELECT id, seller_id, status, total_rows, processed_rows, created_count, error_count, errors, file_name, retry_count, max_retries, failed_at_row, created_at, updated_at FROM batch_jobs WHERE seller_id = $1 ORDER BY created_at DESC LIMIT $2",
       [sellerId, limit]
     );
     return rows.map((r) => this.toBatchJob(r));
@@ -256,8 +280,71 @@ export class SellerStore {
       errorCount: row.error_count as number,
       errors: (typeof row.errors === "string" ? JSON.parse(row.errors) : row.errors) as { row: number; error: string }[],
       fileName: row.file_name as string,
+      retryCount: (row.retry_count as number) ?? 0,
+      maxRetries: (row.max_retries as number) ?? 3,
+      failedAtRow: (row.failed_at_row as number) ?? null,
+      csvData: (row.csv_data as string) ?? null,
       createdAt: new Date(row.created_at as string),
       updatedAt: new Date(row.updated_at as string),
+    };
+  }
+
+  // ── Notification operations ────────────────────────────────────
+
+  async createNotification(notification: SellerNotification): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO seller_notifications (id, seller_id, type, title, message, metadata, read, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        notification.id, notification.sellerId, notification.type,
+        notification.title, notification.message,
+        JSON.stringify(notification.metadata), notification.read,
+        notification.createdAt,
+      ]
+    );
+  }
+
+  async getNotifications(sellerId: string, limit = 50): Promise<SellerNotification[]> {
+    const { rows } = await this.pool.query(
+      "SELECT * FROM seller_notifications WHERE seller_id = $1 ORDER BY created_at DESC LIMIT $2",
+      [sellerId, limit]
+    );
+    return rows.map((r) => this.toNotification(r));
+  }
+
+  async getUnreadNotificationCount(sellerId: string): Promise<number> {
+    const { rows } = await this.pool.query(
+      "SELECT COUNT(*) FROM seller_notifications WHERE seller_id = $1 AND read = false",
+      [sellerId]
+    );
+    return parseInt(rows[0].count, 10);
+  }
+
+  async markNotificationRead(id: string, sellerId: string): Promise<boolean> {
+    const result = await this.pool.query(
+      "UPDATE seller_notifications SET read = true WHERE id = $1 AND seller_id = $2",
+      [id, sellerId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async markAllNotificationsRead(sellerId: string): Promise<void> {
+    await this.pool.query(
+      "UPDATE seller_notifications SET read = true WHERE seller_id = $1 AND read = false",
+      [sellerId]
+    );
+  }
+
+  private toNotification(row: Record<string, unknown>): SellerNotification {
+    return {
+      id: row.id as string,
+      sellerId: row.seller_id as string,
+      type: row.type as SellerNotification["type"],
+      title: row.title as string,
+      message: row.message as string,
+      metadata: (typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata) as Record<string, unknown>,
+      read: row.read as boolean,
+      createdAt: new Date(row.created_at as string),
     };
   }
 

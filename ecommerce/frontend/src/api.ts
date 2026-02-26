@@ -11,6 +11,7 @@ import type {
   BatchUploadResult,
   BatchJob,
   PaginatedResult,
+  SellerNotification,
 } from "./types";
 
 class ApiError extends Error {
@@ -248,12 +249,33 @@ export const api = {
     getBatchJobs() {
       return request<BatchJob[]>("/api/seller/products/batch-jobs");
     },
+    retryBatchJob(jobId: string) {
+      return request<{ jobId: string }>(`/api/seller/products/batch-jobs/${jobId}/retry`, {
+        method: "POST",
+      });
+    },
     sales(params?: { page?: number; limit?: number }) {
       const query = new URLSearchParams();
       if (params?.page !== undefined) query.set("page", String(params.page));
       if (params?.limit !== undefined) query.set("limit", String(params.limit));
       const qs = query.toString();
       return request<PaginatedResult<SellerSale>>(`/api/seller/sales${qs ? `?${qs}` : ""}`);
+    },
+    notifications() {
+      return request<SellerNotification[]>("/api/seller/notifications");
+    },
+    unreadNotificationCount() {
+      return request<{ count: number }>("/api/seller/notifications/unread-count");
+    },
+    markNotificationRead(id: string) {
+      return request<{ success: boolean }>(`/api/seller/notifications/${id}/read`, {
+        method: "POST",
+      });
+    },
+    markAllNotificationsRead() {
+      return request<{ success: boolean }>("/api/seller/notifications/read-all", {
+        method: "POST",
+      });
     },
   },
 

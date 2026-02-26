@@ -104,11 +104,29 @@ CREATE TABLE IF NOT EXISTS batch_jobs (
   error_count INT NOT NULL DEFAULT 0,
   errors JSONB NOT NULL DEFAULT '[]',
   file_name VARCHAR(255) NOT NULL DEFAULT '',
+  retry_count INT NOT NULL DEFAULT 0,
+  max_retries INT NOT NULL DEFAULT 3,
+  failed_at_row INT,
+  csv_data TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_batch_jobs_seller_id ON batch_jobs(seller_id);
+
+CREATE TABLE IF NOT EXISTS seller_notifications (
+  id UUID PRIMARY KEY,
+  seller_id UUID NOT NULL,
+  type VARCHAR(50) NOT NULL,
+  title VARCHAR(500) NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  metadata JSONB NOT NULL DEFAULT '{}',
+  read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_seller_notifications_seller_id ON seller_notifications(seller_id);
+CREATE INDEX IF NOT EXISTS idx_seller_notifications_read ON seller_notifications(seller_id, read);
 `;
 
 const SAFE_MIGRATIONS = MIGRATIONS.replace(
@@ -131,6 +149,14 @@ const POST_MIGRATIONS = [
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='seller_id') THEN
       ALTER TABLE products ADD COLUMN seller_id UUID;
       CREATE INDEX IF NOT EXISTS idx_products_seller_id ON products(seller_id);
+    END IF;
+  END $$`,
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='batch_jobs' AND column_name='retry_count') THEN
+      ALTER TABLE batch_jobs ADD COLUMN retry_count INT NOT NULL DEFAULT 0;
+      ALTER TABLE batch_jobs ADD COLUMN max_retries INT NOT NULL DEFAULT 3;
+      ALTER TABLE batch_jobs ADD COLUMN failed_at_row INT;
+      ALTER TABLE batch_jobs ADD COLUMN csv_data TEXT;
     END IF;
   END $$`,
 ];

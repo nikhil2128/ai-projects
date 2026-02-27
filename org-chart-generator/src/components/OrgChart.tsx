@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
-import type { OrgNode } from "../types/org";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
+import type { EditableOrgNode, OrgNode } from "../types/org";
 import OrgNodeCard from "./OrgNode";
 import { downloadAsPng, downloadAsSvg } from "../utils/download";
 
@@ -7,9 +8,195 @@ interface OrgChartProps {
   data: OrgNode;
 }
 
+interface PositionedNode {
+  node: EditableOrgNode;
+  x: number;
+  y: number;
+  children: PositionedNode[];
+}
+
+type DialogState =
+  | { type: "edit"; nodeId: string; name: string; title: string }
+  | { type: "add-child"; parentId: string; name: string; title: string }
+  | { type: "add-root"; name: string; title: string }
+  | null;
+
+const NODE_WIDTH = 240;
+const NODE_HEIGHT = 160;
+const H_GAP = 40;
+const LEVEL_GAP = 220;
+const CANVAS_PADDING = 48;
+
+function buildEditableTree(node: OrgNode, getNextId: () => string): EditableOrgNode {
+  return {
+    id: getNextId(),
+    name: node.name,
+    title: node.title,
+    children: (node.children ?? []).map((child) =>
+      buildEditableTree(child, getNextId),
+    ),
+  };
+}
+
+function updateNodeById(
+  node: EditableOrgNode,
+  nodeId: string,
+  updates: Pick<EditableOrgNode, "name" | "title">,
+): EditableOrgNode {
+  if (node.id === nodeId) {
+    return { ...node, ...updates };
+  }
+
+  return {
+    ...node,
+    children: node.children.map((child) => updateNodeById(child, nodeId, updates)),
+  };
+}
+
+function addChildById(
+  node: EditableOrgNode,
+  parentId: string,
+  childToAdd: EditableOrgNode,
+): EditableOrgNode {
+  if (node.id === parentId) {
+    return { ...node, children: [...node.children, childToAdd] };
+  }
+
+  return {
+    ...node,
+    children: node.children.map((child) =>
+      addChildById(child, parentId, childToAdd),
+    ),
+  };
+}
+
+function deleteNodeById(node: EditableOrgNode, nodeId: string): EditableOrgNode | null {
+  if (node.id === nodeId) {
+    return null;
+  }
+
+  return {
+    ...node,
+    children: node.children
+      .map((child) => deleteNodeById(child, nodeId))
+      .filter((child): child is EditableOrgNode => child !== null),
+  };
+}
+
+function findNodeById(node: EditableOrgNode, nodeId: string): EditableOrgNode | null {
+  if (node.id === nodeId) return node;
+
+  for (const child of node.children) {
+    const found = findNodeById(child, nodeId);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function shiftSubtreeX(positioned: PositionedNode, dx: number): PositionedNode {
+  return {
+    ...positioned,
+    x: positioned.x + dx,
+    children: positioned.children.map((child) => shiftSubtreeX(child, dx)),
+  };
+}
+
+function layoutTree(
+  node: EditableOrgNode,
+  depth = 0,
+): { positioned: PositionedNode; width: number; maxDepth: number } {
+  const childLayouts = node.children.map((child) => layoutTree(child, depth + 1));
+  const childrenWidth =
+    childLayouts.length > 0
+      ? childLayouts.reduce((sum, child) => sum + child.width, 0) +
+        H_GAP * (childLayouts.length - 1)
+      : 0;
+  const subtreeWidth = Math.max(NODE_WIDTH, childrenWidth);
+
+  let xCursor = (subtreeWidth - childrenWidth) / 2;
+  const positionedChildren = childLayouts.map((child) => {
+    const shifted = shiftSubtreeX(child.positioned, xCursor);
+    xCursor += child.width + H_GAP;
+    return shifted;
+  });
+
+  return {
+    width: subtreeWidth,
+    maxDepth:
+      childLayouts.length > 0
+        ? Math.max(...childLayouts.map((child) => child.maxDepth))
+        : depth,
+    positioned: {
+      node,
+      x: (subtreeWidth - NODE_WIDTH) / 2,
+      y: depth * LEVEL_GAP,
+      children: positionedChildren,
+    },
+  };
+}
+
+function flattenNodes(root: PositionedNode): PositionedNode[] {
+  return [root, ...root.children.flatMap(flattenNodes)];
+}
+
+function flattenEdges(
+  root: PositionedNode,
+): Array<{ fromX: number; fromY: number; toX: number; toY: number }> {
+  return root.children.flatMap((child) => [
+    {
+      fromX: root.x + NODE_WIDTH / 2,
+      fromY: root.y + NODE_HEIGHT,
+      toX: child.x + NODE_WIDTH / 2,
+      toY: child.y,
+    },
+    ...flattenEdges(child),
+  ]);
+}
+
 export default function OrgChart({ data }: OrgChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
+  const idCounterRef = useRef(0);
   const [downloading, setDownloading] = useState(false);
+  const [root, setRoot] = useState<EditableOrgNode | null>(null);
+  const [dialog, setDialog] = useState<DialogState>(null);
+
+  const getNextId = () => {
+    const next = idCounterRef.current;
+    idCounterRef.current += 1;
+    return `node-${next}`;
+  };
+
+  useEffect(() => {
+    setRoot(
+      buildEditableTree(data, () => {
+        const next = idCounterRef.current;
+        idCounterRef.current += 1;
+        return `node-${next}`;
+      }),
+    );
+  }, [data]);
+
+  const layout = useMemo(() => {
+    if (!root) return null;
+    return layoutTree(root);
+  }, [root]);
+
+  const positionedNodes: PositionedNode[] = useMemo(() => {
+    if (!layout) return [];
+    return flattenNodes(layout.positioned);
+  }, [layout]);
+
+  const edges: Array<{ fromX: number; fromY: number; toX: number; toY: number }> =
+    useMemo(() => {
+    if (!layout) return [];
+    return flattenEdges(layout.positioned);
+    }, [layout]);
+
+  const canvasWidth = layout ? layout.width + CANVAS_PADDING * 2 : NODE_WIDTH + CANVAS_PADDING * 2;
+  const canvasHeight = layout
+    ? (layout.maxDepth + 1) * LEVEL_GAP + NODE_HEIGHT + CANVAS_PADDING * 2
+    : NODE_HEIGHT + CANVAS_PADDING * 2;
 
   const handleDownload = async (format: "png" | "svg") => {
     if (!chartRef.current) return;
@@ -25,6 +212,90 @@ export default function OrgChart({ data }: OrgChartProps) {
     } finally {
       setDownloading(false);
     }
+  };
+
+  const handleEditClick = (nodeId: string) => {
+    if (!root) return;
+    const node = findNodeById(root, nodeId);
+    if (!node) return;
+    setDialog({
+      type: "edit",
+      nodeId,
+      name: node.name,
+      title: node.title,
+    });
+  };
+
+  const handleAddChildClick = (parentId: string) => {
+    setDialog({
+      type: "add-child",
+      parentId,
+      name: "",
+      title: "",
+    });
+  };
+
+  const handleDeleteClick = (nodeId: string) => {
+    if (!root) return;
+    const target = findNodeById(root, nodeId);
+    if (!target) return;
+    const confirmed = window.confirm(
+      `Delete ${target.name}${target.children.length > 0 ? " and all reports under this node" : ""}?`,
+    );
+    if (!confirmed) return;
+
+    setRoot((current) => {
+      if (!current) return current;
+      return deleteNodeById(current, nodeId);
+    });
+  };
+
+  const closeDialog = () => setDialog(null);
+
+  const handleDialogNameChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setDialog((current) =>
+      current ? { ...current, name: event.target.value } : current,
+    );
+  };
+
+  const handleDialogTitleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setDialog((current) =>
+      current ? { ...current, title: event.target.value } : current,
+    );
+  };
+
+  const submitDialog = () => {
+    if (!dialog) return;
+
+    const name = dialog.name.trim();
+    const title = dialog.title.trim();
+    if (!name || !title) return;
+
+    setRoot((current) => {
+      if (dialog.type === "add-root") {
+        return {
+          id: getNextId(),
+          name,
+          title,
+          children: [],
+        };
+      }
+
+      if (!current) return current;
+
+      if (dialog.type === "edit") {
+        return updateNodeById(current, dialog.nodeId, { name, title });
+      }
+
+      return addChildById(current, dialog.parentId, {
+        id: getNextId(),
+        name,
+        title,
+        children: [],
+      });
+    });
+
+    closeDialog();
   };
 
   return (
@@ -75,13 +346,135 @@ export default function OrgChart({ data }: OrgChartProps) {
       <div className="w-full overflow-x-auto pb-8">
         <div
           ref={chartRef}
-          className="org-chart-container inline-flex justify-center min-w-full py-8"
+          className="org-chart-container relative mx-auto rounded-2xl border border-slate-100 shadow-sm"
+          style={{ width: canvasWidth, height: canvasHeight }}
         >
-          <ul className="org-tree flex flex-row">
-            <OrgNodeCard node={data} depth={0} />
-          </ul>
+          {!root && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+              <p className="text-sm text-slate-500">
+                Chart is empty. Add a root team member to continue.
+              </p>
+              <button
+                type="button"
+                onClick={() => setDialog({ type: "add-root", name: "", title: "" })}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+              >
+                Add root member
+              </button>
+            </div>
+          )}
+
+          {root && (
+            <>
+              <svg
+                className="absolute inset-0 pointer-events-none"
+                width={canvasWidth}
+                height={canvasHeight}
+              >
+                {edges.map((edge, index) => {
+                  const fromX = edge.fromX + CANVAS_PADDING;
+                  const fromY = edge.fromY + CANVAS_PADDING;
+                  const toX = edge.toX + CANVAS_PADDING;
+                  const toY = edge.toY + CANVAS_PADDING;
+                  const midY = fromY + (toY - fromY) / 2;
+
+                  return (
+                    <path
+                      key={index}
+                      d={`M ${fromX} ${fromY} V ${midY} H ${toX} V ${toY}`}
+                      fill="none"
+                      stroke="#c7d2fe"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                    />
+                  );
+                })}
+              </svg>
+
+              {positionedNodes.map((positioned) => (
+                <div
+                  key={positioned.node.id}
+                  className="absolute"
+                  style={{
+                    left: positioned.x + CANVAS_PADDING,
+                    top: positioned.y + CANVAS_PADDING,
+                    width: NODE_WIDTH,
+                  }}
+                >
+                  <OrgNodeCard
+                    node={positioned.node}
+                    depth={Math.round(positioned.y / LEVEL_GAP)}
+                    onEdit={handleEditClick}
+                    onDelete={handleDeleteClick}
+                    onAddChild={handleAddChildClick}
+                  />
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </div>
+
+      {dialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            onClick={closeDialog}
+          />
+          <div className="relative bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold text-slate-900 mb-1">
+              {dialog.type === "edit"
+                ? "Edit team member"
+                : dialog.type === "add-root"
+                  ? "Add root team member"
+                  : "Add team member"}
+            </h3>
+            <p className="text-sm text-slate-500 mb-5">
+              Update the member details below.
+            </p>
+
+            <div className="space-y-4">
+              <label className="block">
+                <span className="text-sm text-slate-700">Name</span>
+                <input
+                  value={dialog.name}
+                  onChange={handleDialogNameChange}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Jane Doe"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm text-slate-700">Role</span>
+                <input
+                  value={dialog.title}
+                  onChange={handleDialogTitleChange}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Engineering Manager"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeDialog}
+                className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitDialog}
+                disabled={!dialog.name.trim() || !dialog.title.trim()}
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

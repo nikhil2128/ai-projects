@@ -209,12 +209,14 @@ export class SellerStore {
   async createBatchJob(job: BatchJob): Promise<void> {
     await this.pool.query(
       `INSERT INTO batch_jobs (id, seller_id, status, total_rows, processed_rows, created_count,
-        error_count, errors, file_name, retry_count, max_retries, failed_at_row, csv_data, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        error_count, errors, file_name, retry_count, max_retries, failed_at_row, csv_data,
+        s3_key, total_chunks, chunks_completed, chunks_failed, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
       [
         job.id, job.sellerId, job.status, job.totalRows, job.processedRows, job.createdCount,
         job.errorCount, JSON.stringify(job.errors), job.fileName,
         job.retryCount, job.maxRetries, job.failedAtRow, job.csvData,
+        job.s3Key, job.totalChunks, job.chunksCompleted, job.chunksFailed,
         job.createdAt, job.updatedAt,
       ]
     );
@@ -222,7 +224,11 @@ export class SellerStore {
 
   async updateBatchJob(
     id: string,
-    updates: Partial<Pick<BatchJob, "status" | "processedRows" | "createdCount" | "errorCount" | "errors" | "retryCount" | "failedAtRow" | "csvData">>
+    updates: Partial<Pick<BatchJob,
+      "status" | "processedRows" | "createdCount" | "errorCount" | "errors" |
+      "retryCount" | "failedAtRow" | "csvData" | "s3Key" | "totalChunks" |
+      "chunksCompleted" | "chunksFailed" | "totalRows"
+    >>
   ): Promise<void> {
     const sets: string[] = ["updated_at = NOW()"];
     const values: unknown[] = [];
@@ -236,6 +242,11 @@ export class SellerStore {
     if (updates.retryCount !== undefined) { sets.push(`retry_count = $${idx++}`); values.push(updates.retryCount); }
     if (updates.failedAtRow !== undefined) { sets.push(`failed_at_row = $${idx++}`); values.push(updates.failedAtRow); }
     if (updates.csvData !== undefined) { sets.push(`csv_data = $${idx++}`); values.push(updates.csvData); }
+    if (updates.s3Key !== undefined) { sets.push(`s3_key = $${idx++}`); values.push(updates.s3Key); }
+    if (updates.totalChunks !== undefined) { sets.push(`total_chunks = $${idx++}`); values.push(updates.totalChunks); }
+    if (updates.chunksCompleted !== undefined) { sets.push(`chunks_completed = $${idx++}`); values.push(updates.chunksCompleted); }
+    if (updates.chunksFailed !== undefined) { sets.push(`chunks_failed = $${idx++}`); values.push(updates.chunksFailed); }
+    if (updates.totalRows !== undefined) { sets.push(`total_rows = $${idx++}`); values.push(updates.totalRows); }
 
     values.push(id);
     await this.pool.query(`UPDATE batch_jobs SET ${sets.join(", ")} WHERE id = $${idx}`, values);
@@ -247,7 +258,10 @@ export class SellerStore {
 
   async getBatchJob(id: string, sellerId: string): Promise<BatchJob | undefined> {
     const { rows } = await this.pool.query(
-      "SELECT id, seller_id, status, total_rows, processed_rows, created_count, error_count, errors, file_name, retry_count, max_retries, failed_at_row, created_at, updated_at FROM batch_jobs WHERE id = $1 AND seller_id = $2",
+      `SELECT id, seller_id, status, total_rows, processed_rows, created_count, error_count, errors,
+              file_name, retry_count, max_retries, failed_at_row, s3_key,
+              total_chunks, chunks_completed, chunks_failed, created_at, updated_at
+       FROM batch_jobs WHERE id = $1 AND seller_id = $2`,
       [id, sellerId]
     );
     return rows[0] ? this.toBatchJob(rows[0]) : undefined;
@@ -263,10 +277,77 @@ export class SellerStore {
 
   async getRecentBatchJobs(sellerId: string, limit = 20): Promise<BatchJob[]> {
     const { rows } = await this.pool.query(
-      "SELECT id, seller_id, status, total_rows, processed_rows, created_count, error_count, errors, file_name, retry_count, max_retries, failed_at_row, created_at, updated_at FROM batch_jobs WHERE seller_id = $1 ORDER BY created_at DESC LIMIT $2",
+      `SELECT id, seller_id, status, total_rows, processed_rows, created_count, error_count, errors,
+              file_name, retry_count, max_retries, failed_at_row, s3_key,
+              total_chunks, chunks_completed, chunks_failed, created_at, updated_at
+       FROM batch_jobs WHERE seller_id = $1 ORDER BY created_at DESC LIMIT $2`,
       [sellerId, limit]
     );
     return rows.map((r) => this.toBatchJob(r));
+  }
+
+  async incrementChunkCompleted(jobId: string): Promise<{ chunksCompleted: number; chunksFailed: number; totalChunks: number }> {
+    const { rows } = await this.pool.query(
+      `UPDATE batch_jobs
+       SET chunks_completed = chunks_completed + 1, updated_at = NOW()
+       WHERE id = $1
+       RETURNING chunks_completed, chunks_failed, total_chunks`,
+      [jobId]
+    );
+    return {
+      chunksCompleted: rows[0].chunks_completed as number,
+      chunksFailed: rows[0].chunks_failed as number,
+      totalChunks: rows[0].total_chunks as number,
+    };
+  }
+
+  async incrementChunkFailed(jobId: string): Promise<{ chunksCompleted: number; chunksFailed: number; totalChunks: number }> {
+    const { rows } = await this.pool.query(
+      `UPDATE batch_jobs
+       SET chunks_failed = chunks_failed + 1, updated_at = NOW()
+       WHERE id = $1
+       RETURNING chunks_completed, chunks_failed, total_chunks`,
+      [jobId]
+    );
+    return {
+      chunksCompleted: rows[0].chunks_completed as number,
+      chunksFailed: rows[0].chunks_failed as number,
+      totalChunks: rows[0].total_chunks as number,
+    };
+  }
+
+  async incrementJobCounters(
+    jobId: string,
+    processedRows: number,
+    createdCount: number,
+    errorCount: number,
+    errors: { row: number; error: string }[]
+  ): Promise<void> {
+    const errorsJson = JSON.stringify(errors);
+    await this.pool.query(
+      `UPDATE batch_jobs
+       SET processed_rows = processed_rows + $2,
+           created_count = created_count + $3,
+           error_count = error_count + $4,
+           errors = CASE
+             WHEN errors::text = '[]' THEN $5::jsonb
+             ELSE (errors::jsonb || $5::jsonb)
+           END,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [jobId, processedRows, createdCount, errorCount, errorsJson]
+    );
+  }
+
+  async getBatchJobById(id: string): Promise<BatchJob | undefined> {
+    const { rows } = await this.pool.query(
+      `SELECT id, seller_id, status, total_rows, processed_rows, created_count, error_count, errors,
+              file_name, retry_count, max_retries, failed_at_row, s3_key,
+              total_chunks, chunks_completed, chunks_failed, created_at, updated_at
+       FROM batch_jobs WHERE id = $1`,
+      [id]
+    );
+    return rows[0] ? this.toBatchJob(rows[0]) : undefined;
   }
 
   private toBatchJob(row: Record<string, unknown>): BatchJob {
@@ -284,6 +365,10 @@ export class SellerStore {
       maxRetries: (row.max_retries as number) ?? 3,
       failedAtRow: (row.failed_at_row as number) ?? null,
       csvData: (row.csv_data as string) ?? null,
+      s3Key: (row.s3_key as string) ?? null,
+      totalChunks: (row.total_chunks as number) ?? 0,
+      chunksCompleted: (row.chunks_completed as number) ?? 0,
+      chunksFailed: (row.chunks_failed as number) ?? 0,
       createdAt: new Date(row.created_at as string),
       updatedAt: new Date(row.updated_at as string),
     };

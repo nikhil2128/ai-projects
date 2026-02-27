@@ -314,7 +314,7 @@ export default function BatchUpload() {
     setError("");
 
     try {
-      const { jobId } = await api.seller.uploadBatchCSV(selectedFile);
+      const { jobId } = await api.seller.uploadBatchCSV(selectedFile, largeFileRowCount);
       setSelectedFile(null);
       setFileName("");
       setFileSize(0);
@@ -445,6 +445,13 @@ export default function BatchUpload() {
                   </button>
                 )}
               </div>
+
+              {activeJob.totalChunks > 0 && (
+                <p className="text-xs text-gray-500">
+                  Chunks: {activeJob.chunksCompleted}/{activeJob.totalChunks} completed
+                  {activeJob.chunksFailed > 0 && `, ${activeJob.chunksFailed} failed`}
+                </p>
+              )}
 
               {activeJob.retryCount > 0 && (
                 <p className="text-xs text-gray-500">
@@ -635,7 +642,7 @@ export default function BatchUpload() {
                     Large file detected — {formatNumber(largeFileRowCount)} products
                   </p>
                   <p className="text-sm text-blue-700 mt-1">
-                    This file will be processed in the background using our bulk pipeline.
+                    This file will be uploaded to S3 and processed in parallel chunks via our queuing pipeline.
                     You can track progress in real time and continue using the dashboard.
                   </p>
                 </div>

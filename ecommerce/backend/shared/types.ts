@@ -190,6 +190,10 @@ export interface BatchJob {
   maxRetries: number;
   failedAtRow: number | null;
   csvData: string | null;
+  s3Key: string | null;
+  totalChunks: number;
+  chunksCompleted: number;
+  chunksFailed: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -213,4 +217,35 @@ export interface SellerDashboardStats {
   totalRevenue: number;
   recentSales: SellerSale[];
   topProducts: { productId: string; productName: string; totalSold: number; revenue: number }[];
+}
+
+// ── SQS message types for CSV processing pipeline ────────────────────
+
+export interface CsvFileUploadedMessage {
+  type: "csv_file_uploaded";
+  jobId: string;
+  sellerId: string;
+  s3Key: string;
+  fileName: string;
+  totalRows: number;
+}
+
+export interface CsvChunkMessage {
+  type: "csv_chunk";
+  jobId: string;
+  sellerId: string;
+  s3Key: string;
+  chunkIndex: number;
+  totalChunks: number;
+  startRow: number;
+  endRow: number;
+  headerLine: string;
+  rows: string[];
+}
+
+export interface CsvDlqMessage {
+  originalMessage: CsvChunkMessage;
+  error: string;
+  receiveCount: number;
+  failedAt: string;
 }

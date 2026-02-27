@@ -8,18 +8,20 @@ import {
   SellerDashboardStats,
   BatchJob,
   SellerNotification,
+  CsvFileUploadedMessage,
 } from "../../../shared/types";
 import { withRetry } from "../../../shared/retry";
+import { generatePresignedUploadUrl, buildCsvKey, getObjectAsString, deleteObject } from "../../../shared/s3";
+import { sendMessage, sendMessageBatch, CSV_QUEUE_URL } from "../../../shared/sqs";
 import { SellerStore } from "./store";
+import type { CsvChunkMessage } from "../../../shared/types";
 
 const MAX_BATCH_SIZE = 500;
 const MAX_BULK_UPLOAD_ROWS = 200_000;
 const BULK_CHUNK_SIZE = 1000;
 const DEFAULT_PAGE_LIMIT = 20;
 const MAX_PAGE_LIMIT = 100;
-const MAX_STORED_ERRORS = 1000;
 const MAX_JOB_RETRIES = 3;
-const DB_RETRY_OPTS = { maxRetries: 3, baseDelayMs: 500, maxDelayMs: 10_000 };
 
 export class SellerService {
   constructor(private store: SellerStore) {}
@@ -200,7 +202,7 @@ export class SellerService {
     return { success: true };
   }
 
-  private async createNotification(
+  async createNotification(
     sellerId: string,
     type: SellerNotification["type"],
     title: string,
@@ -224,35 +226,45 @@ export class SellerService {
     }
   }
 
-  // ── Large batch upload pipeline ─────────────────────────────────
+  // ── S3 presigned URL for CSV upload ──────────────────────────────
+
+  async getUploadUrl(
+    sellerId: string,
+    fileName: string
+  ): Promise<ServiceResult<{ uploadUrl: string; s3Key: string; jobId: string }>> {
+    const jobId = uuidv4();
+    const s3Key = buildCsvKey(sellerId, jobId, fileName);
+    const { url } = await generatePresignedUploadUrl(s3Key);
+
+    return {
+      success: true,
+      data: { uploadUrl: url, s3Key, jobId },
+    };
+  }
+
+  // ── Large batch upload via SQS pipeline ──────────────────────────
 
   async startBatchUpload(
     sellerId: string,
-    csvData: string,
-    fileName: string
+    jobId: string,
+    s3Key: string,
+    fileName: string,
+    totalRows: number
   ): Promise<ServiceResult<{ jobId: string }>> {
-    const lines = csvData.trim().split("\n");
-    const dataRowCount = lines.length - 1;
-
-    if (dataRowCount <= 0) {
+    if (totalRows <= 0) {
       return { success: false, error: "CSV file is empty or has no data rows" };
     }
 
-    if (dataRowCount > MAX_BULK_UPLOAD_ROWS) {
+    if (totalRows > MAX_BULK_UPLOAD_ROWS) {
       return { success: false, error: `Maximum ${MAX_BULK_UPLOAD_ROWS.toLocaleString()} rows per upload` };
-    }
-
-    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-    if (!headers.includes("name") || !headers.includes("price")) {
-      return { success: false, error: "CSV must include 'name' and 'price' columns" };
     }
 
     const now = new Date();
     const job: BatchJob = {
-      id: uuidv4(),
+      id: jobId,
       sellerId,
       status: "pending",
-      totalRows: dataRowCount,
+      totalRows,
       processedRows: 0,
       createdCount: 0,
       errorCount: 0,
@@ -261,23 +273,107 @@ export class SellerService {
       retryCount: 0,
       maxRetries: MAX_JOB_RETRIES,
       failedAtRow: null,
-      csvData: csvData,
+      csvData: null,
+      s3Key,
+      totalChunks: 0,
+      chunksCompleted: 0,
+      chunksFailed: 0,
       createdAt: now,
       updatedAt: now,
     };
 
     await this.store.createBatchJob(job);
 
-    this.processBatchInBackground(job.id, sellerId, csvData, 1).catch(() => {});
+    const message: CsvFileUploadedMessage = {
+      type: "csv_file_uploaded",
+      jobId,
+      sellerId,
+      s3Key,
+      fileName,
+      totalRows,
+    };
 
-    return { success: true, data: { jobId: job.id } };
+    await sendMessage(CSV_QUEUE_URL, message);
+
+    return { success: true, data: { jobId } };
+  }
+
+  /**
+   * Called by the file-level SQS worker after the CSV file is read from S3.
+   * Splits the CSV into chunks and dispatches chunk messages to SQS.
+   */
+  async splitAndEnqueueChunks(
+    jobId: string,
+    sellerId: string,
+    s3Key: string
+  ): Promise<void> {
+    await this.store.updateBatchJob(jobId, { status: "processing" });
+
+    const csvData = await getObjectAsString(s3Key);
+    const lines = csvData.trim().split("\n");
+
+    if (lines.length < 2) {
+      await this.store.updateBatchJob(jobId, {
+        status: "failed",
+        errors: [{ row: 0, error: "CSV file is empty or has no data rows" }],
+      });
+      return;
+    }
+
+    const headerLine = lines[0];
+    const headers = headerLine.split(",").map((h) => h.trim().toLowerCase());
+
+    if (!headers.includes("name") || !headers.includes("price")) {
+      await this.store.updateBatchJob(jobId, {
+        status: "failed",
+        errors: [{ row: 0, error: "CSV must include 'name' and 'price' columns" }],
+      });
+      return;
+    }
+
+    const dataLines = lines.slice(1);
+    const totalDataRows = dataLines.length;
+    const chunkMessages: CsvChunkMessage[] = [];
+
+    for (let i = 0; i < totalDataRows; i += BULK_CHUNK_SIZE) {
+      const chunkRows = dataLines.slice(i, i + BULK_CHUNK_SIZE);
+      const chunkIndex = Math.floor(i / BULK_CHUNK_SIZE);
+
+      chunkMessages.push({
+        type: "csv_chunk",
+        jobId,
+        sellerId,
+        s3Key,
+        chunkIndex,
+        totalChunks: 0, // will be set below
+        startRow: i + 1,
+        endRow: i + chunkRows.length,
+        headerLine,
+        rows: chunkRows,
+      });
+    }
+
+    const totalChunks = chunkMessages.length;
+    for (const msg of chunkMessages) {
+      msg.totalChunks = totalChunks;
+    }
+
+    await this.store.updateBatchJob(jobId, {
+      totalChunks,
+      totalRows: totalDataRows,
+    });
+
+    await withRetry(
+      () => sendMessageBatch(CSV_QUEUE_URL, chunkMessages),
+      { maxRetries: 3, baseDelayMs: 500, maxDelayMs: 5000 }
+    );
   }
 
   async retryBatchJob(
     sellerId: string,
     jobId: string
   ): Promise<ServiceResult<{ jobId: string }>> {
-    const job = await this.store.getBatchJobWithCsv(jobId, sellerId);
+    const job = await this.store.getBatchJob(jobId, sellerId);
     if (!job) {
       return { success: false, error: "Batch job not found" };
     }
@@ -290,19 +386,32 @@ export class SellerService {
       return { success: false, error: `Maximum retries (${job.maxRetries}) reached for this job` };
     }
 
-    if (!job.csvData) {
-      return { success: false, error: "CSV data is no longer available for this job. Please re-upload the file." };
+    if (!job.s3Key) {
+      return { success: false, error: "S3 file reference is no longer available. Please re-upload the file." };
     }
-
-    const resumeFromRow = job.failedAtRow ?? 1;
 
     await this.store.updateBatchJob(jobId, {
       status: "pending",
       retryCount: job.retryCount + 1,
+      processedRows: 0,
+      createdCount: 0,
+      errorCount: 0,
       errors: [],
+      chunksCompleted: 0,
+      chunksFailed: 0,
+      totalChunks: 0,
     });
 
-    this.processBatchInBackground(jobId, sellerId, job.csvData, resumeFromRow).catch(() => {});
+    const message: CsvFileUploadedMessage = {
+      type: "csv_file_uploaded",
+      jobId,
+      sellerId,
+      s3Key: job.s3Key,
+      fileName: job.fileName,
+      totalRows: job.totalRows,
+    };
+
+    await sendMessage(CSV_QUEUE_URL, message);
 
     return { success: true, data: { jobId } };
   }
@@ -323,198 +432,51 @@ export class SellerService {
     return { success: true, data: jobs };
   }
 
-  private async processBatchInBackground(
-    jobId: string,
-    sellerId: string,
-    csvData: string,
-    startFromRow: number
-  ): Promise<void> {
-    await this.store.updateBatchJob(jobId, { status: "processing" });
+  /**
+   * Finalizes a batch job after all chunks are done (called by the chunk worker).
+   */
+  async finalizeBatchJob(jobId: string): Promise<void> {
+    const job = await this.store.getBatchJobById(jobId);
+    if (!job) return;
 
-    try {
-      const lines = csvData.trim().split("\n");
-      const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+    const allDone = job.chunksCompleted + job.chunksFailed >= job.totalChunks;
+    if (!allDone) return;
 
-      const nameIdx = headers.indexOf("name");
-      const descIdx = headers.indexOf("description");
-      const priceIdx = headers.indexOf("price");
-      const categoryIdx = headers.indexOf("category");
-      const stockIdx = headers.indexOf("stock");
-      const imageIdx = headers.indexOf("imageurl");
+    const finalStatus = job.chunksFailed > 0 ? "completed" : "completed";
+    const hasErrors = job.errorCount > 0 || job.chunksFailed > 0;
 
-      let totalProcessed = startFromRow > 1 ? startFromRow - 1 : 0;
-      let totalCreated = 0;
-      let totalErrorCount = 0;
-      const allErrors: { row: number; error: string }[] = [];
+    await this.store.updateBatchJob(jobId, {
+      status: job.chunksFailed > 0 && job.createdCount === 0 ? "failed" : finalStatus,
+    });
 
-      const chunkStart = Math.max(1, startFromRow);
-
-      for (let i = chunkStart; i < lines.length; i += BULK_CHUNK_SIZE) {
-        const chunkEnd = Math.min(i + BULK_CHUNK_SIZE, lines.length);
-        const validProducts: Product[] = [];
-        const chunkErrors: { row: number; error: string }[] = [];
-
-        for (let row = i; row < chunkEnd; row++) {
-          const cols = this.parseCSVLine(lines[row]);
-          if (cols.length === 0 || cols.every((c) => !c.trim())) {
-            totalProcessed++;
-            continue;
-          }
-
-          const input: ProductCreateInput = {
-            name: cols[nameIdx]?.trim() ?? "",
-            description: cols[descIdx]?.trim() ?? "",
-            price: Number(cols[priceIdx]?.trim() ?? 0),
-            category: cols[categoryIdx]?.trim() ?? "",
-            stock: Number(cols[stockIdx]?.trim() ?? 0),
-            imageUrl: cols[imageIdx]?.trim(),
-          };
-
-          const validation = this.validateProduct(input);
-          if (validation) {
-            totalErrorCount++;
-            if (allErrors.length < MAX_STORED_ERRORS) {
-              chunkErrors.push({ row, error: validation });
-            }
-            totalProcessed++;
-            continue;
-          }
-
-          validProducts.push({
-            id: uuidv4(),
-            name: input.name.trim(),
-            description: input.description,
-            price: input.price,
-            category: input.category,
-            stock: input.stock,
-            imageUrl: input.imageUrl ?? "",
-            sellerId,
-            createdAt: new Date(),
-          });
-
-          totalProcessed++;
-        }
-
-        allErrors.push(...chunkErrors);
-
-        if (validProducts.length > 0) {
-          try {
-            await withRetry(
-              () => this.store.addProductsBulk(validProducts),
-              {
-                ...DB_RETRY_OPTS,
-                onRetry: (err, attempt, delay) => {
-                  console.warn(
-                    `Batch job ${jobId}: DB insert retry ${attempt} in ${delay}ms — ${err instanceof Error ? err.message : err}`
-                  );
-                },
-              }
-            );
-            totalCreated += validProducts.length;
-          } catch (dbErr) {
-            const errMsg = dbErr instanceof Error ? dbErr.message : "Database insert failed";
-            totalErrorCount += validProducts.length;
-
-            if (allErrors.length < MAX_STORED_ERRORS) {
-              allErrors.push({
-                row: i,
-                error: `DB insert failed for chunk (rows ${i}-${chunkEnd - 1}): ${errMsg}`,
-              });
-            }
-
-            await this.store.updateBatchJob(jobId, {
-              status: "failed",
-              processedRows: totalProcessed,
-              createdCount: totalCreated,
-              errorCount: totalErrorCount,
-              errors: allErrors,
-              failedAtRow: i,
-            });
-
-            await this.notifyBatchFailure(sellerId, jobId, errMsg, totalCreated, totalErrorCount);
-            return;
-          }
-        }
-
-        await withRetry(
-          () =>
-            this.store.updateBatchJob(jobId, {
-              processedRows: totalProcessed,
-              createdCount: totalCreated,
-              errorCount: totalErrorCount,
-              errors: allErrors,
-            }),
-          { maxRetries: 2, baseDelayMs: 200, maxDelayMs: 2_000 }
-        );
+    if (job.s3Key) {
+      try {
+        await deleteObject(job.s3Key);
+      } catch {
+        console.warn(`Failed to clean up S3 object ${job.s3Key}`);
       }
+    }
 
-      await this.store.updateBatchJob(jobId, {
-        status: "completed",
-        processedRows: totalProcessed,
-        createdCount: totalCreated,
-        errorCount: totalErrorCount,
-        errors: allErrors,
-      });
-
-      await this.store.clearBatchJobCsvData(jobId);
-
-      if (totalErrorCount > 0) {
-        await this.createNotification(
-          sellerId,
-          "batch_completed_with_errors",
-          `CSV upload "${await this.getJobFileName(jobId, sellerId)}" completed with errors`,
-          `${totalCreated.toLocaleString()} products created, ${totalErrorCount.toLocaleString()} rows had errors. Check the batch job details for specifics.`,
-          { jobId, createdCount: totalCreated, errorCount: totalErrorCount }
-        );
-      } else {
-        await this.createNotification(
-          sellerId,
-          "batch_completed",
-          `CSV upload completed successfully`,
-          `All ${totalCreated.toLocaleString()} products from your upload have been created.`,
-          { jobId, createdCount: totalCreated }
-        );
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
-
-      await this.store.updateBatchJob(jobId, {
-        status: "failed",
-        errors: [{ row: 0, error: `Processing failed: ${errorMessage}` }],
-        failedAtRow: 1,
-      }).catch(() => {});
-
-      await this.notifyBatchFailure(sellerId, jobId, errorMessage, 0, 0);
+    if (hasErrors) {
+      await this.createNotification(
+        job.sellerId,
+        "batch_completed_with_errors",
+        `CSV upload "${job.fileName}" completed with errors`,
+        `${job.createdCount.toLocaleString()} products created, ${job.errorCount.toLocaleString()} rows had errors. ${job.chunksFailed} chunk(s) failed.`,
+        { jobId, createdCount: job.createdCount, errorCount: job.errorCount, chunksFailed: job.chunksFailed }
+      );
+    } else {
+      await this.createNotification(
+        job.sellerId,
+        "batch_completed",
+        "CSV upload completed successfully",
+        `All ${job.createdCount.toLocaleString()} products from your upload have been created.`,
+        { jobId, createdCount: job.createdCount }
+      );
     }
   }
 
-  private async notifyBatchFailure(
-    sellerId: string,
-    jobId: string,
-    errorMessage: string,
-    createdCount: number,
-    errorCount: number
-  ): Promise<void> {
-    const fileName = await this.getJobFileName(jobId, sellerId);
-    await this.createNotification(
-      sellerId,
-      "batch_failed",
-      `CSV upload "${fileName}" failed`,
-      `The upload encountered an error: ${errorMessage}. ${createdCount > 0 ? `${createdCount.toLocaleString()} products were created before the failure.` : "No products were created."} You can retry this job from the batch upload page.`,
-      { jobId, errorMessage, createdCount, errorCount }
-    );
-  }
-
-  private async getJobFileName(jobId: string, sellerId: string): Promise<string> {
-    try {
-      const job = await this.store.getBatchJob(jobId, sellerId);
-      return job?.fileName ?? "unknown";
-    } catch {
-      return "unknown";
-    }
-  }
-
-  private parseCSVLine(line: string): string[] {
+  parseCSVLine(line: string): string[] {
     const result: string[] = [];
     let current = "";
     let inQuotes = false;
@@ -534,7 +496,7 @@ export class SellerService {
     return result;
   }
 
-  private validateProduct(input: ProductCreateInput): string | null {
+  validateProduct(input: ProductCreateInput): string | null {
     if (!input.name?.trim()) return "Product name is required";
     if (typeof input.price !== "number" || input.price <= 0) return "Price must be a positive number";
     if (typeof input.stock !== "number" || input.stock < 0) return "Stock cannot be negative";

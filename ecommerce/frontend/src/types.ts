@@ -130,6 +130,10 @@ export interface BatchJob {
   retryCount: number;
   maxRetries: number;
   failedAtRow: number | null;
+  s3Key: string | null;
+  totalChunks: number;
+  chunksCompleted: number;
+  chunksFailed: number;
   createdAt: string;
   updatedAt: string;
 }

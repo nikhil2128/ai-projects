@@ -108,6 +108,10 @@ CREATE TABLE IF NOT EXISTS batch_jobs (
   max_retries INT NOT NULL DEFAULT 3,
   failed_at_row INT,
   csv_data TEXT,
+  s3_key VARCHAR(1024),
+  total_chunks INT NOT NULL DEFAULT 0,
+  chunks_completed INT NOT NULL DEFAULT 0,
+  chunks_failed INT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -157,6 +161,14 @@ const POST_MIGRATIONS = [
       ALTER TABLE batch_jobs ADD COLUMN max_retries INT NOT NULL DEFAULT 3;
       ALTER TABLE batch_jobs ADD COLUMN failed_at_row INT;
       ALTER TABLE batch_jobs ADD COLUMN csv_data TEXT;
+    END IF;
+  END $$`,
+  `DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='batch_jobs' AND column_name='s3_key') THEN
+      ALTER TABLE batch_jobs ADD COLUMN s3_key VARCHAR(1024);
+      ALTER TABLE batch_jobs ADD COLUMN total_chunks INT NOT NULL DEFAULT 0;
+      ALTER TABLE batch_jobs ADD COLUMN chunks_completed INT NOT NULL DEFAULT 0;
+      ALTER TABLE batch_jobs ADD COLUMN chunks_failed INT NOT NULL DEFAULT 0;
     END IF;
   END $$`,
 ];

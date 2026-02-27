@@ -217,31 +217,42 @@ export const api = {
         method: "DELETE",
       });
     },
-    async uploadBatchCSV(file: File): Promise<{ jobId: string }> {
-      const token = localStorage.getItem("token");
-      const formData = new FormData();
-      formData.append("file", file);
+    async getPresignedUploadUrl(fileName: string): Promise<{ uploadUrl: string; s3Key: string; jobId: string }> {
+      return request<{ uploadUrl: string; s3Key: string; jobId: string }>("/api/seller/products/batch-upload/presign", {
+        method: "POST",
+        body: JSON.stringify({ fileName }),
+      });
+    },
+    async uploadBatchCSV(file: File, totalRows: number): Promise<{ jobId: string }> {
+      const { uploadUrl, s3Key, jobId } = await this.getPresignedUploadUrl(file.name);
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 120_000);
+      const timeout = setTimeout(() => controller.abort(), 300_000);
 
       try {
-        const res = await fetch("/api/seller/products/batch-upload", {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body: formData,
+        const uploadRes = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": "text/csv" },
+          body: file,
           signal: controller.signal,
         });
 
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({ error: "Upload failed" }));
-          throw new ApiError(res.status, body.error ?? "Upload failed");
+        if (!uploadRes.ok) {
+          throw new ApiError(uploadRes.status, "Failed to upload file to storage");
         }
-
-        return res.json();
       } finally {
         clearTimeout(timeout);
       }
+
+      return request<{ jobId: string }>("/api/seller/products/batch-upload/confirm", {
+        method: "POST",
+        body: JSON.stringify({
+          jobId,
+          s3Key,
+          fileName: file.name,
+          totalRows,
+        }),
+      });
     },
     getBatchJob(jobId: string) {
       return request<BatchJob>(`/api/seller/products/batch-jobs/${jobId}`);

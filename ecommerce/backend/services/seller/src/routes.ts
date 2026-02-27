@@ -1,8 +1,5 @@
 import { Router, Request, Response, NextFunction } from "express";
-import multer from "multer";
 import { SellerService } from "./service";
-
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
 type AsyncHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
 
@@ -81,23 +78,46 @@ export function createSellerRoutes(sellerService: SellerService): Router {
     res.status(201).json(result.data);
   }));
 
-  // ── Batch upload (CSV) ─────────────────────────────────────────
+  // ── Batch upload (S3 + SQS pipeline) ────────────────────────────
 
-  router.post("/products/batch-upload", upload.single("file"), asyncHandler(async (req, res) => {
+  router.post("/products/batch-upload/presign", asyncHandler(async (req, res) => {
     const sellerId = requireSeller(req, res);
     if (!sellerId) return;
-    const file = req.file;
-    if (!file) {
-      res.status(400).json({ error: "CSV file is required" });
+
+    const { fileName } = req.body;
+    if (!fileName || typeof fileName !== "string") {
+      res.status(400).json({ error: "fileName is required" });
       return;
     }
-    const csvData = file.buffer.toString("utf-8");
-    const fileName = file.originalname || "upload.csv";
-    const result = await sellerService.startBatchUpload(sellerId, csvData, fileName);
+
+    const result = await sellerService.getUploadUrl(sellerId, fileName);
     if (!result.success) {
       res.status(400).json({ error: result.error });
       return;
     }
+
+    res.json(result.data);
+  }));
+
+  router.post("/products/batch-upload/confirm", asyncHandler(async (req, res) => {
+    const sellerId = requireSeller(req, res);
+    if (!sellerId) return;
+
+    const { jobId, s3Key, fileName, totalRows } = req.body;
+
+    if (!jobId || !s3Key || !fileName) {
+      res.status(400).json({ error: "jobId, s3Key, and fileName are required" });
+      return;
+    }
+
+    const rowCount = typeof totalRows === "number" ? totalRows : 0;
+
+    const result = await sellerService.startBatchUpload(sellerId, jobId, s3Key, fileName, rowCount);
+    if (!result.success) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+
     res.status(202).json(result.data);
   }));
 

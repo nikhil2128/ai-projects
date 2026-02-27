@@ -1,0 +1,132 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Org-chart tree connector lines ───────────────────────── */
+
+.org-tree,
+.org-tree ul,
+.org-tree li {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.org-tree li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding: 0 12px;
+}
+
+/* Vertical line down from parent */
+.org-tree-children::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 2px;
+  height: 32px;
+  background: linear-gradient(to bottom, #c7d2fe, #a5b4fc);
+  transform: translateX(-50%);
+}
+
+/* Vertical line up into each child */
+.org-tree-children > li::before {
+  content: "";
+  position: absolute;
+  top: -0px;
+  left: 50%;
+  width: 2px;
+  height: 32px;
+  background: linear-gradient(to bottom, #a5b4fc, #c7d2fe);
+  transform: translateX(-50%);
+  z-index: 0;
+}
+
+/* Horizontal connector between siblings */
+.org-tree-children > li::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 100%;
+  height: 2px;
+  background: #c7d2fe;
+}
+
+/* First child: horizontal line goes right from center */
+.org-tree-children > li:first-child::after {
+  left: 50%;
+  width: 50%;
+}
+
+/* Last child: horizontal line goes left from center */
+.org-tree-children > li:last-child::after {
+  right: 50%;
+  width: 50%;
+  left: auto;
+}
+
+/* Single child: no horizontal line */
+.org-tree-children > li:only-child::after {
+  display: none;
+}
+
+/* ── Animations ───────────────────────────────────────────── */
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.org-tree li {
+  animation: fadeInUp 0.5s ease-out both;
+}
+
+.org-tree li:nth-child(1) { animation-delay: 0.05s; }
+.org-tree li:nth-child(2) { animation-delay: 0.1s; }
+.org-tree li:nth-child(3) { animation-delay: 0.15s; }
+.org-tree li:nth-child(4) { animation-delay: 0.2s; }
+.org-tree li:nth-child(5) { animation-delay: 0.25s; }
+.org-tree li:nth-child(6) { animation-delay: 0.3s; }
+.org-tree li:nth-child(7) { animation-delay: 0.35s; }
+.org-tree li:nth-child(8) { animation-delay: 0.4s; }
+
+/* ── Chart container for download ─────────────────────────── */
+
+.org-chart-container {
+  background: white;
+}
+
+/* ── Scrollbar styling ────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

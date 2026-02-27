@@ -10,6 +10,7 @@ A collection of independent projects, each with its own tech stack, lint/test co
 | [csv-merger](./csv-merger/) | CSV file merging and analysis tool | Express.js | React + Vite | Docker |
 | [image-annotator](./image-annotator/) | Collaborative image annotation platform | Express.js + Prisma | React + Vite | AWS (ECS + S3/CloudFront) |
 | [invoice-processor](./invoice-processor/) | Async invoice PDF extraction API | NestJS + TypeORM | React + Vite | Docker |
+| [org-chart-from-handwriting](./org-chart-from-handwriting/) | Handwritten org screenshot to polished downloadable org chart | Express.js | React + Vite | Docker |
 | [smart-task-manager](./smart-task-manager/) | Full-stack project & task management | NestJS + TypeORM | Next.js | Docker |
 
 ## Repository Structure
@@ -22,6 +23,7 @@ ai-projects/
 ├── csv-merger/               # Independent project
 ├── image-annotator/          # Independent project
 ├── invoice-processor/        # Independent project
+├── org-chart-from-handwriting/ # Independent project
 ├── smart-task-manager/       # Independent project
 ├── Makefile                  # Root-level orchestration
 └── README.md

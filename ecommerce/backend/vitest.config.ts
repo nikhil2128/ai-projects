@@ -21,11 +21,10 @@ export default defineConfig({
         "shared/test-db.ts",
         "shared/migrations*.ts",
         "shared/database.ts",
-        "shared/graceful-shutdown.ts",
         "services/*/src/index.ts",
         "services/*/src/app.ts",
         "services/*/src/store.ts",
-        "gateway/**",
+        "handlers/**",
       ],
       thresholds: {
         statements: 90,

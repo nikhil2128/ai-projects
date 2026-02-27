@@ -1,0 +1,779 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  E-commerce microservices — serverless deployment using AWS Lambda,
+  API Gateway HTTP API, Aurora Serverless v2, SQS, S3 and CloudFront.
+
+# ────────────────────────────────────────────────────────────────────
+# Parameters
+# ────────────────────────────────────────────────────────────────────
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+
+  DBMasterUsername:
+    Type: String
+    Default: ecommerce
+    NoEcho: true
+
+  DBMasterPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+
+  CorsOrigin:
+    Type: String
+    Default: "*"
+
+# ────────────────────────────────────────────────────────────────────
+# Globals
+# ────────────────────────────────────────────────────────────────────
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 256
+    Architectures: [arm64]
+    Environment:
+      Variables:
+        NODE_ENV: production
+        DB_HOST: !GetAtt RDSCluster.Endpoint.Address
+        DB_PORT: !GetAtt RDSCluster.Endpoint.Port
+        DB_NAME: ecommerce
+        DB_USER: !Ref DBMasterUsername
+        DB_PASSWORD: !Ref DBMasterPassword
+        DB_POOL_MAX: "2"
+        DB_IDLE_TIMEOUT: "120000"
+        CORS_ORIGIN: !Ref CorsOrigin
+    VpcConfig:
+      SecurityGroupIds: [!Ref LambdaSecurityGroup]
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+
+# ────────────────────────────────────────────────────────────────────
+# Resources
+# ────────────────────────────────────────────────────────────────────
+Resources:
+
+  # ── VPC ──────────────────────────────────────────────────────────
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-vpc"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public subnets (NAT Gateway)
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-public-a"
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-public-b"
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  # Private subnets (Lambda + RDS)
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-private-a"
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-private-b"
+
+  # NAT Gateway for outbound internet from private subnets
+  NatEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: VPCGatewayAttachment
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEIP.AllocationId
+      SubnetId: !Ref PublicSubnetA
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  # VPC Endpoints (avoid NAT Gateway charges for AWS services)
+  S3VPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+
+  SQSVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sqs"
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+      PrivateDnsEnabled: true
+
+  VPCEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow Lambda to reach VPC endpoints
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+
+  # ── Security Groups ─────────────────────────────────────────────
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Lambda functions
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrBlock: 0.0.0.0/0
+
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Aurora PostgreSQL
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref LambdaSecurityGroup
+
+  # ── Aurora Serverless v2 PostgreSQL ──────────────────────────────
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets for Aurora cluster
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+
+  RDSCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Snapshot
+    Properties:
+      Engine: aurora-postgresql
+      EngineVersion: "16.4"
+      DatabaseName: ecommerce
+      MasterUsername: !Ref DBMasterUsername
+      MasterUserPassword: !Ref DBMasterPassword
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0.5
+        MaxCapacity: 4
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      VpcSecurityGroupIds: [!Ref RDSSecurityGroup]
+      StorageEncrypted: true
+      BackupRetentionPeriod: 7
+      EnableHttpEndpoint: true
+
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref RDSCluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+      PubliclyAccessible: false
+
+  # ── SQS Queues ──────────────────────────────────────────────────
+  CsvDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-csv-dlq"
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  CsvProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-csv-processing"
+      VisibilityTimeout: 180
+      MessageRetentionPeriod: 86400
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt CsvDLQ.Arn
+        maxReceiveCount: 3
+
+  # ── S3 Buckets ──────────────────────────────────────────────────
+  CsvUploadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-csv-uploads-${AWS::AccountId}"
+      LifecycleConfiguration:
+        Rules:
+          - Id: CleanupUploads
+            Status: Enabled
+            ExpirationInDays: 7
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: ["*"]
+            AllowedMethods: [PUT]
+            AllowedHeaders: ["*"]
+            MaxAge: 300
+
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-frontend-${AWS::AccountId}"
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                "AWS:SourceArn": !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+
+  # ── CloudFront ──────────────────────────────────────────────────
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: S3Frontend
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !Ref CloudFrontOAC
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          - Id: ApiGateway
+            DomainName: !Sub "${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+        DefaultCacheBehavior:
+          TargetOriginId: S3Frontend
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized
+          Compress: true
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: ApiGateway
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # AllViewerExceptHostHeader
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+
+  # ── API Gateway HTTP API ────────────────────────────────────────
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Environment
+      CorsConfiguration:
+        AllowOrigins: ["*"]
+        AllowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+        AllowHeaders: ["Content-Type", "Authorization", "x-idempotency-key"]
+        MaxAge: 86400
+      Auth:
+        DefaultAuthorizer: LambdaTokenAuthorizer
+        Authorizers:
+          LambdaTokenAuthorizer:
+            AuthorizationScopes: []
+            FunctionArn: !GetAtt AuthorizerFunction.Arn
+            FunctionInvokeRole: !GetAtt AuthorizerInvokeRole.Arn
+            Identity:
+              Headers: [Authorization]
+              ReauthorizeEvery: 300
+            AuthorizerPayloadFormatVersion: "2.0"
+            EnableSimpleResponses: true
+
+  AuthorizerInvokeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeAuthorizer
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt AuthorizerFunction.Arn
+
+  # ── Lambda Authorizer ───────────────────────────────────────────
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-authorizer"
+      Handler: handlers/authorizer.lambdaHandler
+      CodeUri: backend/
+      Timeout: 10
+      MemorySize: 128
+      ReservedConcurrentExecutions: 50
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints: [handlers/authorizer.ts]
+        External: [pg-native]
+
+  # ── Database Migration (Custom Resource) ────────────────────────
+  MigrationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-migrate"
+      Handler: handlers/migrate.lambdaHandler
+      CodeUri: backend/
+      Timeout: 120
+      MemorySize: 256
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints: [handlers/migrate.ts]
+        External: [pg-native]
+
+  RunMigrations:
+    Type: Custom::Migration
+    DependsOn: [RDSInstance]
+    Properties:
+      ServiceToken: !GetAtt MigrationFunction.Arn
+
+  # ── Auth Service Lambda ─────────────────────────────────────────
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: RunMigrations
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-auth"
+      Handler: handlers/auth.lambdaHandler
+      CodeUri: backend/
+      ReservedConcurrentExecutions: 50
+      Events:
+        AuthProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/auth/{proxy+}
+            Method: ANY
+            Auth:
+              Authorizer: NONE
+        AuthRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/auth
+            Method: ANY
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints: [handlers/auth.ts]
+        External: [pg-native]
+
+  # ── Product Service Lambda ──────────────────────────────────────
+  ProductFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: RunMigrations
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-product"
+      Handler: handlers/product.lambdaHandler
+      CodeUri: backend/
+      ReservedConcurrentExecutions: 100
+      Events:
+        ProductProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/products/{proxy+}
+            Method: ANY
+            Auth:
+              Authorizer: NONE
+        ProductRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/products
+            Method: ANY
+            Auth:
+              Authorizer: NONE
+        FavoritesProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/favorites/{proxy+}
+            Method: ANY
+        FavoritesRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/favorites
+            Method: ANY
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints: [handlers/product.ts]
+        External: [pg-native]
+
+  # ── Cart Service Lambda ─────────────────────────────────────────
+  CartFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: RunMigrations
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-cart"
+      Handler: handlers/cart.lambdaHandler
+      CodeUri: backend/
+      ReservedConcurrentExecutions: 50
+      Environment:
+        Variables:
+          PRODUCT_SERVICE_URL: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/api/products"
+      Events:
+        CartProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/cart/{proxy+}
+            Method: ANY
+        CartRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/cart
+            Method: ANY
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints: [handlers/cart.ts]
+        External: [pg-native]
+
+  # ── Order Service Lambda ────────────────────────────────────────
+  OrderFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: RunMigrations
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-order"
+      Handler: handlers/order.lambdaHandler
+      CodeUri: backend/
+      ReservedConcurrentExecutions: 50
+      Environment:
+        Variables:
+          CART_SERVICE_URL: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/api/cart"
+          PRODUCT_SERVICE_URL: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/api/products"
+      Events:
+        OrderProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/orders/{proxy+}
+            Method: ANY
+        OrderRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/orders
+            Method: ANY
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints: [handlers/order.ts]
+        External: [pg-native]
+
+  # ── Payment Service Lambda ──────────────────────────────────────
+  PaymentFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: RunMigrations
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-payment"
+      Handler: handlers/payment.lambdaHandler
+      CodeUri: backend/
+      ReservedConcurrentExecutions: 50
+      Environment:
+        Variables:
+          ORDER_SERVICE_URL: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/api/orders"
+          PRODUCT_SERVICE_URL: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/api/products"
+      Events:
+        PaymentProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/payments/{proxy+}
+            Method: ANY
+        PaymentRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/payments
+            Method: ANY
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints: [handlers/payment.ts]
+        External: [pg-native]
+
+  # ── Seller Service Lambda ───────────────────────────────────────
+  SellerFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: RunMigrations
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-seller"
+      Handler: handlers/seller.lambdaHandler
+      CodeUri: backend/
+      Timeout: 60
+      ReservedConcurrentExecutions: 30
+      Environment:
+        Variables:
+          CSV_UPLOAD_BUCKET: !Ref CsvUploadBucket
+          CSV_PROCESSING_QUEUE_URL: !Ref CsvProcessingQueue
+          CSV_DLQ_URL: !Ref CsvDLQ
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref CsvUploadBucket
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt CsvProcessingQueue.QueueName
+      Events:
+        SellerProxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/seller/{proxy+}
+            Method: ANY
+        SellerRoot:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /api/seller
+            Method: ANY
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints: [handlers/seller.ts]
+        External: [pg-native]
+
+  # ── CSV Worker Lambda (SQS trigger) ─────────────────────────────
+  CsvWorkerFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: RunMigrations
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-csv-worker"
+      Handler: handlers/csv-worker.lambdaHandler
+      CodeUri: backend/
+      Timeout: 180
+      MemorySize: 512
+      ReservedConcurrentExecutions: 10
+      Environment:
+        Variables:
+          CSV_UPLOAD_BUCKET: !Ref CsvUploadBucket
+          CSV_PROCESSING_QUEUE_URL: !Ref CsvProcessingQueue
+          CSV_DLQ_URL: !Ref CsvDLQ
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref CsvUploadBucket
+        - S3CrudPolicy:
+            BucketName: !Ref CsvUploadBucket
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt CsvProcessingQueue.QueueName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt CsvDLQ.QueueName
+      Events:
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt CsvProcessingQueue.Arn
+            BatchSize: 5
+            MaximumBatchingWindowInSeconds: 10
+            FunctionResponseTypes: [ReportBatchItemFailures]
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints: [handlers/csv-worker.ts]
+        External: [pg-native]
+
+  # ── DLQ Processor Lambda ────────────────────────────────────────
+  DlqProcessorFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: RunMigrations
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-dlq-processor"
+      Handler: handlers/dlq-processor.lambdaHandler
+      CodeUri: backend/
+      Timeout: 60
+      MemorySize: 256
+      ReservedConcurrentExecutions: 2
+      Events:
+        DLQTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt CsvDLQ.Arn
+            BatchSize: 5
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints: [handlers/dlq-processor.ts]
+        External: [pg-native]
+
+# ────────────────────────────────────────────────────────────────────
+# Outputs
+# ────────────────────────────────────────────────────────────────────
+Outputs:
+  ApiUrl:
+    Description: HTTP API Gateway endpoint
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+
+  CloudFrontUrl:
+    Description: CloudFront distribution URL (frontend + API)
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+
+  FrontendBucket:
+    Description: S3 bucket for frontend static assets
+    Value: !Ref FrontendBucket
+
+  CsvUploadBucket:
+    Description: S3 bucket for CSV uploads
+    Value: !Ref CsvUploadBucket
+
+  DatabaseEndpoint:
+    Description: Aurora Serverless v2 cluster endpoint
+    Value: !GetAtt RDSCluster.Endpoint.Address
+
+  CsvQueueUrl:
+    Description: SQS queue URL for CSV processing
+    Value: !Ref CsvProcessingQueue
+
+  CsvDlqUrl:
+    Description: SQS dead-letter queue URL
+    Value: !Ref CsvDLQ

@@ -1,0 +1,43 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "ecommerce"
+resolve_s3 = true
+s3_prefix = "ecommerce"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = true
+parameter_overrides = [
+  "Environment=prod",
+  "DBMasterUsername=ecommerce",
+  "DBMasterPassword=CHANGE_ME_BEFORE_DEPLOY",
+]
+
+[default.build.parameters]
+use_container = false
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.sync.parameters]
+watch = true
+
+[dev.deploy.parameters]
+stack_name = "ecommerce-dev"
+resolve_s3 = true
+s3_prefix = "ecommerce-dev"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = false
+parameter_overrides = [
+  "Environment=dev",
+  "DBMasterUsername=ecommerce",
+  "DBMasterPassword=CHANGE_ME_BEFORE_DEPLOY",
+]
+
+[dev.build.parameters]
+use_container = false
+cached = true
+parallel = true

@@ -120,6 +120,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - uses: aws-actions/setup-sam@v2
       - name: Build backend
         working-directory: ecommerce/backend
         run: |
@@ -130,3 +131,6 @@ jobs:
         run: |
           npm ci
           npm run build
+      - name: SAM build
+        working-directory: ecommerce
+        run: sam build --cached

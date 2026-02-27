@@ -15,7 +15,12 @@
     "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
     "typecheck": "npm run typecheck --prefix backend && npm run typecheck --prefix frontend",
     "seed": "npm run seed --prefix backend",
-    "install:all": "npm install --prefix backend && npm install --prefix frontend"
+    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "sam:build": "sam build",
+    "sam:deploy": "sam deploy",
+    "sam:deploy:dev": "sam deploy --config-env dev",
+    "sam:local": "sam local start-api --warm-containers EAGER",
+    "deploy:frontend": "npm run build --prefix frontend && aws s3 sync frontend/dist/ s3://$(aws cloudformation describe-stacks --stack-name ecommerce --query 'Stacks[0].Outputs[?OutputKey==`FrontendBucket`].OutputValue' --output text) --delete && aws cloudfront create-invalidation --distribution-id $(aws cloudformation describe-stacks --stack-name ecommerce --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontUrl`].OutputValue' --output text | grep -o '[A-Z0-9]*$') --paths '/*'"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

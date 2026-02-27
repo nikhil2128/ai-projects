@@ -1,7 +1,6 @@
 import { createPool } from "../../../shared/database";
 import { runMigrations } from "../../../shared/migrations";
 import { createApp } from "./app";
-import { setupGracefulShutdown } from "../../../shared/graceful-shutdown";
 import { CsvWorker } from "./csv-worker";
 import { DlqProcessor } from "./dlq-processor";
 
@@ -25,14 +24,8 @@ async function main() {
     console.log("CSV workers started (SQS queue + DLQ processor)");
   }
 
-  const server = app.listen(PORT, () => {
+  app.listen(PORT, () => {
     console.log(`Seller service running on http://localhost:${PORT}`);
-  });
-
-  setupGracefulShutdown(server, "seller", () => {
-    csvWorker?.stop();
-    dlqProcessor?.stop();
-    return pool.end();
   });
 }
 

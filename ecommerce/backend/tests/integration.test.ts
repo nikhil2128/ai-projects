@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
+import express, { Request, Response, NextFunction } from "express";
 import http from "http";
 import { Pool } from "pg";
 import { createApp as createAuthApp } from "../services/auth/src/app";
@@ -7,7 +8,7 @@ import { createApp as createProductApp } from "../services/product/src/app";
 import { createApp as createCartApp } from "../services/cart/src/app";
 import { createApp as createOrderApp } from "../services/order/src/app";
 import { createApp as createPaymentApp } from "../services/payment/src/app";
-import { createGateway } from "../gateway/app";
+import { AuthService } from "../services/auth/src/service";
 import {
 	HttpProductClient,
 	HttpCartClient,
@@ -30,16 +31,76 @@ function startServer(
 	});
 }
 
+/**
+ * Creates a test gateway that mimics API Gateway + Lambda authorizer routing.
+ * Validates tokens directly via the auth service and injects x-user-id / x-user-role headers.
+ */
+function createTestGateway(
+	authService: AuthService,
+	serviceApps: {
+		auth: Express.Application;
+		product: Express.Application;
+		cart: Express.Application;
+		order: Express.Application;
+		payment: Express.Application;
+	},
+) {
+	const app = express();
+	app.use(express.json());
+
+	app.get("/health", (_req, res) => {
+		res.json({ status: "ok", service: "gateway" });
+	});
+
+	const authMiddleware = async (
+		req: Request,
+		res: Response,
+		next: NextFunction,
+	) => {
+		const authHeader = req.headers.authorization;
+		if (!authHeader?.startsWith("Bearer ")) {
+			res.status(401).json({ error: "Authentication required" });
+			return;
+		}
+		const token = authHeader.slice(7);
+		const result = await authService.validateToken(token);
+		if (!result) {
+			res.status(401).json({ error: "Invalid or expired token" });
+			return;
+		}
+		req.headers["x-user-id"] = result.userId;
+		req.headers["x-user-role"] = result.role;
+		next();
+	};
+
+	app.use("/api/auth", serviceApps.auth);
+	app.use("/api/products", serviceApps.product);
+	app.use(
+		"/api/favorites",
+		authMiddleware,
+		(req: Request, res: Response, next: NextFunction) => {
+			req.url = `/favorites${req.url}`;
+			serviceApps.product(req, res, next);
+		},
+	);
+	app.use("/api/cart", authMiddleware, serviceApps.cart);
+	app.use("/api/orders", authMiddleware, serviceApps.order);
+	app.use("/api/payments", authMiddleware, serviceApps.payment);
+
+	return app;
+}
+
 describe("E-commerce Microservices Integration Tests", () => {
 	let servers: http.Server[] = [];
-	let gatewayApp: ReturnType<typeof createGateway>["app"];
+	let gatewayApp: Express.Application;
 	let pool: Pool;
 
 	beforeAll(async () => {
 		pool = await getTestPool();
 		await cleanTables(pool);
 
-		const auth = await startServer(createAuthApp(pool).app);
+		const authResult = createAuthApp(pool);
+		const auth = await startServer(authResult.app);
 		const product = await startServer(createProductApp(pool).app);
 
 		const productClient = new HttpProductClient(
@@ -57,15 +118,13 @@ describe("E-commerce Microservices Integration Tests", () => {
 			createPaymentApp(pool, orderClient, productClient).app,
 		);
 
-		const { app: gw } = createGateway({
-			authServiceUrl: `http://localhost:${auth.port}`,
-			productServiceUrl: `http://localhost:${product.port}`,
-			cartServiceUrl: `http://localhost:${cart.port}`,
-			orderServiceUrl: `http://localhost:${order.port}`,
-			paymentServiceUrl: `http://localhost:${payment.port}`,
+		gatewayApp = createTestGateway(authResult.service, {
+			auth: createAuthApp(pool).app,
+			product: createProductApp(pool).app,
+			cart: createCartApp(pool, productClient).app,
+			order: createOrderApp(pool, cartClient, productClient).app,
+			payment: createPaymentApp(pool, orderClient, productClient).app,
 		});
-		gatewayApp = gw;
-		const gatewaySrv = await startServer(gw);
 
 		servers = [
 			auth.server,
@@ -73,7 +132,6 @@ describe("E-commerce Microservices Integration Tests", () => {
 			cart.server,
 			order.server,
 			payment.server,
-			gatewaySrv.server,
 		];
 	});
 

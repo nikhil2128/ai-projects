@@ -802,7 +802,7 @@ These endpoints are used exclusively for service-to-service communication and ar
 
 | Pattern | Where | Why |
 |---------|-------|-----|
-| **API Gateway** | `backend/gateway/app.ts` | Single entry point for all clients; centralizes auth, routing, and cross-cutting concerns |
+| **API Gateway** | AWS API Gateway HTTP API + `backend/handlers/authorizer.ts` | Single entry point for all clients; centralizes auth, routing, and cross-cutting concerns |
 | **Dependency Injection** | All services | Services accept client interfaces in constructors, enabling mock-based testing |
 | **Factory Pattern** | `createApp()` in each service | Produces Express apps with injected dependencies for testability |
 | **Service Result** | `ServiceResult<T>` | Consistent `{success, data?, error?, statusCode}` pattern across all service methods |
@@ -909,79 +909,96 @@ The application has been optimized to support 1 million+ monthly active users wi
 | **Vendor Chunk Splitting** | React, React Router, and Lucide icons split into separate vendor chunks for long-term caching. |
 | **Build Compression** | Vite produces both gzip and brotli compressed assets. Pre-compressed files served by Nginx. |
 
-### Infrastructure
+### Infrastructure (Serverless — AWS SAM)
 
 ```mermaid
 graph TB
     Users["Users (1M+ MAU)"]
-    CDN["CDN (CloudFront / Cloudflare)"]
-    LB["Load Balancer / Nginx"]
-    
-    subgraph K8s["Kubernetes Cluster"]
-        subgraph FE["Frontend (2-6 pods)"]
-            FE1["nginx:alpine"]
-            FE2["nginx:alpine"]
+    CF["CloudFront CDN"]
+
+    subgraph AWS["AWS Cloud"]
+        S3["S3 (Frontend)"]
+        APIGW["API Gateway HTTP API"]
+        AUTHORIZER["Lambda Authorizer"]
+
+        subgraph Lambdas["Lambda Functions (ARM64, 256 MB)"]
+            AUTH["Auth Lambda"]
+            PROD["Product Lambda"]
+            CART["Cart Lambda"]
+            ORD["Order Lambda"]
+            PAY["Payment Lambda"]
+            SELLER["Seller Lambda"]
         end
-        
-        subgraph GW["Gateway (3-15 pods)"]
-            GW1["gateway"]
-            GW2["gateway"]
-            GW3["gateway"]
+
+        subgraph Async["Async Processing"]
+            SQS["SQS Queue"]
+            DLQ["SQS DLQ"]
+            CSV["CSV Worker Lambda"]
+            DLQP["DLQ Processor Lambda"]
         end
-        
-        subgraph MS["Microservices"]
-            AUTH["Auth (2-8 pods)"]
-            PROD["Product (3-15 pods)"]
-            CART["Cart (2-10 pods)"]
-            ORD["Order (2-10 pods)"]
-            PAY["Payment (2-8 pods)"]
+
+        subgraph Data["Data Layer (VPC)"]
+            AURORA["Aurora Serverless v2<br/>PostgreSQL 16"]
+            S3CSV["S3 (CSV Uploads)"]
         end
-        
-        REDIS["Redis Cache"]
     end
-    
-    Users --> CDN
-    CDN --> LB
-    LB --> FE
-    LB --> GW
-    GW --> AUTH
-    GW --> PROD
-    GW --> CART
-    GW --> ORD
-    GW --> PAY
-    GW -.-> REDIS
-    PROD -.-> REDIS
+
+    Users --> CF
+    CF --> S3
+    CF --> APIGW
+    APIGW --> AUTHORIZER
+    APIGW --> AUTH
+    APIGW --> PROD
+    APIGW --> CART
+    APIGW --> ORD
+    APIGW --> PAY
+    APIGW --> SELLER
+    SELLER --> SQS
+    SQS --> CSV
+    DLQ --> DLQP
+    AUTH --> AURORA
+    PROD --> AURORA
+    CART --> AURORA
+    ORD --> AURORA
+    PAY --> AURORA
+    CSV --> AURORA
+    CSV --> S3CSV
 ```
 
 | Component | Configuration |
 |-----------|--------------|
-| **Docker** | Multi-stage builds with `node:20-alpine`. Non-root user. Production `NODE_ENV`. |
-| **Docker Compose** | Full stack with all services, Redis, Nginx reverse proxy. Resource limits per container. |
-| **Docker Compose Scale** | Override file for horizontal scaling: 3 gateways, 3 product, 2 of each other service. |
-| **Nginx Reverse Proxy** | `worker_processes auto`, 4096 connections, `least_conn` load balancing, proxy caching for products (30s), rate limiting zones, keepalive connections. |
-| **Kubernetes** | Deployments with readiness/liveness probes, resource requests/limits, HPA autoscaling. |
-| **HPA Autoscaling** | CPU-based autoscaling at 60-65% utilization. Aggressive scale-up (3 pods/60s), conservative scale-down (1 pod/120s, 5min stabilization). |
-| **Redis** | LRU eviction, 256MB max memory, append-only disabled for speed. |
+| **Lambda Runtime** | Node.js 20, ARM64 (Graviton), 256 MB memory, 30s timeout |
+| **API Gateway** | HTTP API (v2) with Lambda authorizer, CORS, 300s authorizer cache |
+| **Aurora Serverless v2** | PostgreSQL 16.4, 0.5–4 ACUs, auto-scales to zero on idle |
+| **VPC** | 2 public + 2 private subnets, NAT Gateway, S3/SQS VPC Endpoints |
+| **CloudFront** | S3 origin for frontend, API Gateway origin for `/api/*` |
+| **SQS** | CSV processing queue + dead-letter queue (3 retries, 14-day retention) |
+| **S3** | CSV uploads (7-day lifecycle) + frontend static assets |
+| **Concurrency Limits** | Auth/Cart/Order/Payment: 50, Product: 100, Seller: 30, CSV Worker: 10 |
 
 ### Deployment Commands
 
 ```bash
-# Development
+# Local development (services run directly)
 npm run dev
 
-# Docker Compose (single instance)
-docker compose up --build
+# Build SAM template
+npm run sam:build
+# or: sam build
 
-# Docker Compose (scaled for load)
-docker compose -f docker-compose.yml -f docker-compose.scale.yml up --build
+# Deploy to AWS (production)
+npm run sam:deploy
+# or: sam deploy --guided
 
-# Kubernetes
-kubectl apply -f infra/k8s/namespace.yaml
-kubectl apply -f infra/k8s/configmap.yaml
-kubectl apply -f infra/k8s/services.yaml
-kubectl apply -f infra/k8s/gateway.yaml
-kubectl apply -f infra/k8s/frontend.yaml
-kubectl apply -f infra/k8s/ingress.yaml
+# Deploy to dev environment
+npm run sam:deploy:dev
+
+# Deploy frontend to S3 + CloudFront
+npm run deploy:frontend
+
+# Local API testing with SAM
+npm run sam:local
+# or: sam local start-api --warm-containers EAGER
 ```
 
 ### Traffic Capacity Estimates
@@ -1039,23 +1056,25 @@ All services share a single PostgreSQL 16 instance with 8 tables:
 | Nginx | 0.25 vCPU | 128 MB | — |
 | **Total (dev)** | **~3.5 vCPU** | **~2.5 GB** | **~100 MB** |
 
-**Production (1M+ MAU):**
+**Production (1M+ MAU — Serverless):**
 
 | Component | Configuration | Monthly Cost (AWS) |
 |-----------|--------------|-------------------|
-| PostgreSQL (RDS) | `db.r6g.large` (2 vCPU, 16 GB), Multi-AZ, 100 GB gp3 | ~$450-550 |
-| PostgreSQL (RDS) read replica | `db.r6g.large` for read scaling | ~$250-300 |
-| EKS cluster | 3-5 `m6i.large` nodes | ~$300-500 |
-| Redis (ElastiCache) | `cache.r6g.large`, single node | ~$180-220 |
-| ALB (Load Balancer) | Application Load Balancer | ~$25-50 |
+| Aurora Serverless v2 | 0.5–4 ACUs, auto-scales to zero | ~$50-200 |
+| Lambda | ~10M invocations/mo, 256 MB, ARM64 | ~$20-50 |
+| API Gateway HTTP API | ~10M requests/mo | ~$10 |
+| NAT Gateway | 1 AZ, data processing | ~$35-50 |
 | CloudFront (CDN) | 1 TB/month transfer | ~$85-100 |
-| **Total (production)** | | **~$1,300-1,700/mo** |
+| S3 | Frontend + CSV uploads | ~$5-10 |
+| SQS | CSV processing queue | ~$1-5 |
+| **Total (production)** | | **~$200-420/mo** |
 
-**Cost optimization strategies:**
-- Use Reserved Instances (1-year) for 30-40% savings on RDS and EC2
-- Enable Aurora Serverless v2 for auto-scaling PostgreSQL (pay per ACU)
-- Use Spot Instances for non-critical service pods
-- Enable connection pooling (PgBouncer) to reduce pool overhead across services
+**Cost savings vs. Docker/K8s:**
+- **~75% reduction** compared to the previous EKS-based deployment (~$1,300-1,700/mo)
+- Aurora Serverless v2 scales to near-zero during off-peak vs. always-running RDS
+- Lambda pay-per-invocation eliminates idle compute costs
+- No EKS cluster fee ($73/mo), no EC2 node costs
+- HTTP API is ~70% cheaper than REST API for the same traffic
 
 ### Scaling PostgreSQL
 

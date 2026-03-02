@@ -144,7 +144,7 @@ export default function OrgChart({ data }: OrgChartProps) {
 
     const name = dialog.name.trim();
     const title = dialog.title.trim();
-    if (!name || !title) return;
+    if (!name) return;
 
     setRoot((current) => {
       if (dialog.type === "add-root") {
@@ -320,7 +320,7 @@ export default function OrgChart({ data }: OrgChartProps) {
               </label>
 
               <label className="block">
-                <span className="text-sm text-slate-700">Role</span>
+                <span className="text-sm text-slate-700">Role <span className="text-slate-400 font-normal">(optional)</span></span>
                 <input
                   value={dialog.title}
                   onChange={handleDialogTitleChange}
@@ -341,7 +341,7 @@ export default function OrgChart({ data }: OrgChartProps) {
               <button
                 type="button"
                 onClick={submitDialog}
-                disabled={!dialog.name.trim() || !dialog.title.trim()}
+                disabled={!dialog.name.trim()}
                 className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Save

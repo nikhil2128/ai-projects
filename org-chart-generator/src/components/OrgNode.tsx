@@ -81,9 +81,11 @@ export default function OrgNodeCard({
           <p className="font-semibold text-slate-900 text-sm leading-tight break-words">
             {node.name}
           </p>
-          <p className="text-xs text-slate-500 mt-0.5 leading-tight break-words">
-            {node.title}
-          </p>
+          {node.title ? (
+            <p className="text-xs text-slate-500 mt-0.5 leading-tight break-words">
+              {node.title}
+            </p>
+          ) : null}
         </div>
         {node.children.length > 0 && (
           <p className="text-[11px] mt-2 text-slate-400">

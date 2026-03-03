@@ -111,6 +111,12 @@ body {
   background: white;
 }
 
+/* ── Zoomable viewport ───────────────────────────────────── */
+
+.org-chart-viewport {
+  background-color: #f8fafc;
+}
+
 /* ── Scrollbar styling ────────────────────────────────────── */
 
 ::-webkit-scrollbar {

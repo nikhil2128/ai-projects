@@ -273,7 +273,7 @@ export default function App() {
 
       {view === "editing" && chartData && (
         <div className="flex h-[calc(100vh-73px)]">
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-hidden">
             <OrgChart
               ref={orgChartRef}
               data={chartData}

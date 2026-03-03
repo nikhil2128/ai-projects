@@ -1,29 +1,42 @@
-import Database from "better-sqlite3";
-import fs from "fs";
-import path from "path";
+import { Pool } from "pg";
 import { config } from "../config";
 
-let db: Database.Database | null = null;
+let pool: Pool | null = null;
 
-export function getDb(): Database.Database {
-  if (db) return db;
+export function getPool(): Pool {
+  if (pool) return pool;
 
-  const dir = path.dirname(config.dbPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+  pool = new Pool({
+    host: config.database.host,
+    port: config.database.port,
+    database: config.database.name,
+    user: config.database.user,
+    password: config.database.password,
+    max: config.database.poolSize,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+  });
 
-  db = new Database(config.dbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("synchronous = NORMAL");
-  db.pragma("foreign_keys = ON");
+  pool.on("error", (err) => {
+    console.error("[DB] Unexpected pool error:", err.message);
+  });
 
-  return db;
+  return pool;
 }
 
-export function closeDb(): void {
-  if (db) {
-    db.close();
-    db = null;
+export async function isDbHealthy(): Promise<boolean> {
+  try {
+    const p = getPool();
+    await p.query("SELECT 1");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function closePool(): Promise<void> {
+  if (pool) {
+    await pool.end();
+    pool = null;
   }
 }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const ClickEventSchema = z.object({
+  websiteId: z.string().min(1).optional(),
   sessionId: z.string().min(1),
   pageUrl: z.string().url(),
   elementTag: z.string().min(1),
@@ -22,6 +23,25 @@ export interface ClickEvent extends ClickEventInput {
   id: number;
   createdAt: string;
   ip: string | null;
+}
+
+export interface QueuedEvent {
+  websiteId: string;
+  sessionId: string;
+  pageUrl: string;
+  elementTag: string;
+  elementId?: string;
+  elementClass?: string;
+  elementText?: string;
+  xPos: number;
+  yPos: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  referrer?: string;
+  userAgent?: string;
+  ip: string | null;
+  metadata?: Record<string, string>;
+  receivedAt: string;
 }
 
 export interface TimeSeriesPoint {
@@ -64,6 +84,7 @@ export interface AnalyticsQuery {
   from?: string;
   to?: string;
   pageUrl?: string;
+  websiteId?: string;
   granularity?: Granularity;
   limit?: number;
 }

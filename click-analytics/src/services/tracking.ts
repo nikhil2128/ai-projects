@@ -1,82 +1,73 @@
-import { getDb } from "../database/connection";
-import type { ClickEventInput, ClickEvent } from "../types";
+import { getPool } from "../database/connection";
+import type { QueuedEvent } from "../types";
 
-export function insertClick(
-  event: ClickEventInput,
-  ip: string | null
-): ClickEvent {
-  const db = getDb();
+const COLUMNS = [
+  "website_id",
+  "session_id",
+  "page_url",
+  "element_tag",
+  "element_id",
+  "element_class",
+  "element_text",
+  "x_pos",
+  "y_pos",
+  "viewport_w",
+  "viewport_h",
+  "referrer",
+  "user_agent",
+  "ip",
+  "metadata",
+  "created_at",
+] as const;
 
-  const stmt = db.prepare(`
-    INSERT INTO click_events
-      (session_id, page_url, element_tag, element_id, element_class, element_text,
-       x_pos, y_pos, viewport_w, viewport_h, referrer, user_agent, ip, metadata)
-    VALUES
-      (@sessionId, @pageUrl, @elementTag, @elementId, @elementClass, @elementText,
-       @xPos, @yPos, @viewportWidth, @viewportHeight, @referrer, @userAgent, @ip, @metadata)
-  `);
+const COL_COUNT = COLUMNS.length;
 
-  const result = stmt.run({
-    sessionId: event.sessionId,
-    pageUrl: event.pageUrl,
-    elementTag: event.elementTag,
-    elementId: event.elementId ?? null,
-    elementClass: event.elementClass ?? null,
-    elementText: event.elementText ?? null,
-    xPos: event.xPos,
-    yPos: event.yPos,
-    viewportWidth: event.viewportWidth,
-    viewportHeight: event.viewportHeight,
-    referrer: event.referrer ?? null,
-    userAgent: event.userAgent ?? null,
-    ip,
-    metadata: event.metadata ? JSON.stringify(event.metadata) : null,
-  });
-
-  return {
-    ...event,
-    id: result.lastInsertRowid as number,
-    createdAt: new Date().toISOString(),
-    ip,
-  };
+function eventToRow(e: QueuedEvent): unknown[] {
+  return [
+    e.websiteId,
+    e.sessionId,
+    e.pageUrl,
+    e.elementTag,
+    e.elementId ?? null,
+    e.elementClass ?? null,
+    e.elementText ?? null,
+    e.xPos,
+    e.yPos,
+    e.viewportWidth,
+    e.viewportHeight,
+    e.referrer ?? null,
+    e.userAgent ?? null,
+    e.ip,
+    e.metadata ? JSON.stringify(e.metadata) : null,
+    e.receivedAt,
+  ];
 }
 
-export function insertClicksBatch(
-  events: ClickEventInput[],
-  ip: string | null
-): number {
-  const db = getDb();
+/**
+ * Efficient multi-row INSERT for batch processing.
+ * With 16 columns and batch size 500, generates 8000 parameters —
+ * well within PostgreSQL's 65 535 parameter limit.
+ */
+export async function insertClicksBatch(events: QueuedEvent[]): Promise<number> {
+  if (events.length === 0) return 0;
 
-  const stmt = db.prepare(`
-    INSERT INTO click_events
-      (session_id, page_url, element_tag, element_id, element_class, element_text,
-       x_pos, y_pos, viewport_w, viewport_h, referrer, user_agent, ip, metadata)
-    VALUES
-      (@sessionId, @pageUrl, @elementTag, @elementId, @elementClass, @elementText,
-       @xPos, @yPos, @viewportWidth, @viewportHeight, @referrer, @userAgent, @ip, @metadata)
-  `);
+  const pool = getPool();
 
-  const insertMany = db.transaction((items: ClickEventInput[]) => {
-    for (const event of items) {
-      stmt.run({
-        sessionId: event.sessionId,
-        pageUrl: event.pageUrl,
-        elementTag: event.elementTag,
-        elementId: event.elementId ?? null,
-        elementClass: event.elementClass ?? null,
-        elementText: event.elementText ?? null,
-        xPos: event.xPos,
-        yPos: event.yPos,
-        viewportWidth: event.viewportWidth,
-        viewportHeight: event.viewportHeight,
-        referrer: event.referrer ?? null,
-        userAgent: event.userAgent ?? null,
-        ip,
-        metadata: event.metadata ? JSON.stringify(event.metadata) : null,
-      });
-    }
-    return items.length;
-  });
+  const placeholders: string[] = [];
+  const values: unknown[] = [];
 
-  return insertMany(events);
+  for (let i = 0; i < events.length; i++) {
+    const offset = i * COL_COUNT;
+    const row = COLUMNS.map((_, j) => `$${offset + j + 1}`);
+    placeholders.push(`(${row.join(", ")})`);
+    values.push(...eventToRow(events[i]));
+  }
+
+  const result = await pool.query(
+    `INSERT INTO click_events (${COLUMNS.join(", ")})
+     VALUES ${placeholders.join(", ")}`,
+    values
+  );
+
+  return result.rowCount ?? 0;
 }

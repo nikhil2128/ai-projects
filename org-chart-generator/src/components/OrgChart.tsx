@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import type { OrgNode } from "../types/org";
 import type { EditableOrgNode } from "../types/org";
@@ -13,14 +13,22 @@ import {
   layoutTree,
   flattenNodes,
   flattenEdges,
+  toOrgNode,
   NODE_WIDTH,
   NODE_HEIGHT,
   LEVEL_GAP,
   CANVAS_PADDING,
 } from "../utils/tree";
+import type { PositionedNode } from "../utils/tree";
 
 interface OrgChartProps {
   data: OrgNode;
+  onTreeChange?: (data: OrgNode) => void;
+}
+
+export interface OrgChartHandle {
+  downloadPng: () => Promise<void>;
+  downloadSvg: () => Promise<void>;
 }
 
 type DialogState =
@@ -29,12 +37,24 @@ type DialogState =
   | { type: "add-root"; name: string; title: string }
   | null;
 
-export default function OrgChart({ data }: OrgChartProps) {
+const OrgChart = forwardRef<OrgChartHandle, OrgChartProps>(function OrgChart({ data, onTreeChange }, ref) {
   const chartRef = useRef<HTMLDivElement>(null);
   const idCounterRef = useRef(0);
   const [downloading, setDownloading] = useState(false);
   const [root, setRoot] = useState<EditableOrgNode | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
+  const userActionRef = useRef(false);
+
+  useImperativeHandle(ref, () => ({
+    async downloadPng() {
+      if (!chartRef.current) return;
+      await downloadAsPng(chartRef.current);
+    },
+    async downloadSvg() {
+      if (!chartRef.current) return;
+      await downloadAsSvg(chartRef.current);
+    },
+  }));
 
   const getNextId = () => {
     const next = idCounterRef.current;
@@ -43,6 +63,7 @@ export default function OrgChart({ data }: OrgChartProps) {
   };
 
   useEffect(() => {
+    idCounterRef.current = 0;
     setRoot(
       buildEditableTree(data, () => {
         const next = idCounterRef.current;
@@ -51,6 +72,12 @@ export default function OrgChart({ data }: OrgChartProps) {
       }),
     );
   }, [data]);
+
+  useEffect(() => {
+    if (!root || !userActionRef.current) return;
+    userActionRef.current = false;
+    onTreeChange?.(toOrgNode(root));
+  }, [root, onTreeChange]);
 
   const layout = useMemo(() => {
     if (!root) return null;
@@ -119,6 +146,7 @@ export default function OrgChart({ data }: OrgChartProps) {
     );
     if (!confirmed) return;
 
+    userActionRef.current = true;
     setRoot((current) => {
       if (!current) return current;
       return deleteNodeById(current, nodeId);
@@ -146,6 +174,7 @@ export default function OrgChart({ data }: OrgChartProps) {
     const title = dialog.title.trim();
     if (!name) return;
 
+    userActionRef.current = true;
     setRoot((current) => {
       if (dialog.type === "add-root") {
         return {
@@ -352,4 +381,6 @@ export default function OrgChart({ data }: OrgChartProps) {
       )}
     </div>
   );
-}
+});
+
+export default OrgChart;

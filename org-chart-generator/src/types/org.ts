@@ -17,4 +17,19 @@ export interface ParseResponse {
   error?: string;
 }
 
-export type AppState = "idle" | "uploading" | "parsing" | "ready" | "error";
+export interface OrgChartVersion {
+  id: string;
+  data: OrgNode;
+  createdAt: string;
+}
+
+export interface OrgChartDocument {
+  id: string;
+  title: string;
+  versions: OrgChartVersion[];
+  currentVersionId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AppView = "home" | "upload" | "editing";

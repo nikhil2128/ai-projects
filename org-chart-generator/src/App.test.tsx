@@ -12,6 +12,29 @@ vi.mock("./utils/download", () => ({
   downloadAsSvg: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("./utils/storage", () => ({
+  getAllDocuments: vi.fn().mockReturnValue([]),
+  getDocument: vi.fn().mockReturnValue(null),
+  saveDocument: vi.fn(),
+  deleteDocument: vi.fn(),
+  generateId: vi.fn().mockReturnValue("mock-id"),
+}));
+
+async function navigateToUpload(user: ReturnType<typeof userEvent.setup>) {
+  const newChartButtons = screen.getAllByText("New Chart");
+  await user.click(newChartButtons[0]);
+}
+
+async function uploadFile(file: File) {
+  const input = document.querySelector("input[type='file']")!;
+  Object.defineProperty(input, "files", { value: [file] });
+  const event = new Event("drop", { bubbles: true });
+  Object.defineProperty(event, "dataTransfer", {
+    value: { files: [file], types: ["Files"] },
+  });
+  input.dispatchEvent(event);
+}
+
 describe("App", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -22,16 +45,30 @@ describe("App", () => {
       downloadAsPng: vi.fn().mockResolvedValue(undefined),
       downloadAsSvg: vi.fn().mockResolvedValue(undefined),
     }));
+    vi.mock("./utils/storage", () => ({
+      getAllDocuments: vi.fn().mockReturnValue([]),
+      getDocument: vi.fn().mockReturnValue(null),
+      saveDocument: vi.fn(),
+      deleteDocument: vi.fn(),
+      generateId: vi.fn().mockReturnValue("mock-id"),
+    }));
   });
 
-  it("renders in idle state with header and upload area", () => {
+  it("renders home view with header and saved charts list", () => {
     render(<App />);
     expect(screen.getByText("OrgVision")).toBeInTheDocument();
+    expect(screen.getByText("Saved Charts")).toBeInTheDocument();
+  });
+
+  it("navigates to upload when New Chart is clicked", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await navigateToUpload(user);
     expect(screen.getByText("Drop your screenshot here")).toBeInTheDocument();
-    expect(screen.queryByText("New Chart")).not.toBeInTheDocument();
   });
 
   it("shows org chart after successful parse", async () => {
+    const user = userEvent.setup();
     const { parseOrgChartImage } = await import("./utils/api");
     vi.mocked(parseOrgChartImage).mockResolvedValue({
       success: true,
@@ -39,15 +76,10 @@ describe("App", () => {
     });
 
     render(<App />);
-    const input = document.querySelector("input[type='file']")!;
-    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await navigateToUpload(user);
 
-    Object.defineProperty(input, "files", { value: [file] });
-    const event = new Event("drop", { bubbles: true });
-    Object.defineProperty(event, "dataTransfer", {
-      value: { files: [file], types: ["Files"] },
-    });
-    input.dispatchEvent(event);
+    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await uploadFile(file);
 
     await waitFor(() => {
       expect(parseOrgChartImage).toHaveBeenCalledWith(file);
@@ -57,10 +89,11 @@ describe("App", () => {
       expect(screen.getByText("Alice")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("New Chart")).toBeInTheDocument();
+    expect(screen.getByText("Save")).toBeInTheDocument();
   });
 
   it("shows error state when parse returns error", async () => {
+    const user = userEvent.setup();
     const { parseOrgChartImage } = await import("./utils/api");
     vi.mocked(parseOrgChartImage).mockResolvedValue({
       success: false,
@@ -68,15 +101,10 @@ describe("App", () => {
     });
 
     render(<App />);
-    const input = document.querySelector("input[type='file']")!;
-    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await navigateToUpload(user);
 
-    Object.defineProperty(input, "files", { value: [file] });
-    const event = new Event("drop", { bubbles: true });
-    Object.defineProperty(event, "dataTransfer", {
-      value: { files: [file], types: ["Files"] },
-    });
-    input.dispatchEvent(event);
+    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await uploadFile(file);
 
     await waitFor(() => {
       expect(
@@ -88,21 +116,17 @@ describe("App", () => {
   });
 
   it("shows error state when parse throws", async () => {
+    const user = userEvent.setup();
     const { parseOrgChartImage } = await import("./utils/api");
     vi.mocked(parseOrgChartImage).mockRejectedValue(
       new Error("Network failure"),
     );
 
     render(<App />);
-    const input = document.querySelector("input[type='file']")!;
-    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await navigateToUpload(user);
 
-    Object.defineProperty(input, "files", { value: [file] });
-    const event = new Event("drop", { bubbles: true });
-    Object.defineProperty(event, "dataTransfer", {
-      value: { files: [file], types: ["Files"] },
-    });
-    input.dispatchEvent(event);
+    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await uploadFile(file);
 
     await waitFor(() => {
       expect(screen.getByText("Network failure")).toBeInTheDocument();
@@ -110,26 +134,22 @@ describe("App", () => {
   });
 
   it("shows generic error when exception is not an Error instance", async () => {
+    const user = userEvent.setup();
     const { parseOrgChartImage } = await import("./utils/api");
     vi.mocked(parseOrgChartImage).mockRejectedValue("string error");
 
     render(<App />);
-    const input = document.querySelector("input[type='file']")!;
-    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await navigateToUpload(user);
 
-    Object.defineProperty(input, "files", { value: [file] });
-    const event = new Event("drop", { bubbles: true });
-    Object.defineProperty(event, "dataTransfer", {
-      value: { files: [file], types: ["Files"] },
-    });
-    input.dispatchEvent(event);
+    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await uploadFile(file);
 
     await waitFor(() => {
       expect(screen.getByText("Something went wrong")).toBeInTheDocument();
     });
   });
 
-  it("resets to idle when Try Again is clicked", async () => {
+  it("resets to upload view when Try Again is clicked", async () => {
     const user = userEvent.setup();
     const { parseOrgChartImage } = await import("./utils/api");
     vi.mocked(parseOrgChartImage).mockResolvedValue({
@@ -138,15 +158,10 @@ describe("App", () => {
     });
 
     render(<App />);
-    const input = document.querySelector("input[type='file']")!;
-    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await navigateToUpload(user);
 
-    Object.defineProperty(input, "files", { value: [file] });
-    const event = new Event("drop", { bubbles: true });
-    Object.defineProperty(event, "dataTransfer", {
-      value: { files: [file], types: ["Files"] },
-    });
-    input.dispatchEvent(event);
+    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await uploadFile(file);
 
     await waitFor(() => {
       expect(screen.getByText("Try Again")).toBeInTheDocument();
@@ -156,7 +171,7 @@ describe("App", () => {
     expect(screen.getByText("Drop your screenshot here")).toBeInTheDocument();
   });
 
-  it("resets from ready state via New Chart button", async () => {
+  it("navigates back to home from editing view", async () => {
     const user = userEvent.setup();
     const { parseOrgChartImage } = await import("./utils/api");
     vi.mocked(parseOrgChartImage).mockResolvedValue({
@@ -165,40 +180,31 @@ describe("App", () => {
     });
 
     render(<App />);
-    const input = document.querySelector("input[type='file']")!;
-    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await navigateToUpload(user);
 
-    Object.defineProperty(input, "files", { value: [file] });
-    const event = new Event("drop", { bubbles: true });
-    Object.defineProperty(event, "dataTransfer", {
-      value: { files: [file], types: ["Files"] },
-    });
-    input.dispatchEvent(event);
+    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await uploadFile(file);
 
     await waitFor(() => {
-      expect(screen.getByText("New Chart")).toBeInTheDocument();
+      expect(screen.getByText("Alice")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("New Chart"));
-    expect(screen.getByText("Drop your screenshot here")).toBeInTheDocument();
+    await user.click(screen.getByTitle("Back to charts"));
+    expect(screen.getByText("Saved Charts")).toBeInTheDocument();
   });
 
   it("falls back to default error message when result has no error", async () => {
+    const user = userEvent.setup();
     const { parseOrgChartImage } = await import("./utils/api");
     vi.mocked(parseOrgChartImage).mockResolvedValue({
       success: false,
     });
 
     render(<App />);
-    const input = document.querySelector("input[type='file']")!;
-    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await navigateToUpload(user);
 
-    Object.defineProperty(input, "files", { value: [file] });
-    const event = new Event("drop", { bubbles: true });
-    Object.defineProperty(event, "dataTransfer", {
-      value: { files: [file], types: ["Files"] },
-    });
-    input.dispatchEvent(event);
+    const file = new File(["img"], "chart.png", { type: "image/png" });
+    await uploadFile(file);
 
     await waitFor(() => {
       expect(

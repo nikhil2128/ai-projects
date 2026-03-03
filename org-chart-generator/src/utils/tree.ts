@@ -91,6 +91,17 @@ export function findNodeById(
   return null;
 }
 
+export function toOrgNode(node: EditableOrgNode): OrgNode {
+  return {
+    name: node.name,
+    title: node.title,
+    children:
+      node.children.length > 0
+        ? node.children.map(toOrgNode)
+        : undefined,
+  };
+}
+
 export function shiftSubtreeX(
   positioned: PositionedNode,
   dx: number,

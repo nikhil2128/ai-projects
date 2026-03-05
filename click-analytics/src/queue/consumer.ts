@@ -113,8 +113,13 @@ async function processAndAck(
   }
 
   if (events.length > 0) {
-    await insertClicksBatch(events);
-    console.log(`[CONSUMER] Inserted batch of ${events.length} events`);
+    const persisted = await insertClicksBatch(events);
+    if (persisted !== events.length) {
+      throw new Error(
+        `[CONSUMER] Persistence incomplete: ${persisted}/${events.length}`
+      );
+    }
+    console.log(`[CONSUMER] Persisted batch of ${persisted} events`);
   }
 
   if (ids.length > 0) {

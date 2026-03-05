@@ -20,7 +20,7 @@ export const ClickEventSchema = z.object({
 export type ClickEventInput = z.infer<typeof ClickEventSchema>;
 
 export interface ClickEvent extends ClickEventInput {
-  id: number;
+  id: string;
   createdAt: string;
   ip: string | null;
 }

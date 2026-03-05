@@ -1,6 +1,6 @@
 import { config } from "./config";
 import { initializeSchema } from "./database/schema";
-import { closePool } from "./database/connection";
+import { closeDb } from "./database/connection";
 import { waitForRedis, closeRedis } from "./queue/redis";
 import { initConsumerGroup, consumeEvents, stopConsumer } from "./queue/consumer";
 
@@ -8,7 +8,13 @@ async function main() {
   console.log(`[WORKER] Starting (consumer: ${config.worker.consumerId})…`);
 
   await waitForRedis();
-  await initializeSchema();
+  if (config.pipeline.mode === "clickhouse") {
+    await initializeSchema();
+  } else {
+    console.log(
+      "[WORKER] Ingestion mode is kinesis-s3-clickhouse; skipping ClickHouse writes"
+    );
+  }
   await initConsumerGroup();
 
   console.log(
@@ -27,7 +33,7 @@ async function shutdown() {
   await new Promise((r) => setTimeout(r, 3_000));
 
   await closeRedis();
-  await closePool();
+  await closeDb();
   process.exit(0);
 }
 

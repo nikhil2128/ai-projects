@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { config } from "./config";
 import { initializeSchema } from "./database/schema";
-import { closePool, isDbHealthy } from "./database/connection";
+import { closeDb, isDbHealthy } from "./database/connection";
 import { getRedis, isRedisHealthy, closeRedis } from "./queue/redis";
 import { startBufferFlush, stopBufferFlush, getBufferSize } from "./buffer/memory";
 import { errorHandler } from "./middleware/errorHandler";
@@ -40,8 +40,14 @@ async function start() {
   // Connect Redis (non-blocking — events buffer in memory if Redis is slow)
   getRedis();
 
-  // Ensure PostgreSQL schema exists
-  await initializeSchema();
+  if (config.pipeline.mode === "clickhouse") {
+    // Direct mode writes into ClickHouse from workers, so schema must exist.
+    await initializeSchema();
+  } else {
+    console.log(
+      "[API] Skipping ClickHouse schema bootstrap (kinesis-s3-clickhouse mode)"
+    );
+  }
 
   // Start periodic buffer → Redis flush
   startBufferFlush();
@@ -55,7 +61,7 @@ async function start() {
     stopBufferFlush();
     server.close(async () => {
       await closeRedis();
-      await closePool();
+      await closeDb();
       process.exit(0);
     });
   }

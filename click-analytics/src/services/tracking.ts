@@ -1,73 +1,50 @@
-import { getPool } from "../database/connection";
+import { getDbClient } from "../database/connection";
+import { config } from "../config";
+import { pushBatchToKinesis } from "../pipeline/kinesis";
 import type { QueuedEvent } from "../types";
 
-const COLUMNS = [
-  "website_id",
-  "session_id",
-  "page_url",
-  "element_tag",
-  "element_id",
-  "element_class",
-  "element_text",
-  "x_pos",
-  "y_pos",
-  "viewport_w",
-  "viewport_h",
-  "referrer",
-  "user_agent",
-  "ip",
-  "metadata",
-  "created_at",
-] as const;
+const CLICK_EVENTS_TABLE = `${config.clickhouse.database}.click_events`;
 
-const COL_COUNT = COLUMNS.length;
-
-function eventToRow(e: QueuedEvent): unknown[] {
-  return [
-    e.websiteId,
-    e.sessionId,
-    e.pageUrl,
-    e.elementTag,
-    e.elementId ?? null,
-    e.elementClass ?? null,
-    e.elementText ?? null,
-    e.xPos,
-    e.yPos,
-    e.viewportWidth,
-    e.viewportHeight,
-    e.referrer ?? null,
-    e.userAgent ?? null,
-    e.ip,
-    e.metadata ? JSON.stringify(e.metadata) : null,
-    e.receivedAt,
-  ];
+function eventToRow(e: QueuedEvent): Record<string, unknown> {
+  return {
+    website_id: e.websiteId,
+    session_id: e.sessionId,
+    page_url: e.pageUrl,
+    element_tag: e.elementTag,
+    element_id: e.elementId ?? null,
+    element_class: e.elementClass ?? null,
+    element_text: e.elementText ?? null,
+    x_pos: e.xPos,
+    y_pos: e.yPos,
+    viewport_w: e.viewportWidth,
+    viewport_h: e.viewportHeight,
+    referrer: e.referrer ?? null,
+    user_agent: e.userAgent ?? null,
+    ip: e.ip,
+    metadata: e.metadata ? JSON.stringify(e.metadata) : null,
+    event_time: e.receivedAt,
+  };
 }
 
-/**
- * Efficient multi-row INSERT for batch processing.
- * With 16 columns and batch size 500, generates 8000 parameters —
- * well within PostgreSQL's 65 535 parameter limit.
- */
 export async function insertClicksBatch(events: QueuedEvent[]): Promise<number> {
   if (events.length === 0) return 0;
 
-  const pool = getPool();
-
-  const placeholders: string[] = [];
-  const values: unknown[] = [];
-
-  for (let i = 0; i < events.length; i++) {
-    const offset = i * COL_COUNT;
-    const row = COLUMNS.map((_, j) => `$${offset + j + 1}`);
-    placeholders.push(`(${row.join(", ")})`);
-    values.push(...eventToRow(events[i]));
+  if (config.pipeline.mode === "kinesis-s3-clickhouse") {
+    const persisted = await pushBatchToKinesis(events);
+    if (persisted !== events.length) {
+      throw new Error(
+        `[TRACKING] Partial Kinesis write: ${persisted}/${events.length}`
+      );
+    }
+    return persisted;
   }
 
-  const result = await pool.query(
-    `INSERT INTO click_events (${COLUMNS.join(", ")})
-     VALUES ${placeholders.join(", ")}`,
-    values
-  );
+  const clickhouse = getDbClient();
+  await clickhouse.insert({
+    table: CLICK_EVENTS_TABLE,
+    values: events.map(eventToRow),
+    format: "JSONEachRow",
+  });
 
-  return result.rowCount ?? 0;
+  return events.length;
 }

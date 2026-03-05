@@ -1,13 +1,28 @@
+export type IngestionMode = "clickhouse" | "kinesis-s3-clickhouse";
+
+function parseIngestionMode(raw: string | undefined): IngestionMode {
+  if (raw === "kinesis-s3-clickhouse") return raw;
+  return "clickhouse";
+}
+
+const ingestionMode = parseIngestionMode(process.env.INGESTION_MODE);
+
 export const config = {
   port: parseInt(process.env.PORT || "3400", 10),
 
-  database: {
-    host: process.env.DB_HOST || "localhost",
-    port: parseInt(process.env.DB_PORT || "5432", 10),
-    name: process.env.DB_NAME || "click_analytics",
-    user: process.env.DB_USER || "postgres",
-    password: process.env.DB_PASSWORD || "postgres",
-    poolSize: parseInt(process.env.DB_POOL_SIZE || "20", 10),
+  clickhouse: {
+    url: process.env.CLICKHOUSE_URL || "http://localhost:8123",
+    database: process.env.CLICKHOUSE_DATABASE || "click_analytics",
+    user: process.env.CLICKHOUSE_USER || "default",
+    password: process.env.CLICKHOUSE_PASSWORD || "",
+    requestTimeoutMs: parseInt(
+      process.env.CLICKHOUSE_REQUEST_TIMEOUT_MS || "10000",
+      10
+    ),
+    maxOpenConnections: parseInt(
+      process.env.CLICKHOUSE_MAX_OPEN_CONNECTIONS || "20",
+      10
+    ),
   },
 
   redis: {
@@ -25,6 +40,16 @@ export const config = {
     consumerId:
       process.env.WORKER_CONSUMER_ID ||
       `worker-${process.env.HOSTNAME || process.pid}`,
+  },
+
+  pipeline: {
+    mode: ingestionMode,
+    kinesis: {
+      region: process.env.AWS_REGION || "us-east-1",
+      endpoint: process.env.KINESIS_ENDPOINT || undefined,
+      streamName: process.env.KINESIS_STREAM_NAME || "",
+      maxRecordsPerRequest: 500,
+    },
   },
 
   buffer: {

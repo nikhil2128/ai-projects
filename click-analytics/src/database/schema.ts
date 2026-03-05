@@ -1,45 +1,40 @@
-import { getPool } from "./connection";
+import { getDbClient } from "./connection";
+import { config } from "../config";
 
 export async function initializeSchema(): Promise<void> {
-  const pool = getPool();
+  const client = getDbClient();
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS click_events (
-      id            BIGSERIAL    PRIMARY KEY,
-      website_id    TEXT         NOT NULL DEFAULT 'default',
-      session_id    TEXT         NOT NULL,
-      page_url      TEXT         NOT NULL,
-      element_tag   TEXT         NOT NULL,
-      element_id    TEXT,
-      element_class TEXT,
-      element_text  TEXT,
-      x_pos         INTEGER      NOT NULL,
-      y_pos         INTEGER      NOT NULL,
-      viewport_w    INTEGER      NOT NULL,
-      viewport_h    INTEGER      NOT NULL,
-      referrer      TEXT,
-      user_agent    TEXT,
-      ip            TEXT,
-      metadata      JSONB,
-      created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-    );
+  await client.command({
+    query: `CREATE DATABASE IF NOT EXISTS ${config.clickhouse.database}`,
+  });
 
-    CREATE INDEX IF NOT EXISTS idx_ce_created_at
-      ON click_events (created_at);
-
-    CREATE INDEX IF NOT EXISTS idx_ce_website_id
-      ON click_events (website_id);
-
-    CREATE INDEX IF NOT EXISTS idx_ce_session_id
-      ON click_events (session_id);
-
-    CREATE INDEX IF NOT EXISTS idx_ce_page_url
-      ON click_events (page_url);
-
-    CREATE INDEX IF NOT EXISTS idx_ce_website_created
-      ON click_events (website_id, created_at);
-
-    CREATE INDEX IF NOT EXISTS idx_ce_website_page
-      ON click_events (website_id, page_url);
-  `);
+  await client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${config.clickhouse.database}.click_events (
+        event_id       UUID DEFAULT generateUUIDv4(),
+        website_id     LowCardinality(String),
+        session_id     String,
+        page_url       String,
+        element_tag    LowCardinality(String),
+        element_id     Nullable(String),
+        element_class  Nullable(String),
+        element_text   Nullable(String),
+        x_pos          UInt32,
+        y_pos          UInt32,
+        viewport_w     UInt32,
+        viewport_h     UInt32,
+        referrer       Nullable(String),
+        user_agent     Nullable(String),
+        ip             Nullable(String),
+        metadata       Nullable(String),
+        event_time     DateTime64(3, 'UTC'),
+        ingested_at    DateTime64(3, 'UTC') DEFAULT now64(3)
+      )
+      ENGINE = MergeTree
+      PARTITION BY toYYYYMM(event_time)
+      ORDER BY (website_id, page_url, event_time, session_id)
+      TTL event_time + INTERVAL 365 DAY DELETE
+      SETTINGS index_granularity = 8192
+    `,
+  });
 }

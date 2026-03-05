@@ -1,19 +1,20 @@
 services:
-  postgres:
-    image: postgres:16-alpine
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
     environment:
-      POSTGRES_DB: click_analytics
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      CLICKHOUSE_DB: click_analytics
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
     ports:
-      - "5432:5432"
+      - "8123:8123"
+      - "9000:9000"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - chdata:/var/lib/clickhouse
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8123/ping | grep -q Ok"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 15
 
   redis:
     image: redis:7-alpine
@@ -34,17 +35,17 @@ services:
       - "3400:3400"
     environment:
       PORT: "3400"
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: click_analytics
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_POOL_SIZE: "20"
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: click_analytics
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_MAX_OPEN_CONNECTIONS: "20"
+      INGESTION_MODE: clickhouse
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       RATE_LIMIT_MAX: "2000"
     depends_on:
-      postgres:
+      clickhouse:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -56,18 +57,18 @@ services:
     build: .
     command: ["node", "dist/worker.js"]
     environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: click_analytics
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_POOL_SIZE: "10"
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: click_analytics
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_MAX_OPEN_CONNECTIONS: "10"
+      INGESTION_MODE: clickhouse
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       WORKER_BATCH_SIZE: "500"
       WORKER_BATCH_TIMEOUT_MS: "2000"
     depends_on:
-      postgres:
+      clickhouse:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -76,5 +77,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  pgdata:
+  chdata:
   redisdata:

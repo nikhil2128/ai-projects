@@ -1,42 +1,39 @@
-import { Pool } from "pg";
+import { ClickHouseClient, createClient } from "@clickhouse/client";
 import { config } from "../config";
 
-let pool: Pool | null = null;
+let clickhouseClient: ClickHouseClient | null = null;
 
-export function getPool(): Pool {
-  if (pool) return pool;
+export function getDbClient(): ClickHouseClient {
+  if (clickhouseClient) return clickhouseClient;
 
-  pool = new Pool({
-    host: config.database.host,
-    port: config.database.port,
-    database: config.database.name,
-    user: config.database.user,
-    password: config.database.password,
-    max: config.database.poolSize,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
+  clickhouseClient = createClient({
+    url: config.clickhouse.url,
+    username: config.clickhouse.user,
+    password: config.clickhouse.password || undefined,
+    request_timeout: config.clickhouse.requestTimeoutMs,
+    max_open_connections: config.clickhouse.maxOpenConnections,
   });
 
-  pool.on("error", (err) => {
-    console.error("[DB] Unexpected pool error:", err.message);
-  });
-
-  return pool;
+  return clickhouseClient;
 }
 
 export async function isDbHealthy(): Promise<boolean> {
   try {
-    const p = getPool();
-    await p.query("SELECT 1");
+    const client = getDbClient();
+    const result = await client.query({
+      query: "SELECT 1",
+      format: "JSON",
+    });
+    await result.json();
     return true;
   } catch {
     return false;
   }
 }
 
-export async function closePool(): Promise<void> {
-  if (pool) {
-    await pool.end();
-    pool = null;
+export async function closeDb(): Promise<void> {
+  if (clickhouseClient) {
+    await clickhouseClient.close();
+    clickhouseClient = null;
   }
 }

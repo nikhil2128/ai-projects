@@ -67,6 +67,8 @@ export const config = {
     maxRequests: parseInt(process.env.RATE_LIMIT_MAX || "1000", 10),
   },
 
+  adminApiKey: process.env.ADMIN_API_KEY || "",
+
   defaultQueryLimit: 20,
   maxQueryLimit: 500,
 };

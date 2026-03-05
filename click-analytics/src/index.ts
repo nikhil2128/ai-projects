@@ -6,10 +6,12 @@ import { initializeSchema } from "./database/schema";
 import { closeDb, isDbHealthy } from "./database/connection";
 import { getRedis, isRedisHealthy, closeRedis } from "./queue/redis";
 import { startBufferFlush, stopBufferFlush, getBufferSize } from "./buffer/memory";
+import { refreshCache } from "./services/apikeys";
 import { errorHandler } from "./middleware/errorHandler";
 import { rateLimiter } from "./middleware/rateLimiter";
 import trackingRoutes from "./routes/tracking";
 import analyticsRoutes from "./routes/analytics";
+import websiteRoutes from "./routes/websites";
 import seedRoutes from "./routes/seed";
 
 const app = express();
@@ -36,6 +38,7 @@ app.get("/api/health", async (_req, res) => {
 
 app.use("/api", trackingRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/websites", websiteRoutes);
 app.use("/api", seedRoutes);
 
 app.use(express.static(path.join(__dirname, "..", "public")));
@@ -47,11 +50,9 @@ app.get("/admin", (_req, res) => {
 app.use(errorHandler);
 
 async function start() {
-  // Connect Redis (non-blocking — events buffer in memory if Redis is slow)
   getRedis();
 
   if (config.pipeline.mode === "clickhouse") {
-    // Direct mode writes into ClickHouse from workers, so schema must exist.
     await initializeSchema();
   } else {
     console.log(
@@ -59,7 +60,13 @@ async function start() {
     );
   }
 
-  // Start periodic buffer → Redis flush
+  try {
+    await refreshCache();
+    console.log("[API] API key cache loaded");
+  } catch (err) {
+    console.warn("[API] Could not pre-load API key cache:", err);
+  }
+
   startBufferFlush();
 
   const server = app.listen(config.port, () => {

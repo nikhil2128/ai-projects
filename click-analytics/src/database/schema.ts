@@ -1,16 +1,18 @@
 import { getDbClient } from "./connection";
 import { config } from "../config";
 
+const db = config.clickhouse.database;
+
 export async function initializeSchema(): Promise<void> {
   const client = getDbClient();
 
   await client.command({
-    query: `CREATE DATABASE IF NOT EXISTS ${config.clickhouse.database}`,
+    query: `CREATE DATABASE IF NOT EXISTS ${db}`,
   });
 
   await client.command({
     query: `
-      CREATE TABLE IF NOT EXISTS ${config.clickhouse.database}.click_events (
+      CREATE TABLE IF NOT EXISTS ${db}.click_events (
         event_id       UUID DEFAULT generateUUIDv4(),
         website_id     LowCardinality(String),
         session_id     String,
@@ -35,6 +37,24 @@ export async function initializeSchema(): Promise<void> {
       ORDER BY (website_id, page_url, event_time, session_id)
       TTL event_time + INTERVAL 365 DAY DELETE
       SETTINGS index_granularity = 8192
+    `,
+  });
+
+  await client.command({
+    query: `
+      CREATE TABLE IF NOT EXISTS ${db}.websites (
+        id             String,
+        name           String,
+        allowed_domains Array(String),
+        site_key       String,
+        secret_key     String,
+        owner_email    String,
+        is_active      UInt8 DEFAULT 1,
+        created_at     DateTime64(3, 'UTC') DEFAULT now64(3),
+        updated_at     DateTime64(3, 'UTC') DEFAULT now64(3)
+      )
+      ENGINE = ReplacingMergeTree(updated_at)
+      ORDER BY id
     `,
   });
 }

@@ -88,3 +88,36 @@ export interface AnalyticsQuery {
   granularity?: Granularity;
   limit?: number;
 }
+
+export interface Website {
+  id: string;
+  name: string;
+  allowed_domains: string[];
+  site_key: string;
+  secret_key: string;
+  owner_email: string;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export const CreateWebsiteSchema = z.object({
+  name: z.string().min(1).max(255),
+  allowedDomains: z.array(z.string().min(1)).min(1),
+  ownerEmail: z.string().email(),
+});
+
+export type CreateWebsiteInput = z.infer<typeof CreateWebsiteSchema>;
+
+export const UpdateDomainsSchema = z.object({
+  allowedDomains: z.array(z.string().min(1)).min(1),
+});
+
+declare global {
+  namespace Express {
+    interface Request {
+      websiteId?: string;
+      website?: Website;
+    }
+  }
+}

@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Click Analytics — Admin Portal</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+    :root {
+      --bg: #f5f6fa;
+      --surface: #ffffff;
+      --text: #1a1a2e;
+      --text-secondary: #6b7280;
+      --border: #e5e7eb;
+      --accent: #6366f1;
+      --accent-light: #818cf8;
+      --accent-bg: #eef2ff;
+      --green: #10b981;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+      --shadow-md: 0 4px 6px rgba(0,0,0,.06), 0 2px 4px rgba(0,0,0,.04);
+    }
+
+    [data-theme="dark"] {
+      --bg: #0f1117;
+      --surface: #1a1b2e;
+      --text: #e5e7eb;
+      --text-secondary: #9ca3af;
+      --border: #2d2f3e;
+      --accent-bg: #1e1b4b;
+      --shadow: 0 1px 3px rgba(0,0,0,.3);
+      --shadow-md: 0 4px 6px rgba(0,0,0,.3);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* Layout */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      box-shadow: var(--shadow);
+    }
+
+    .topbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .topbar-brand svg { width: 28px; height: 28px; }
+
+    .topbar-actions { display: flex; align-items: center; gap: 12px; }
+
+    .main { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-body { padding: 20px; }
+
+    /* KPI row */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .kpi-value {
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--accent);
+      line-height: 1.1;
+    }
+
+    .kpi-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+    }
+
+    /* Charts grid */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 900px) {
+      .charts-row { grid-template-columns: 1fr; }
+    }
+
+    .chart-wrap { position: relative; height: 300px; }
+    .chart-wrap canvas { max-height: 300px; }
+
+    /* Heatmap */
+    .heatmap-container { position: relative; width: 100%; aspect-ratio: 16/9; background: var(--bg); border-radius: 8px; overflow: hidden; }
+    .heatmap-cell {
+      position: absolute;
+      border-radius: 3px;
+      transition: opacity .2s;
+    }
+
+    /* Table */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table th {
+      text-align: left;
+      padding: 10px 12px;
+      background: var(--bg);
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      position: sticky;
+      top: 0;
+    }
+    .data-table td { padding: 10px 12px; border-top: 1px solid var(--border); }
+    .data-table tbody tr:hover { background: var(--accent-bg); }
+    .table-scroll { max-height: 380px; overflow-y: auto; }
+
+    /* Filters */
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 24px;
+      align-items: flex-end;
+    }
+
+    .filter-group { display: flex; flex-direction: column; gap: 4px; }
+    .filter-group label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--text-secondary);
+    }
+
+    .filter-input {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .filter-input:focus { border-color: var(--accent); }
+
+    /* Buttons */
+    .btn {
+      padding: 8px 18px;
+      border-radius: 8px;
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--accent-light); }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+    .btn-seed {
+      background: var(--green);
+      color: #fff;
+    }
+    .btn-seed:hover { opacity: .9; }
+
+    .btn-icon {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .btn-icon:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Badge */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-tag { background: var(--accent-bg); color: var(--accent); }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,.7);
+      border-radius: var(--radius);
+      z-index: 10;
+    }
+    [data-theme="dark"] .loading-overlay { background: rgba(15,17,23,.7); }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 12px 20px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: var(--shadow-md);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all .3s;
+      z-index: 999;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+    .empty-state p { margin-top: 8px; font-size: 14px; }
+    .empty-state .btn { margin-top: 16px; }
+
+    .truncate {
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .demo-banner {
+      background: linear-gradient(90deg, #f59e0b, #f97316);
+      color: #fff;
+      text-align: center;
+      padding: 10px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .3px;
+    }
+    [data-theme="dark"] .demo-banner { background: linear-gradient(90deg, #92400e, #9a3412); }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </svg>
+    Click Analytics
+  </div>
+  <div class="topbar-actions">
+    <button class="btn btn-seed" id="seedBtn" title="Insert sample demo data">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      Seed Demo Data
+    </button>
+    <button class="btn-icon" id="themeToggle" title="Toggle theme">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="demo-banner" id="demoBanner" hidden>
+  Showing sample demo data — connect to ClickHouse or click "Seed Demo Data" to populate real data
+</div>
+
+<main class="main">
+  <!-- Filters -->
+  <div class="filters card" style="padding:16px 20px; margin-bottom:24px;">
+    <div class="filter-group">
+      <label>From</label>
+      <input type="date" class="filter-input" id="filterFrom" />
+    </div>
+    <div class="filter-group">
+      <label>To</label>
+      <input type="date" class="filter-input" id="filterTo" />
+    </div>
+    <div class="filter-group">
+      <label>Granularity</label>
+      <select class="filter-input" id="filterGranularity">
+        <option value="hour">Hourly</option>
+        <option value="day" selected>Daily</option>
+        <option value="week">Weekly</option>
+        <option value="month">Monthly</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Website ID</label>
+      <input type="text" class="filter-input" id="filterWebsiteId" placeholder="e.g. demo.example.com" />
+    </div>
+    <div class="filter-group">
+      <label>Page URL</label>
+      <input type="text" class="filter-input" id="filterPageUrl" placeholder="Filter by page" />
+    </div>
+    <button class="btn btn-primary" id="applyFilters">Apply</button>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid" id="kpiGrid">
+    <div class="card" style="padding:20px;">
+      <div class="kpi">
+        <span class="kpi-value" id="kpiClicks">—</span>
+        <span class="kpi-label">Total Clicks</span>
+      </div>
+    </div>
+    <div class="card" style="padding:20px;">
+      <div class="kpi">
+        <span class="kpi-value" id="kpiSessions">—</span>
+        <span class="kpi-label">Unique Sessions</span>
+      </div>
+    </div>
+    <div class="card" style="padding:20px;">
+      <div class="kpi">
+        <span class="kpi-value" id="kpiPages">—</span>
+        <span class="kpi-label">Unique Pages</span>
+      </div>
+    </div>
+    <div class="card" style="padding:20px;">
+      <div class="kpi">
+        <span class="kpi-value" id="kpiAvgPerSession">—</span>
+        <span class="kpi-label">Avg Clicks / Session</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Clicks Over Time -->
+  <div class="charts-grid">
+    <div class="card">
+      <div class="card-header">Clicks Over Time</div>
+      <div class="card-body">
+        <div class="chart-wrap"><canvas id="chartTime"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Pages + Top Elements -->
+  <div class="charts-row">
+    <div class="card">
+      <div class="card-header">Top Pages</div>
+      <div class="card-body">
+        <div class="chart-wrap"><canvas id="chartPages"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Top Elements</div>
+      <div class="card-body">
+        <div class="chart-wrap"><canvas id="chartElements"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Heatmap + Recent Clicks -->
+  <div class="charts-row" style="margin-top:24px;">
+    <div class="card">
+      <div class="card-header">
+        Click Heatmap
+        <span style="font-size:11px;font-weight:400;color:var(--text-secondary)">viewport-relative density</span>
+      </div>
+      <div class="card-body">
+        <div class="heatmap-container" id="heatmapContainer"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        Recent Clicks
+        <span style="font-size:11px;font-weight:400;color:var(--text-secondary)" id="recentCount"></span>
+      </div>
+      <div class="card-body" style="padding:0;">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Page</th>
+                <th>Element</th>
+                <th>Position</th>
+              </tr>
+            </thead>
+            <tbody id="recentBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Pages Table -->
+  <div class="card" style="margin-top:24px;">
+    <div class="card-header">Pages Breakdown</div>
+    <div class="card-body" style="padding:0;">
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Page URL</th>
+              <th>Total Clicks</th>
+              <th>Unique Sessions</th>
+              <th>Clicks / Session</th>
+            </tr>
+          </thead>
+          <tbody id="pagesTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.origin + '/api';
+let usingDemoData = false;
+
+const CHART_COLORS = {
+  primary: '#6366f1',
+  primaryLight: 'rgba(99,102,241,.15)',
+  secondary: '#10b981',
+  secondaryLight: 'rgba(16,185,129,.15)',
+  palette: ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#f97316','#14b8a6','#a855f7']
+};
+
+let chartTime, chartPages, chartElements;
+
+/* ── Client-side demo data generator ── */
+const DEMO = (() => {
+  const WEBSITE = 'demo.example.com';
+  const PAGES = ['/','/about','/pricing','/products','/products/widget-pro','/products/analytics-suite',
+    '/blog','/blog/getting-started','/blog/advanced-tips','/blog/release-notes',
+    '/contact','/docs','/docs/api-reference','/login','/signup'];
+
+  const ELEMENTS = [
+    {tag:'BUTTON',id:'cta-primary',cls:'btn btn-primary',text:'Get Started'},
+    {tag:'BUTTON',id:'cta-demo',cls:'btn btn-outline',text:'Book a Demo'},
+    {tag:'A',id:'nav-home',cls:'nav-link',text:'Home'},
+    {tag:'A',id:'nav-pricing',cls:'nav-link',text:'Pricing'},
+    {tag:'A',id:'nav-products',cls:'nav-link',text:'Products'},
+    {tag:'A',id:'nav-blog',cls:'nav-link',text:'Blog'},
+    {tag:'A',id:'nav-docs',cls:'nav-link',text:'Docs'},
+    {tag:'A',cls:'footer-link',text:'Privacy Policy'},
+    {tag:'A',cls:'footer-link',text:'Terms of Service'},
+    {tag:'A',cls:'blog-card-link',text:'Read More'},
+    {tag:'BUTTON',id:'login-submit',cls:'btn btn-primary',text:'Log In'},
+    {tag:'BUTTON',id:'signup-submit',cls:'btn btn-primary',text:'Sign Up'},
+    {tag:'INPUT',id:'search-input',cls:'search-box'},
+    {tag:'DIV',id:'hero-banner',cls:'hero'},
+    {tag:'IMG',cls:'product-image'},
+    {tag:'BUTTON',id:'add-to-cart',cls:'btn btn-success',text:'Add to Cart'},
+    {tag:'A',cls:'breadcrumb-link',text:'Back'},
+    {tag:'BUTTON',id:'toggle-theme',cls:'icon-btn'},
+    {tag:'SELECT',id:'plan-selector',cls:'form-select'},
+    {tag:'BUTTON',id:'contact-submit',cls:'btn btn-primary',text:'Send Message'},
+  ];
+
+  const REFERRERS = ['https://www.google.com/','https://twitter.com/','https://www.linkedin.com/',
+    'https://www.reddit.com/','https://news.ycombinator.com/',null,null,null];
+  const UAS = [
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/119.0',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari/605.1.15',
+    'Mozilla/5.0 (Linux; Android 14) Chrome/120.0',
+  ];
+  const VIEWPORTS = [{w:1920,h:1080},{w:1440,h:900},{w:1366,h:768},{w:390,h:844},{w:414,h:896},{w:375,h:812}];
+
+  function pick(a) { return a[Math.floor(Math.random()*a.length)]; }
+  function randInt(lo,hi) { return Math.floor(Math.random()*(hi-lo+1))+lo; }
+  function uuid() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);}); }
+
+  function generate(count) {
+    const now = Date.now();
+    const span = 30*24*60*60*1000;
+    const sessionCount = Math.max(30, Math.floor(count/8));
+    const sessions = Array.from({length:sessionCount},()=>uuid());
+    const events = [];
+
+    for (let i=0;i<count;i++){
+      const vp = pick(VIEWPORTS);
+      const el = pick(ELEMENTS);
+      const page = pick(PAGES);
+      const t = new Date(now - Math.random()*span);
+      const hr = t.getUTCHours();
+      if(hr>=2 && hr<=6 && Math.random()<0.6) t.setUTCHours(randInt(9,22));
+      events.push({
+        id: uuid(),
+        websiteId: WEBSITE,
+        sessionId: pick(sessions),
+        pageUrl: `https://${WEBSITE}${page}`,
+        elementTag: el.tag,
+        elementId: el.id||null,
+        elementClass: el.cls||null,
+        elementText: el.text||null,
+        xPos: randInt(0,vp.w),
+        yPos: randInt(0,vp.h),
+        viewportWidth: vp.w,
+        viewportHeight: vp.h,
+        referrer: pick(REFERRERS),
+        userAgent: pick(UAS),
+        ip: `${randInt(10,200)}.${randInt(0,255)}.${randInt(0,255)}.${randInt(1,254)}`,
+        createdAt: t.toISOString(),
+      });
+    }
+    return events;
+  }
+
+  let _cache = null;
+  function getEvents() {
+    if(!_cache) _cache = generate(2500);
+    return _cache;
+  }
+
+  function granBucket(d, gran) {
+    const dt = new Date(d);
+    if(gran==='month') return dt.toISOString().slice(0,7);
+    if(gran==='week') { const day=dt.getUTCDay(); dt.setUTCDate(dt.getUTCDate()-day); return dt.toISOString().slice(0,10); }
+    if(gran==='day') return dt.toISOString().slice(0,10);
+    if(gran==='hour') return dt.toISOString().slice(0,13)+':00';
+    return dt.toISOString().slice(0,16);
+  }
+
+  function filterEvents(events, from, to, pageUrl, websiteId) {
+    return events.filter(e => {
+      const t = new Date(e.createdAt).getTime();
+      if(from && t < new Date(from).getTime()) return false;
+      if(to && t > new Date(to+'T23:59:59Z').getTime()) return false;
+      if(pageUrl && !e.pageUrl.includes(pageUrl)) return false;
+      if(websiteId && e.websiteId !== websiteId) return false;
+      return true;
+    });
+  }
+
+  function buildSummary(gran) {
+    const from = document.getElementById('filterFrom').value;
+    const to = document.getElementById('filterTo').value;
+    const pageUrl = document.getElementById('filterPageUrl').value;
+    const websiteId = document.getElementById('filterWebsiteId').value;
+    const filtered = filterEvents(getEvents(), from, to, pageUrl, websiteId);
+    const sessions = new Set(filtered.map(e=>e.sessionId));
+    const pages = new Set(filtered.map(e=>e.pageUrl));
+
+    const bucketMap = {};
+    filtered.forEach(e => {
+      const b = granBucket(e.createdAt, gran);
+      bucketMap[b] = (bucketMap[b]||0)+1;
+    });
+    const clicksOverTime = Object.entries(bucketMap).sort((a,b)=>a[0].localeCompare(b[0])).map(([bucket,count])=>({bucket,count}));
+
+    const pageMap = {};
+    filtered.forEach(e => {
+      if(!pageMap[e.pageUrl]) pageMap[e.pageUrl] = {totalClicks:0, sessions:new Set()};
+      pageMap[e.pageUrl].totalClicks++;
+      pageMap[e.pageUrl].sessions.add(e.sessionId);
+    });
+    const topPages = Object.entries(pageMap)
+      .map(([pageUrl,v])=>({pageUrl, totalClicks:v.totalClicks, uniqueSessions:v.sessions.size}))
+      .sort((a,b)=>b.totalClicks-a.totalClicks).slice(0,10);
+
+    const elemMap = {};
+    filtered.forEach(e => {
+      const key = `${e.elementTag}||${e.elementId||''}||${e.elementClass||''}||${e.elementText||''}`;
+      if(!elemMap[key]) elemMap[key] = {elementTag:e.elementTag,elementId:e.elementId,elementClass:e.elementClass,elementText:e.elementText,totalClicks:0};
+      elemMap[key].totalClicks++;
+    });
+    const topElements = Object.values(elemMap).sort((a,b)=>b.totalClicks-a.totalClicks).slice(0,10);
+
+    return {
+      totalClicks: filtered.length,
+      uniqueSessions: sessions.size,
+      uniquePages: pages.size,
+      clicksOverTime,
+      topPages,
+      topElements,
+    };
+  }
+
+  function buildTopPages() {
+    const from = document.getElementById('filterFrom').value;
+    const to = document.getElementById('filterTo').value;
+    const pageUrl = document.getElementById('filterPageUrl').value;
+    const websiteId = document.getElementById('filterWebsiteId').value;
+    const filtered = filterEvents(getEvents(), from, to, pageUrl, websiteId);
+    const pageMap = {};
+    filtered.forEach(e => {
+      if(!pageMap[e.pageUrl]) pageMap[e.pageUrl] = {totalClicks:0, sessions:new Set()};
+      pageMap[e.pageUrl].totalClicks++;
+      pageMap[e.pageUrl].sessions.add(e.sessionId);
+    });
+    return Object.entries(pageMap)
+      .map(([pageUrl,v])=>({pageUrl, totalClicks:v.totalClicks, uniqueSessions:v.sessions.size}))
+      .sort((a,b)=>b.totalClicks-a.totalClicks).slice(0,20);
+  }
+
+  function buildHeatmap() {
+    const from = document.getElementById('filterFrom').value;
+    const to = document.getElementById('filterTo').value;
+    const pageUrl = document.getElementById('filterPageUrl').value;
+    const websiteId = document.getElementById('filterWebsiteId').value;
+    const filtered = filterEvents(getEvents(), from, to, pageUrl, websiteId);
+    const grid = {};
+    filtered.forEach(e => {
+      const xPct = Math.round((e.xPos / Math.max(e.viewportWidth,1)) * 100 / 5) * 5;
+      const yPct = Math.round((e.yPos / Math.max(e.viewportHeight,1)) * 100 / 5) * 5;
+      const key = `${xPct},${yPct}`;
+      if(!grid[key]) grid[key] = {xPercent:xPct, yPercent:yPct, count:0};
+      grid[key].count++;
+    });
+    return Object.values(grid).sort((a,b)=>b.count-a.count);
+  }
+
+  function buildRecent() {
+    const from = document.getElementById('filterFrom').value;
+    const to = document.getElementById('filterTo').value;
+    const pageUrl = document.getElementById('filterPageUrl').value;
+    const websiteId = document.getElementById('filterWebsiteId').value;
+    return filterEvents(getEvents(), from, to, pageUrl, websiteId)
+      .sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,50);
+  }
+
+  return { buildSummary, buildTopPages, buildHeatmap, buildRecent };
+})();
+
+/* ── Filters ── */
+function getFilters() {
+  const from = document.getElementById('filterFrom').value;
+  const to = document.getElementById('filterTo').value;
+  const granularity = document.getElementById('filterGranularity').value;
+  const websiteId = document.getElementById('filterWebsiteId').value;
+  const pageUrl = document.getElementById('filterPageUrl').value;
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (granularity) params.set('granularity', granularity);
+  if (websiteId) params.set('websiteId', websiteId);
+  if (pageUrl) params.set('pageUrl', pageUrl);
+  return params.toString();
+}
+
+async function fetchJSON(path) {
+  const qs = getFilters();
+  const url = `${API}${path}${qs ? '?' + qs : ''}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
+/* ── Helpers ── */
+function formatNumber(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return String(n);
+}
+
+function shortPath(url) {
+  try { return new URL(url).pathname; } catch { return url; }
+}
+
+function isDark() {
+  return document.documentElement.getAttribute('data-theme') === 'dark';
+}
+
+function chartGridColor() {
+  return isDark() ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)';
+}
+
+function chartTextColor() {
+  return isDark() ? '#9ca3af' : '#6b7280';
+}
+
+function destroyChart(c) { if (c) c.destroy(); }
+
+function getCommonScaleOpts() {
+  return {
+    grid: { color: chartGridColor(), drawBorder: false },
+    ticks: { color: chartTextColor(), font: { size: 11 } },
+    border: { display: false },
+  };
+}
+
+/* ── Chart renderers ── */
+function renderTimeChart(points) {
+  destroyChart(chartTime);
+  const ctx = document.getElementById('chartTime').getContext('2d');
+  chartTime = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: points.map(p => p.bucket),
+      datasets: [{
+        label: 'Clicks',
+        data: points.map(p => p.count),
+        borderColor: CHART_COLORS.primary,
+        backgroundColor: CHART_COLORS.primaryLight,
+        fill: true, tension: .3,
+        pointRadius: points.length > 60 ? 0 : 3,
+        pointHoverRadius: 5, borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ...getCommonScaleOpts(), ticks: { ...getCommonScaleOpts().ticks, maxTicksLimit: 12 } },
+        y: { ...getCommonScaleOpts(), beginAtZero: true }
+      }
+    }
+  });
+}
+
+function renderPagesChart(pages) {
+  destroyChart(chartPages);
+  const top = pages.slice(0, 10);
+  const ctx = document.getElementById('chartPages').getContext('2d');
+  chartPages = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top.map(p => shortPath(p.pageUrl)),
+      datasets: [{ label: 'Clicks', data: top.map(p => p.totalClicks), backgroundColor: CHART_COLORS.palette, borderRadius: 6, barPercentage: .7 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ...getCommonScaleOpts(), beginAtZero: true },
+        y: { ...getCommonScaleOpts(), ticks: { ...getCommonScaleOpts().ticks, font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderElementsChart(elements) {
+  destroyChart(chartElements);
+  const top = elements.slice(0, 10);
+  const ctx = document.getElementById('chartElements').getContext('2d');
+  chartElements = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top.map(e => `${e.elementTag}${e.elementId ? '#'+e.elementId : ''}`),
+      datasets: [{ label: 'Clicks', data: top.map(e => e.totalClicks), backgroundColor: CHART_COLORS.palette, borderRadius: 6, barPercentage: .7 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ...getCommonScaleOpts(), beginAtZero: true },
+        y: { ...getCommonScaleOpts() }
+      }
+    }
+  });
+}
+
+function renderPagesTable(pages) {
+  const tbody = document.getElementById('pagesTableBody');
+  tbody.innerHTML = pages.map(p => `
+    <tr>
+      <td class="truncate" title="${p.pageUrl}">${shortPath(p.pageUrl)}</td>
+      <td>${p.totalClicks.toLocaleString()}</td>
+      <td>${p.uniqueSessions.toLocaleString()}</td>
+      <td>${p.uniqueSessions > 0 ? (p.totalClicks / p.uniqueSessions).toFixed(1) : '—'}</td>
+    </tr>
+  `).join('');
+}
+
+function renderHeatmap(points) {
+  const container = document.getElementById('heatmapContainer');
+  container.innerHTML = '';
+  if (!points.length) {
+    container.innerHTML = '<div class="empty-state" style="padding:40px"><p>No heatmap data</p></div>';
+    return;
+  }
+  const maxCount = Math.max(...points.map(p => p.count));
+  points.forEach(p => {
+    const cell = document.createElement('div');
+    cell.className = 'heatmap-cell';
+    const intensity = Math.max(0.1, p.count / maxCount);
+    cell.style.left = p.xPercent + '%';
+    cell.style.top = p.yPercent + '%';
+    cell.style.width = '5%';
+    cell.style.height = '5%';
+    cell.style.background = `rgba(99,102,241,${intensity})`;
+    cell.title = `(${p.xPercent}%, ${p.yPercent}%) — ${p.count} clicks`;
+    container.appendChild(cell);
+  });
+}
+
+function renderRecentClicks(clicks) {
+  document.getElementById('recentCount').textContent = `${clicks.length} events`;
+  const tbody = document.getElementById('recentBody');
+  tbody.innerHTML = clicks.map(c => {
+    const time = new Date(c.createdAt).toLocaleString();
+    return `
+      <tr>
+        <td style="white-space:nowrap;font-size:12px">${time}</td>
+        <td class="truncate" title="${c.pageUrl}">${shortPath(c.pageUrl)}</td>
+        <td><span class="badge badge-tag">${c.elementTag}</span> ${c.elementId ? '#'+c.elementId : ''}</td>
+        <td style="font-size:12px">${c.xPos}, ${c.yPos}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/* ── Render all panels from a unified data object ── */
+function renderDashboard(summary, topPages, heatmap, recent) {
+  document.getElementById('kpiClicks').textContent = formatNumber(summary.totalClicks);
+  document.getElementById('kpiSessions').textContent = formatNumber(summary.uniqueSessions);
+  document.getElementById('kpiPages').textContent = formatNumber(summary.uniquePages);
+  const avg = summary.uniqueSessions > 0 ? (summary.totalClicks / summary.uniqueSessions).toFixed(1) : '0';
+  document.getElementById('kpiAvgPerSession').textContent = avg;
+
+  renderTimeChart(summary.clicksOverTime);
+  renderPagesChart(summary.topPages);
+  renderElementsChart(summary.topElements);
+  renderPagesTable(topPages);
+  renderHeatmap(heatmap);
+  renderRecentClicks(recent);
+}
+
+/* ── Load from API, fallback to demo data ── */
+async function loadAll() {
+  const gran = document.getElementById('filterGranularity').value;
+  const demoBanner = document.getElementById('demoBanner');
+
+  try {
+    const [summary, topPages, heatmap, recent] = await Promise.all([
+      fetchJSON('/analytics/summary'),
+      fetchJSON('/analytics/top-pages?limit=20'),
+      fetchJSON('/analytics/heatmap'),
+      fetchJSON('/analytics/recent?limit=50'),
+    ]);
+
+    const hasData = summary.totalClicks > 0;
+    if (hasData) {
+      usingDemoData = false;
+      demoBanner.hidden = true;
+      renderDashboard(summary, topPages, heatmap, recent);
+      return;
+    }
+    throw new Error('empty');
+  } catch {
+    // API unavailable or empty — use client-side demo data
+  }
+
+  usingDemoData = true;
+  demoBanner.hidden = false;
+  const summary = DEMO.buildSummary(gran);
+  const topPages = DEMO.buildTopPages();
+  const heatmap = DEMO.buildHeatmap();
+  const recent = DEMO.buildRecent();
+  renderDashboard(summary, topPages, heatmap, recent);
+}
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = isError ? '#ef4444' : '#6366f1';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+document.getElementById('applyFilters').addEventListener('click', loadAll);
+
+document.getElementById('seedBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('seedBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Seeding…';
+  try {
+    const res = await fetch(`${API}/seed`, { method: 'POST' });
+    const data = await res.json();
+    showToast(data.message || 'Done!');
+    await loadAll();
+  } catch (err) {
+    showToast('Failed to seed data via API. Showing client-side demo data.', true);
+    await loadAll();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Seed Demo Data';
+  }
+});
+
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const html = document.documentElement;
+  const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('ca-theme', next);
+  loadAll();
+});
+
+// Restore theme
+const saved = localStorage.getItem('ca-theme');
+if (saved) document.documentElement.setAttribute('data-theme', saved);
+
+// Set default date range to last 30 days
+const now = new Date();
+const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+document.getElementById('filterFrom').value = thirtyDaysAgo.toISOString().split('T')[0];
+document.getElementById('filterTo').value = now.toISOString().split('T')[0];
+
+loadAll();
+</script>
+</body>
+</html>

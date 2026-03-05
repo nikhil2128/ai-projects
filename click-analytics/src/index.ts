@@ -1,4 +1,5 @@
 import express from "express";
+import path from "path";
 import cors from "cors";
 import { config } from "./config";
 import { initializeSchema } from "./database/schema";
@@ -9,6 +10,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { rateLimiter } from "./middleware/rateLimiter";
 import trackingRoutes from "./routes/tracking";
 import analyticsRoutes from "./routes/analytics";
+import seedRoutes from "./routes/seed";
 
 const app = express();
 
@@ -34,6 +36,14 @@ app.get("/api/health", async (_req, res) => {
 
 app.use("/api", trackingRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api", seedRoutes);
+
+app.use(express.static(path.join(__dirname, "..", "public")));
+
+app.get("/admin", (_req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "admin", "index.html"));
+});
+
 app.use(errorHandler);
 
 async function start() {

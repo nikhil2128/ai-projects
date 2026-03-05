@@ -1,119 +1,97 @@
 # ============================================================
-# Root Makefile — Orchestrate independent projects
+# Root Makefile — Nx orchestration for all projects
 # ============================================================
 #
 # Usage:
-#   make lint p=csv-merger/backend      # Lint a specific project
-#   make test p=image-annotator/backend # Test a specific project
-#   make build p=invoice-processor      # Build a specific project
-#   make lint-all                       # Lint every project
-#   make test-all                       # Test every project
-#   make docker-build p=csv-merger/backend  # Build Docker image
+#   make lint p=csv-merger/backend       # Run lint for one project path
+#   make lint p=csv-merger-backend       # Run lint for one project name
+#   make test-all                        # Test all projects
+#   make affected-build                  # Build only changed projects
+#   make graph                           # Open Nx dependency graph
 # ============================================================
 
-# All independently deployable project targets (each with their own package.json)
-PROJECTS := \
-	buggy-task-system \
-	csv-merger/backend \
-	csv-merger/frontend \
-	image-annotator/backend \
-	image-annotator/frontend \
-	invoice-processor \
-	invoice-processor/ui \
-	onboarding-doc-tracker \
-	photo-share/backend \
-	photo-share/frontend \
-	smart-task-manager/backend \
-	smart-task-manager/frontend \
-	video-merger
-
-.PHONY: install lint test build typecheck dev lint-all test-all build-all typecheck-all docker-build help
+.PHONY: help install install-all projects graph \
+	lint test build typecheck dev \
+	lint-all test-all build-all typecheck-all dev-all \
+	affected-lint affected-test affected-build affected-typecheck \
+	docker-build
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-# ── Single-project commands (use p= to specify project) ──────
+projects: ## List all Nx projects
+	npm run nx -- show projects
 
-install: ## Install dependencies for project (p=<project>)
-	@if [ -z "$(p)" ]; then echo "Usage: make install p=<project>"; exit 1; fi
-	cd $(p) && npm install
+graph: ## Open Nx dependency graph
+	npm run nx -- graph
 
-lint: ## Lint a project (p=<project>)
-	@if [ -z "$(p)" ]; then echo "Usage: make lint p=<project>"; exit 1; fi
-	cd $(p) && npm run lint
+# ── Single-project commands (use p= as project path or name) ─
 
-test: ## Test a project (p=<project>)
-	@if [ -z "$(p)" ]; then echo "Usage: make test p=<project>"; exit 1; fi
-	cd $(p) && npm test
+install: ## Install dependencies for one project (p=<project-path-or-name>)
+	@if [ -z "$(p)" ]; then echo "Usage: make install p=<project-path-or-name>"; exit 1; fi
+	@if [ -d "$(p)" ]; then \
+		cd $(p) && npm install; \
+	else \
+		npm install --workspace "$(p)"; \
+	fi
 
-build: ## Build a project (p=<project>)
-	@if [ -z "$(p)" ]; then echo "Usage: make build p=<project>"; exit 1; fi
-	cd $(p) && npm run build
+lint: ## Lint one project (p=<project-path-or-name>)
+	@if [ -z "$(p)" ]; then echo "Usage: make lint p=<project-path-or-name>"; exit 1; fi
+	@project=$$(node -e "const fs=require('fs');const path=require('path');const input=process.argv[1];const pkgPath=path.join(process.cwd(), input, 'package.json');if(fs.existsSync(pkgPath)){process.stdout.write(JSON.parse(fs.readFileSync(pkgPath,'utf8')).name||input);}else{process.stdout.write(input);} " "$(p)"); \
+	npm run nx -- run $$project:lint
 
-typecheck: ## Type-check a project (p=<project>)
-	@if [ -z "$(p)" ]; then echo "Usage: make typecheck p=<project>"; exit 1; fi
-	cd $(p) && npm run typecheck
+test: ## Test one project (p=<project-path-or-name>)
+	@if [ -z "$(p)" ]; then echo "Usage: make test p=<project-path-or-name>"; exit 1; fi
+	@project=$$(node -e "const fs=require('fs');const path=require('path');const input=process.argv[1];const pkgPath=path.join(process.cwd(), input, 'package.json');if(fs.existsSync(pkgPath)){process.stdout.write(JSON.parse(fs.readFileSync(pkgPath,'utf8')).name||input);}else{process.stdout.write(input);} " "$(p)"); \
+	npm run nx -- run $$project:test
 
-dev: ## Start dev server for a project (p=<project>)
-	@if [ -z "$(p)" ]; then echo "Usage: make dev p=<project>"; exit 1; fi
-	cd $(p) && npm run dev
+build: ## Build one project (p=<project-path-or-name>)
+	@if [ -z "$(p)" ]; then echo "Usage: make build p=<project-path-or-name>"; exit 1; fi
+	@project=$$(node -e "const fs=require('fs');const path=require('path');const input=process.argv[1];const pkgPath=path.join(process.cwd(), input, 'package.json');if(fs.existsSync(pkgPath)){process.stdout.write(JSON.parse(fs.readFileSync(pkgPath,'utf8')).name||input);}else{process.stdout.write(input);} " "$(p)"); \
+	npm run nx -- run $$project:build
 
-docker-build: ## Build Docker image for a project (p=<project>)
-	@if [ -z "$(p)" ]; then echo "Usage: make docker-build p=<project>"; exit 1; fi
+typecheck: ## Type-check one project (p=<project-path-or-name>)
+	@if [ -z "$(p)" ]; then echo "Usage: make typecheck p=<project-path-or-name>"; exit 1; fi
+	@project=$$(node -e "const fs=require('fs');const path=require('path');const input=process.argv[1];const pkgPath=path.join(process.cwd(), input, 'package.json');if(fs.existsSync(pkgPath)){process.stdout.write(JSON.parse(fs.readFileSync(pkgPath,'utf8')).name||input);}else{process.stdout.write(input);} " "$(p)"); \
+	npm run nx -- run $$project:typecheck
+
+dev: ## Start dev for one project (p=<project-path-or-name>)
+	@if [ -z "$(p)" ]; then echo "Usage: make dev p=<project-path-or-name>"; exit 1; fi
+	@project=$$(node -e "const fs=require('fs');const path=require('path');const input=process.argv[1];const pkgPath=path.join(process.cwd(), input, 'package.json');if(fs.existsSync(pkgPath)){process.stdout.write(JSON.parse(fs.readFileSync(pkgPath,'utf8')).name||input);}else{process.stdout.write(input);} " "$(p)"); \
+	npm run nx -- run $$project:dev
+
+docker-build: ## Build Docker image for a project path (p=<project-path>)
+	@if [ -z "$(p)" ]; then echo "Usage: make docker-build p=<project-path>"; exit 1; fi
 	docker build -t $$(echo $(p) | tr '/' '-') $(p)
 
-# ── Aggregate commands (all projects) ────────────────────────
+# ── Aggregate commands ────────────────────────────────────────
 
-install-all: ## Install dependencies for all projects
-	@for proj in $(PROJECTS); do \
-		echo "\n══ Installing $$proj ══"; \
-		(cd $$proj && npm install) || true; \
-	done
+install-all: ## Install dependencies for root + all workspaces
+	npm install --workspaces --include-workspace-root
 
 lint-all: ## Lint all projects
-	@failed=""; \
-	for proj in $(PROJECTS); do \
-		echo "\n══ Linting $$proj ══"; \
-		(cd $$proj && npm run lint) || failed="$$failed $$proj"; \
-	done; \
-	if [ -n "$$failed" ]; then \
-		echo "\n✘ Lint failed for:$$failed"; exit 1; \
-	else \
-		echo "\n✔ All projects passed lint"; \
-	fi
+	npm run nx -- run-many -t lint --all
 
 test-all: ## Test all projects
-	@failed=""; \
-	for proj in $(PROJECTS); do \
-		echo "\n══ Testing $$proj ══"; \
-		(cd $$proj && npm test) || failed="$$failed $$proj"; \
-	done; \
-	if [ -n "$$failed" ]; then \
-		echo "\n✘ Tests failed for:$$failed"; exit 1; \
-	else \
-		echo "\n✔ All projects passed tests"; \
-	fi
+	npm run nx -- run-many -t test --all
 
 build-all: ## Build all projects
-	@failed=""; \
-	for proj in $(PROJECTS); do \
-		echo "\n══ Building $$proj ══"; \
-		(cd $$proj && npm run build) || failed="$$failed $$proj"; \
-	done; \
-	if [ -n "$$failed" ]; then \
-		echo "\n✘ Build failed for:$$failed"; exit 1; \
-	else \
-		echo "\n✔ All projects built successfully"; \
-	fi
+	npm run nx -- run-many -t build --all
 
 typecheck-all: ## Type-check all projects
-	@failed=""; \
-	for proj in $(PROJECTS); do \
-		echo "\n══ Type-checking $$proj ══"; \
-		(cd $$proj && npm run typecheck) || failed="$$failed $$proj"; \
-	done; \
-	if [ -n "$$failed" ]; then \
-		echo "\n✘ Type-check failed for:$$failed"; exit 1; \
-	else \
-		echo "\n✔ All projects passed type-check"; \
-	fi
+	npm run nx -- run-many -t typecheck --all
+
+dev-all: ## Start dev targets for all projects
+	npm run nx -- run-many -t dev --all --parallel=5
+
+affected-lint: ## Lint only changed projects
+	npm run nx -- affected -t lint
+
+affected-test: ## Test only changed projects
+	npm run nx -- affected -t test
+
+affected-build: ## Build only changed projects
+	npm run nx -- affected -t build
+
+affected-typecheck: ## Type-check only changed projects
+	npm run nx -- affected -t typecheck

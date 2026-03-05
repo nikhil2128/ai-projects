@@ -1,0 +1,29 @@
+{
+  "name": "ai-projects",
+  "private": true,
+  "workspaces": [
+    "*",
+    "*/*"
+  ],
+  "scripts": {
+    "nx": "nx",
+    "graph": "nx graph",
+    "projects": "nx show projects",
+    "lint": "nx run-many -t lint --all",
+    "test": "nx run-many -t test --all",
+    "build": "nx run-many -t build --all",
+    "typecheck": "nx run-many -t typecheck --all",
+    "dev": "nx run-many -t dev --all --parallel=5",
+    "affected:lint": "nx affected -t lint",
+    "affected:test": "nx affected -t test",
+    "affected:build": "nx affected -t build",
+    "affected:typecheck": "nx affected -t typecheck",
+    "format:check": "nx format:check",
+    "format:write": "nx format:write"
+  },
+  "devDependencies": {
+    "@nx/js": "latest",
+    "@nx/workspace": "latest",
+    "nx": "latest"
+  }
+}

@@ -1,94 +1,84 @@
-# AI Projects Monorepo
+# AI Projects Monorepo (Nx)
 
-A collection of independent projects, each with its own tech stack, lint/test configuration, and deployment pipeline.
+This monorepo is now orchestrated by [Nx](https://nx.dev/) so multiple independent projects can be developed, tested, built, and deployed consistently with caching and affected-only execution.
 
-## Projects
+## What Nx Adds
 
-| Project | Description | Backend | Frontend | Deploy Target |
-|---------|-------------|---------|----------|---------------|
-| [buggy-task-system](./buggy-task-system/) | Task management API (for debugging practice) | Express.js | — | Docker |
-| [csv-merger](./csv-merger/) | CSV file merging and analysis tool | Express.js | React + Vite | Docker |
-| [image-annotator](./image-annotator/) | Collaborative image annotation platform | Express.js + Prisma | React + Vite | AWS (ECS + S3/CloudFront) |
-| [invoice-processor](./invoice-processor/) | Async invoice PDF extraction API | NestJS + TypeORM | React + Vite | Docker |
-| [org-chart-from-handwriting](./org-chart-from-handwriting/) | Handwritten org screenshot to polished downloadable org chart | Express.js | React + Vite | Docker |
-| [smart-task-manager](./smart-task-manager/) | Full-stack project & task management | NestJS + TypeORM | Next.js | Docker |
+- A single task runner across all projects (`nx run`, `nx run-many`, `nx affected`)
+- Better local/CI performance via task caching
+- A dependency graph for understanding project relationships
+- A clean path for shared libraries under `libs/`
+- Easier onboarding for new projects that follow workspace conventions
 
-## Repository Structure
+## Workspace Layout
 
 ```
 ai-projects/
-├── .github/workflows/       # CI/CD pipelines (per-project)
-├── .husky/                   # Git hooks (project-aware)
-├── buggy-task-system/        # Independent project
-├── csv-merger/               # Independent project
-├── image-annotator/          # Independent project
-├── invoice-processor/        # Independent project
-├── org-chart-from-handwriting/ # Independent project
-├── smart-task-manager/       # Independent project
-├── Makefile                  # Root-level orchestration
-└── README.md
+├── Makefile                # Convenience commands mapped to Nx
+├── nx.json                 # Nx workspace config + target defaults
+├── package.json            # Root workspace + Nx scripts
+├── tsconfig.base.json      # Shared TS base config / shared lib alias
+├── libs/                   # Cross-project shared libraries
+└── <projects...>           # Existing independent apps/services
 ```
-
-## How It Works
-
-Each project is **fully independent** — it has its own:
-
-- **Dependencies** (`package.json` + `package-lock.json`)
-- **Lint configuration** (ESLint, Prettier)
-- **Test setup** (Jest or Vitest)
-- **Build pipeline** (TypeScript, Vite, Next.js, NestJS CLI)
-- **Dockerfile** for containerized deployment
-- **CI workflow** (GitHub Actions, triggered only when that project changes)
-- **Deploy workflow** (GitHub Actions, project-specific)
 
 ## Quick Start
 
-### Using Make (recommended)
-
 ```bash
-# Lint a specific project
-make lint p=csv-merger/backend
+# Install root + workspace dependencies
+make install-all
 
-# Test a specific project
-make test p=image-annotator/backend
+# List projects discovered by Nx
+make projects
 
-# Build a specific project
-make build p=invoice-processor
-
-# Lint all projects
+# Run tasks on all projects
 make lint-all
-
-# Test all projects
 make test-all
+make build-all
+make typecheck-all
 
-# Build Docker image for a project
-make docker-build p=csv-merger/backend
+# Run task for one project (path or project name)
+make lint p=csv-merger/backend
+make test p=smart-task-backend
+
+# Run only changed projects
+make affected-lint
+make affected-test
+make affected-build
 ```
 
-### Directly via npm
+## Useful Nx Commands
 
 ```bash
-cd csv-merger/backend
-npm install
-npm run lint
-npm test
-npm run build
+# Show project graph
+make graph
+
+# Direct Nx usage
+npm run nx -- show projects
+npm run nx -- run-many -t build --all
+npm run nx -- affected -t test
 ```
 
-## CI/CD
+## Shared Libraries
 
-Each project has its own GitHub Actions workflows:
+Create shared code in `libs/` and consume it from apps/services.
 
-- **CI** (`ci-{project}.yml`) — runs on PR/push, filters by changed paths
-- **Deploy** (`deploy-{project}.yml`) — deploys to test/prod environments
+```bash
+npx nx g @nx/js:library libs/shared/<lib-name>
+```
 
-Changes to `csv-merger/` will **only** trigger `ci-csv-merger.yml` — other projects are unaffected.
+The workspace includes a default alias pattern in `tsconfig.base.json`:
+
+- `@shared/*` -> `libs/shared/*/src/index.ts`
 
 ## Adding a New Project
 
-1. Create a new directory at the root
-2. Initialize with `npm init` and add standard scripts: `lint`, `test`, `build`, `typecheck`, `dev`
-3. Add an ESLint config (`eslint.config.mjs`)
-4. Add a `Dockerfile`
-5. Copy and adapt a CI workflow from `.github/workflows/`
-6. Update this README
+1. Create a new package with `package.json` and scripts (`dev`, `build`, `lint`, `test`, `typecheck`).
+2. Place it at root (`new-project/`) or one level nested (`domain/new-project/`) to match workspace globs.
+3. Run `make install-all`.
+4. Verify discovery with `make projects`.
+5. Add/adjust CI workflows to use Nx (`nx affected` where possible).
+
+## Deployment Strategy
+
+For CI/CD, prefer `nx affected` for selective builds/tests and keep per-project deploy jobs. This gives fast validation while preserving independent deployment pipelines.

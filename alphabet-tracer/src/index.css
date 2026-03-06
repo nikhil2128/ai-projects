@@ -607,6 +607,48 @@ body {
   animation: point-wiggle 1.5s ease-in-out infinite;
 }
 
+/* ── Direction Error Overlay ─────────────────────────── */
+
+.direction-error-overlay {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: inherit;
+  animation: direction-error-in 0.3s ease-out;
+  pointer-events: none;
+}
+
+.direction-error-text {
+  background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+  color: white;
+  padding: 12px 28px;
+  border-radius: 50px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(255, 107, 107, 0.4);
+  animation: direction-error-shake 0.5s ease-out;
+}
+
+@keyframes direction-error-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes direction-error-shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-8px); }
+  30% { transform: translateX(8px); }
+  45% { transform: translateX(-5px); }
+  60% { transform: translateX(5px); }
+  75% { transform: translateX(-2px); }
+  90% { transform: translateX(2px); }
+}
+
 /* ── Progress Bar ─────────────────────────────────────── */
 
 .canvas-controls {

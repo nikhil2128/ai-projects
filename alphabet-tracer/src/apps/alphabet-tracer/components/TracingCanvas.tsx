@@ -1,4 +1,9 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
+import {
+  LETTER_DIRECTION_RULES,
+  analyzeStroke,
+  validateStrokeDirection,
+} from '../utils/strokeDirections';
 
 interface TracingCanvasProps {
   letter: string;
@@ -29,7 +34,10 @@ export function TracingCanvas({ letter, onSuccess, disabled }: TracingCanvasProp
   const colorIndex = useRef(0);
   const [progress, setProgress] = useState(0);
   const [showHint, setShowHint] = useState(true);
+  const [directionError, setDirectionError] = useState<string | null>(null);
   const drawingPixels = useRef(new Set<number>());
+  const currentStrokePoints = useRef<Array<{ x: number; y: number }>>([]);
+  const directionErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getReferencePixels = useCallback((): Set<number> => {
     const ref = referenceCanvasRef.current;
@@ -85,6 +93,7 @@ export function TracingCanvas({ letter, onSuccess, disabled }: TracingCanvasProp
     strokeCount.current = 0;
     colorIndex.current = 0;
     drawingPixels.current.clear();
+    currentStrokePoints.current = [];
     setProgress(0);
     setShowHint(true);
   }, []);
@@ -93,7 +102,18 @@ export function TracingCanvas({ letter, onSuccess, disabled }: TracingCanvasProp
     renderReference();
     renderGuide();
     clearDrawing();
+    setDirectionError(null);
+    if (directionErrorTimer.current) {
+      clearTimeout(directionErrorTimer.current);
+      directionErrorTimer.current = null;
+    }
   }, [letter, renderReference, renderGuide, clearDrawing]);
+
+  useEffect(() => {
+    return () => {
+      if (directionErrorTimer.current) clearTimeout(directionErrorTimer.current);
+    };
+  }, []);
 
   const getCanvasPoint = (e: React.MouseEvent | React.TouchEvent): { x: number; y: number } => {
     const canvas = canvasRef.current!;
@@ -171,8 +191,17 @@ export function TracingCanvas({ letter, onSuccess, disabled }: TracingCanvasProp
     if (disabled) return;
     e.preventDefault();
     isDrawing.current = true;
-    lastPoint.current = getCanvasPoint(e);
+    const point = getCanvasPoint(e);
+    lastPoint.current = point;
+    currentStrokePoints.current = [point];
     setShowHint(false);
+    if (directionError) {
+      setDirectionError(null);
+      if (directionErrorTimer.current) {
+        clearTimeout(directionErrorTimer.current);
+        directionErrorTimer.current = null;
+      }
+    }
   };
 
   const handleMove = (e: React.MouseEvent | React.TouchEvent) => {
@@ -182,6 +211,7 @@ export function TracingCanvas({ letter, onSuccess, disabled }: TracingCanvasProp
     if (lastPoint.current) {
       drawLine(lastPoint.current, point);
       strokeCount.current++;
+      currentStrokePoints.current.push(point);
       if (strokeCount.current % 5 === 0) {
         colorIndex.current++;
       }
@@ -196,6 +226,26 @@ export function TracingCanvas({ letter, onSuccess, disabled }: TracingCanvasProp
     if (!isDrawing.current) return;
     isDrawing.current = false;
     lastPoint.current = null;
+
+    const points = currentStrokePoints.current;
+    if (points.length >= 2) {
+      const stroke = analyzeStroke(points);
+      const rules = LETTER_DIRECTION_RULES[letter.toLowerCase()];
+      if (rules) {
+        const error = validateStrokeDirection(stroke, rules);
+        if (error) {
+          setDirectionError(error);
+          clearDrawing();
+          directionErrorTimer.current = setTimeout(() => {
+            setDirectionError(null);
+          }, 2500);
+          currentStrokePoints.current = [];
+          return;
+        }
+      }
+    }
+    currentStrokePoints.current = [];
+
     if (strokeCount.current > MIN_STROKES_BEFORE_CHECK) {
       checkProgress();
     }
@@ -229,10 +279,15 @@ export function TracingCanvas({ letter, onSuccess, disabled }: TracingCanvasProp
           onTouchMove={handleMove}
           onTouchEnd={handleEnd}
         />
-        {showHint && (
+        {showHint && !directionError && (
           <div className="hint-overlay">
             <span className="hint-finger">&#9757;</span>
             <span className="hint-text">Trace the letter!</span>
+          </div>
+        )}
+        {directionError && (
+          <div className="direction-error-overlay">
+            <span className="direction-error-text">{directionError}</span>
           </div>
         )}
       </div>

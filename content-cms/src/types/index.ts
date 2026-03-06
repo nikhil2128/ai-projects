@@ -27,10 +27,25 @@ export interface ContentModel {
   updatedAt: string;
 }
 
+export type EntryStatus = "draft" | "published" | "archived";
+
+export interface EntryVersion {
+  id: string;
+  entryId: string;
+  versionNumber: number;
+  values: Record<string, unknown>;
+  createdAt: string;
+}
+
+export type EntrySaveAction = "save-draft" | "publish";
+
 export interface ContentEntry {
   id: string;
   modelId: string;
   values: Record<string, unknown>;
+  status: EntryStatus;
+  versions: EntryVersion[];
+  currentVersionId: string | null;
   createdAt: string;
   updatedAt: string;
 }

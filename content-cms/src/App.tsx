@@ -9,6 +9,7 @@ import type {
   ContentEntry,
   AppView,
   FieldDefinition,
+  EntrySaveAction,
 } from "./types";
 import {
   createModel,
@@ -16,6 +17,7 @@ import {
   fetchModel,
   createEntry,
   updateEntry,
+  publishEntry,
 } from "./utils/api";
 
 interface AppState {
@@ -88,16 +90,28 @@ export default function App() {
     navigate("entries", updated, null);
   };
 
-  const handleCreateEntry = async (values: Record<string, unknown>) => {
+  const handleCreateEntry = async (
+    values: Record<string, unknown>,
+    action: EntrySaveAction,
+  ) => {
     if (!state.activeModel) return;
-    await createEntry(state.activeModel.id, values);
+    const created = await createEntry(state.activeModel.id, values);
+    if (action === "publish") {
+      await publishEntry(created.id);
+    }
     const freshModel = await fetchModel(state.activeModel.id);
     navigate("entries", freshModel, null);
   };
 
-  const handleUpdateEntry = async (values: Record<string, unknown>) => {
+  const handleUpdateEntry = async (
+    values: Record<string, unknown>,
+    action: EntrySaveAction,
+  ) => {
     if (!state.activeEntry) return;
     await updateEntry(state.activeEntry.id, values);
+    if (action === "publish") {
+      await publishEntry(state.activeEntry.id);
+    }
     if (state.activeModel) {
       const freshModel = await fetchModel(state.activeModel.id);
       navigate("entries", freshModel, null);

@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import type { ContentModel, ContentEntry } from "../types";
-import { fetchEntries, deleteEntry } from "../utils/api";
+import {
+  fetchEntries,
+  deleteEntry,
+  publishEntry,
+  unpublishEntry,
+  archiveEntry,
+} from "../utils/api";
 
 interface EntryListProps {
   model: ContentModel;
@@ -16,6 +22,7 @@ export default function EntryList({
   const [entries, setEntries] = useState<ContentEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [updatingStateId, setUpdatingStateId] = useState<string | null>(null);
 
   const loadEntries = async () => {
     try {
@@ -42,6 +49,27 @@ export default function EntryList({
     }
   };
 
+  const handleStateChange = async (
+    entryId: string,
+    action: "publish" | "unpublish" | "archive",
+  ) => {
+    setUpdatingStateId(entryId);
+    try {
+      const updated =
+        action === "publish"
+          ? await publishEntry(entryId)
+          : action === "unpublish"
+            ? await unpublishEntry(entryId)
+            : await archiveEntry(entryId);
+
+      setEntries((prev) =>
+        prev.map((entry) => (entry.id === updated.id ? updated : entry)),
+      );
+    } finally {
+      setUpdatingStateId(null);
+    }
+  };
+
   const getPreviewValue = (entry: ContentEntry): string => {
     const firstTextField = model.fields.find(
       (f) => f.type === "text" || f.type === "textarea",
@@ -60,6 +88,16 @@ export default function EntryList({
     const val = entry.values[textFields[1].slug];
     if (typeof val === "string" && val.trim()) return val;
     return null;
+  };
+
+  const statusBadge = (status: ContentEntry["status"]) => {
+    if (status === "published") {
+      return "bg-emerald-100 text-emerald-700";
+    }
+    if (status === "archived") {
+      return "bg-amber-100 text-amber-700";
+    }
+    return "bg-slate-100 text-slate-700";
   };
 
   if (loading) {
@@ -150,12 +188,50 @@ export default function EntryList({
                   </p>
                 )}
               </div>
-              <span className="text-xs text-slate-400 shrink-0">
-                {new Date(entry.updatedAt).toLocaleDateString()}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span
+                  className={`px-2 py-0.5 text-[11px] font-medium rounded-full ${statusBadge(entry.status)}`}
+                >
+                  {entry.status[0].toUpperCase() + entry.status.slice(1)}
+                </span>
+                <span className="text-xs text-slate-400">
+                  {new Date(entry.updatedAt).toLocaleDateString()}
+                </span>
+              </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                {entry.status !== "published" && (
+                  <button
+                    onClick={() => handleStateChange(entry.id, "publish")}
+                    disabled={updatingStateId === entry.id || deleting === entry.id}
+                    className="px-2 py-1 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                    title="Publish"
+                  >
+                    Publish
+                  </button>
+                )}
+                {entry.status !== "draft" && (
+                  <button
+                    onClick={() => handleStateChange(entry.id, "unpublish")}
+                    disabled={updatingStateId === entry.id || deleting === entry.id}
+                    className="px-2 py-1 rounded-lg text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50"
+                    title="Unpublish"
+                  >
+                    Unpublish
+                  </button>
+                )}
+                {entry.status !== "archived" && (
+                  <button
+                    onClick={() => handleStateChange(entry.id, "archive")}
+                    disabled={updatingStateId === entry.id || deleting === entry.id}
+                    className="px-2 py-1 rounded-lg text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors disabled:opacity-50"
+                    title="Archive"
+                  >
+                    Archive
+                  </button>
+                )}
                 <button
                   onClick={() => onEditEntry(entry)}
+                  disabled={updatingStateId === entry.id || deleting === entry.id}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"
                   title="Edit"
                 >

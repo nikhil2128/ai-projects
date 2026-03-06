@@ -1,4 +1,4 @@
-import type { ContentModel, ContentEntry } from "../types";
+import type { ContentModel, ContentEntry, EntryVersion } from "../types";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -90,4 +90,30 @@ export async function updateEntry(
 
 export async function deleteEntry(id: string): Promise<void> {
   await request(`/api/entries/${id}`, { method: "DELETE" });
+}
+
+export async function publishEntry(id: string): Promise<ContentEntry> {
+  const res = await request<ContentEntry>(`/api/entries/${id}/publish`, {
+    method: "PUT",
+  });
+  return res.data!;
+}
+
+export async function unpublishEntry(id: string): Promise<ContentEntry> {
+  const res = await request<ContentEntry>(`/api/entries/${id}/unpublish`, {
+    method: "PUT",
+  });
+  return res.data!;
+}
+
+export async function archiveEntry(id: string): Promise<ContentEntry> {
+  const res = await request<ContentEntry>(`/api/entries/${id}/archive`, {
+    method: "PUT",
+  });
+  return res.data!;
+}
+
+export async function fetchEntryVersions(id: string): Promise<EntryVersion[]> {
+  const res = await request<EntryVersion[]>(`/api/entries/${id}/versions`);
+  return res.data ?? [];
 }

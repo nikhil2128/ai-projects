@@ -1,5 +1,7 @@
 node_modules/
 dist/
 data/
+!admin-portal/src/data/
+!admin-portal/src/data/**
 *.db
 .env

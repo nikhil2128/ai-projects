@@ -17,19 +17,267 @@ body {
   font-family: 'Fredoka', 'Patrick Hand', system-ui, sans-serif;
   overflow: hidden;
   height: 100dvh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
   user-select: none;
   -webkit-user-select: none;
-  touch-action: none;
 }
 
 #root {
   height: 100%;
 }
 
-/* ── App Layout ───────────────────────────────────────── */
+/* ── Hub Layout ──────────────────────────────────────────── */
 
-.app {
+.hub {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(255, 107, 107, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(78, 205, 196, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 40% 80%, rgba(255, 217, 61, 0.10) 0%, transparent 50%),
+    linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+}
+
+.hub-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 28px 32px 12px;
+  z-index: 10;
+}
+
+.hub-title-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.hub-title {
+  font-size: 2.4rem;
+  font-weight: 700;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.hub-letter {
+  display: inline-block;
+  animation: bounce-in 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55) both;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.hub-letter:nth-child(1) { animation-delay: 0s; }
+.hub-letter:nth-child(2) { animation-delay: 0.08s; }
+.hub-letter:nth-child(3) { animation-delay: 0.16s; }
+.hub-letter:nth-child(4) { animation-delay: 0.24s; }
+
+.hub-space {
+  width: 10px;
+}
+
+.hub-word {
+  color: white;
+  font-size: 1.8rem;
+  animation: bounce-in 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55) both;
+  animation-delay: 0.32s;
+}
+
+.hub-subtitle {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 1.05rem;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.hub-total-stars {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  padding: 12px 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  animation: bounce-in 0.6s cubic-bezier(0.68, -0.55, 0.27, 1.55) both;
+  animation-delay: 0.4s;
+}
+
+.hub-stars-icon {
+  font-size: 1.6rem;
+}
+
+.hub-stars-count {
+  color: white;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.hub-stars-label {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── App Cards Grid ──────────────────────────────────────── */
+
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  padding: 20px 32px 40px;
+  z-index: 10;
+}
+
+.app-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  border-radius: 24px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+  animation: card-pop 0.5s cubic-bezier(0.68, -0.55, 0.27, 1.55) both;
+}
+
+.app-card:hover {
+  transform: translateY(-6px) scale(1.02);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.app-card:active {
+  transform: translateY(-2px) scale(0.98);
+}
+
+.app-card-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.app-card-icon-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 60%, rgba(0, 0, 0, 0.15) 100%);
+}
+
+.app-card-icon {
+  font-size: 3.5rem;
+  filter: drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.2));
+  animation: icon-float 3s ease-in-out infinite;
+  z-index: 1;
+}
+
+.app-card-info {
+  padding: 16px 20px 8px;
+}
+
+.app-card-name {
+  color: white;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.app-card-desc {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.app-card-rewards {
+  display: flex;
+  gap: 8px;
+  padding: 8px 20px;
+  flex-wrap: wrap;
+  min-height: 28px;
+}
+
+.app-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 4px 10px;
+  border-radius: 50px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.badge-streak {
+  background: rgba(255, 165, 0, 0.2);
+  border-color: rgba(255, 165, 0, 0.3);
+}
+
+.badge-high {
+  background: rgba(255, 215, 0, 0.15);
+  border-color: rgba(255, 215, 0, 0.25);
+}
+
+.badge-icon {
+  font-size: 0.85rem;
+}
+
+.badge-value {
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.app-card-play {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 20px;
+  margin: 4px 16px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: all 0.2s ease;
+}
+
+.app-card:hover .app-card-play {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.play-text {
+  color: white;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.play-arrow {
+  color: white;
+  font-size: 1.2rem;
+  transition: transform 0.2s ease;
+}
+
+.app-card:hover .play-arrow {
+  transform: translateX(4px);
+}
+
+/* ── App Page Layout ─────────────────────────────────────── */
+
+.app-page {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -42,15 +290,117 @@ body {
     linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
 }
 
-/* ── Header ───────────────────────────────────────────── */
+.app-page-nav {
+  padding: 12px 24px 0;
+  z-index: 20;
+}
 
-.app-header {
+.btn-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 50px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  color: white;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.btn-home:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.btn-home:active {
+  transform: scale(0.95);
+}
+
+.btn-home-icon {
+  font-size: 1.1rem;
+}
+
+/* ── Tracer App (inside app page) ────────────────────────── */
+
+.tracer-app {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.tracer-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 8px 24px;
   z-index: 10;
 }
+
+/* ── Coming Soon ─────────────────────────────────────────── */
+
+.coming-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 40px;
+  z-index: 10;
+}
+
+.coming-soon-icon {
+  font-size: 5rem;
+  animation: icon-float 3s ease-in-out infinite;
+  margin-bottom: 16px;
+}
+
+.coming-soon-title {
+  color: white;
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.coming-soon-text {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1.1rem;
+  text-align: center;
+  max-width: 400px;
+}
+
+/* ── App Not Found ───────────────────────────────────────── */
+
+.app-not-found {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  color: white;
+}
+
+.btn-back-home {
+  padding: 12px 28px;
+  border: none;
+  border-radius: 50px;
+  background: linear-gradient(135deg, #6BCB77, #4ECDC4);
+  color: white;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ── Shared Header ───────────────────────────────────────── */
 
 .title-section {
   display: flex;
@@ -745,9 +1095,66 @@ body {
   }
 }
 
+@keyframes icon-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
 /* ── Responsive ───────────────────────────────────────── */
 
 @media (max-width: 768px) {
+  .hub-header {
+    padding: 20px 20px 8px;
+  }
+
+  .hub-title {
+    font-size: 1.8rem;
+  }
+
+  .hub-word {
+    font-size: 1.3rem;
+  }
+
+  .hub-grid {
+    grid-template-columns: 1fr;
+    padding: 16px 20px 32px;
+    gap: 16px;
+  }
+
+  .app-card {
+    flex-direction: row;
+    align-items: center;
+    border-radius: 20px;
+  }
+
+  .app-card-icon-wrap {
+    padding: 20px;
+    border-radius: 20px 0 0 20px;
+    min-width: 90px;
+    min-height: 90px;
+  }
+
+  .app-card-icon {
+    font-size: 2.5rem;
+  }
+
+  .app-card-info {
+    padding: 12px 16px 4px;
+    flex: 1;
+  }
+
+  .app-card-rewards {
+    padding: 4px 16px 8px;
+  }
+
+  .app-card-play {
+    display: none;
+  }
+
   .game-area {
     flex-direction: column;
     gap: 16px;
@@ -804,8 +1211,8 @@ body {
 }
 
 @media (max-height: 600px) {
-  .app-header {
-    padding: 8px 16px;
+  .tracer-header {
+    padding: 4px 16px;
   }
 
   .subtitle {

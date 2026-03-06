@@ -1,7 +1,7 @@
 {
-  "name": "alphabet-tracer",
-  "version": "1.0.0",
-  "description": "Fun alphabet tracing app for kids to learn writing lowercase letters",
+  "name": "kids-learning-hub",
+  "version": "2.0.0",
+  "description": "Multi-app learning platform for kids with per-app reward tracking",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^6.30.3"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

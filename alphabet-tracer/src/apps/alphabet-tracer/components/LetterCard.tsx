@@ -13,6 +13,16 @@ const LETTER_COLORS: Record<string, string> = {
   y: '#F9CA24', z: '#30336B',
 };
 
+const LETTER_WORDS: Record<string, string> = {
+  a: '🍎 Apple', b: '🦋 Butterfly', c: '🐱 Cat', d: '🐶 Dog',
+  e: '🐘 Elephant', f: '🐸 Frog', g: '🦒 Giraffe', h: '🐴 Horse',
+  i: '🍦 Ice cream', j: '🤹 Juggler', k: '🪁 Kite', l: '🦁 Lion',
+  m: '🐵 Monkey', n: '🥜 Nut', o: '🐙 Octopus', p: '🐧 Penguin',
+  q: '👸 Queen', r: '🐰 Rabbit', s: '⭐ Star', t: '🐢 Turtle',
+  u: '☂️ Umbrella', v: '🎻 Violin', w: '🐋 Whale', x: '❌ X-ray',
+  y: '🧶 Yarn', z: '🦓 Zebra',
+};
+
 export function LetterCard({ letter, animate }: LetterCardProps) {
   const color = LETTER_COLORS[letter] || '#FF6B6B';
 
@@ -29,13 +39,3 @@ export function LetterCard({ letter, animate }: LetterCardProps) {
     </div>
   );
 }
-
-const LETTER_WORDS: Record<string, string> = {
-  a: '🍎 Apple', b: '🦋 Butterfly', c: '🐱 Cat', d: '🐶 Dog',
-  e: '🐘 Elephant', f: '🐸 Frog', g: '🦒 Giraffe', h: '🐴 Horse',
-  i: '🍦 Ice cream', j: '🤹 Juggler', k: '🪁 Kite', l: '🦁 Lion',
-  m: '🐵 Monkey', n: '🥜 Nut', o: '🐙 Octopus', p: '🐧 Penguin',
-  q: '👸 Queen', r: '🐰 Rabbit', s: '⭐ Star', t: '🐢 Turtle',
-  u: '☂️ Umbrella', v: '🎻 Violin', w: '🐋 Whale', x: '❌ X-ray',
-  y: '🧶 Yarn', z: '🦓 Zebra',
-};

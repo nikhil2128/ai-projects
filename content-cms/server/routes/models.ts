@@ -25,6 +25,10 @@ interface ContentModel {
 const router = Router();
 const COLLECTION = "models";
 
+function getParam(param: string | string[] | undefined): string {
+  return Array.isArray(param) ? (param[0] ?? "") : (param ?? "");
+}
+
 function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -34,13 +38,36 @@ function slugify(text: string): string {
     .replace(/-+/g, "-");
 }
 
+function toFieldDefinition(field: Partial<FieldDefinition>): FieldDefinition | null {
+  if (typeof field.name !== "string" || typeof field.type !== "string") {
+    return null;
+  }
+
+  return {
+    id: typeof field.id === "string" && field.id ? field.id : uuidv4(),
+    name: field.name,
+    slug:
+      typeof field.slug === "string" && field.slug
+        ? field.slug
+        : slugify(field.name),
+    type: field.type,
+    required: Boolean(field.required),
+    placeholder:
+      typeof field.placeholder === "string" ? field.placeholder : undefined,
+    options: Array.isArray(field.options)
+      ? field.options.filter((option): option is string => typeof option === "string")
+      : undefined,
+  };
+}
+
 router.get("/", (_req: Request, res: Response) => {
   const models = store.getAll<ContentModel>(COLLECTION);
   res.json({ success: true, data: models });
 });
 
 router.get("/:id", (req: Request, res: Response) => {
-  const model = store.getById<ContentModel>(COLLECTION, req.params.id);
+  const modelId = getParam(req.params.id);
+  const model = store.getById<ContentModel>(COLLECTION, modelId);
   if (!model) {
     res.status(404).json({ success: false, error: "Model not found" });
     return;
@@ -59,17 +86,27 @@ router.post("/", (req: Request, res: Response) => {
     return;
   }
 
+  const normalizedFields = fields.map((field: Partial<FieldDefinition>) =>
+    toFieldDefinition(field),
+  );
+  const fieldDefinitions = normalizedFields.filter(
+    (field): field is FieldDefinition => field !== null,
+  );
+  if (fieldDefinitions.length !== fields.length) {
+    res.status(400).json({
+      success: false,
+      error: "Each field must include a name and type",
+    });
+    return;
+  }
+
   const now = new Date().toISOString();
   const model: ContentModel = {
     id: uuidv4(),
     name,
     slug: slugify(name),
     description: description || "",
-    fields: fields.map((f: Partial<FieldDefinition>) => ({
-      ...f,
-      id: f.id || uuidv4(),
-      slug: f.slug || slugify(f.name || ""),
-    })),
+    fields: fieldDefinitions,
     createdAt: now,
     updatedAt: now,
   };
@@ -79,7 +116,8 @@ router.post("/", (req: Request, res: Response) => {
 });
 
 router.put("/:id", (req: Request, res: Response) => {
-  const existing = store.getById<ContentModel>(COLLECTION, req.params.id);
+  const modelId = getParam(req.params.id);
+  const existing = store.getById<ContentModel>(COLLECTION, modelId);
   if (!existing) {
     res.status(404).json({ success: false, error: "Model not found" });
     return;
@@ -94,24 +132,34 @@ router.put("/:id", (req: Request, res: Response) => {
   }
   if (description !== undefined) updates.description = description;
   if (fields && Array.isArray(fields)) {
-    updates.fields = fields.map((f: Partial<FieldDefinition>) => ({
-      ...f,
-      id: f.id || uuidv4(),
-      slug: f.slug || slugify(f.name || ""),
-    }));
+    const normalizedFields = fields.map((field: Partial<FieldDefinition>) =>
+      toFieldDefinition(field),
+    );
+    const fieldDefinitions = normalizedFields.filter(
+      (field): field is FieldDefinition => field !== null,
+    );
+    if (fieldDefinitions.length !== fields.length) {
+      res.status(400).json({
+        success: false,
+        error: "Each field must include a name and type",
+      });
+      return;
+    }
+    updates.fields = fieldDefinitions;
   }
 
-  const updated = store.update<ContentModel>(COLLECTION, req.params.id, updates);
+  const updated = store.update<ContentModel>(COLLECTION, modelId, updates);
   res.json({ success: true, data: updated });
 });
 
 router.delete("/:id", (req: Request, res: Response) => {
-  const deleted = store.remove<ContentModel>(COLLECTION, req.params.id);
+  const modelId = getParam(req.params.id);
+  const deleted = store.remove<ContentModel>(COLLECTION, modelId);
   if (!deleted) {
     res.status(404).json({ success: false, error: "Model not found" });
     return;
   }
-  store.removeByField("entries", "modelId", req.params.id);
+  store.removeByField("entries", "modelId", modelId);
   res.json({ success: true });
 });
 

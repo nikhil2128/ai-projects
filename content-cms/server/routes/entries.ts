@@ -26,6 +26,10 @@ interface ContentEntry {
 const router = Router();
 const COLLECTION = "entries";
 
+function getParam(param: string | string[] | undefined): string {
+  return Array.isArray(param) ? (param[0] ?? "") : (param ?? "");
+}
+
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -56,18 +60,16 @@ function normalizeEntry(entry: Partial<ContentEntry>): ContentEntry {
 }
 
 router.get("/model/:modelId", (req: Request, res: Response) => {
+  const modelId = getParam(req.params.modelId);
   const entries = store
-    .findByField<ContentEntry>(
-      COLLECTION,
-      "modelId",
-      req.params.modelId,
-    )
+    .findByField<ContentEntry>(COLLECTION, "modelId", modelId)
     .map(normalizeEntry);
   res.json({ success: true, data: entries });
 });
 
 router.get("/:id/versions", (req: Request, res: Response) => {
-  const existing = store.getById<ContentEntry>(COLLECTION, req.params.id);
+  const entryId = getParam(req.params.id);
+  const existing = store.getById<ContentEntry>(COLLECTION, entryId);
   if (!existing) {
     res.status(404).json({ success: false, error: "Entry not found" });
     return;
@@ -81,7 +83,8 @@ router.get("/:id/versions", (req: Request, res: Response) => {
 });
 
 router.get("/:id", (req: Request, res: Response) => {
-  const existing = store.getById<ContentEntry>(COLLECTION, req.params.id);
+  const entryId = getParam(req.params.id);
+  const existing = store.getById<ContentEntry>(COLLECTION, entryId);
   if (!existing) {
     res.status(404).json({ success: false, error: "Entry not found" });
     return;
@@ -123,7 +126,8 @@ router.post("/", (req: Request, res: Response) => {
 });
 
 router.put("/:id/publish", (req: Request, res: Response) => {
-  const existingRaw = store.getById<ContentEntry>(COLLECTION, req.params.id);
+  const entryId = getParam(req.params.id);
+  const existingRaw = store.getById<ContentEntry>(COLLECTION, entryId);
   if (!existingRaw) {
     res.status(404).json({ success: false, error: "Entry not found" });
     return;
@@ -139,7 +143,7 @@ router.put("/:id/publish", (req: Request, res: Response) => {
     createdAt: now,
   };
 
-  const updated = store.update<ContentEntry>(COLLECTION, req.params.id, {
+  const updated = store.update<ContentEntry>(COLLECTION, entryId, {
     status: "published",
     versions: [...existing.versions, version],
     currentVersionId: version.id,
@@ -150,13 +154,14 @@ router.put("/:id/publish", (req: Request, res: Response) => {
 });
 
 router.put("/:id/archive", (req: Request, res: Response) => {
-  const existing = store.getById<ContentEntry>(COLLECTION, req.params.id);
+  const entryId = getParam(req.params.id);
+  const existing = store.getById<ContentEntry>(COLLECTION, entryId);
   if (!existing) {
     res.status(404).json({ success: false, error: "Entry not found" });
     return;
   }
 
-  const updated = store.update<ContentEntry>(COLLECTION, req.params.id, {
+  const updated = store.update<ContentEntry>(COLLECTION, entryId, {
     status: "archived",
     updatedAt: new Date().toISOString(),
   });
@@ -164,13 +169,14 @@ router.put("/:id/archive", (req: Request, res: Response) => {
 });
 
 router.put("/:id/unpublish", (req: Request, res: Response) => {
-  const existing = store.getById<ContentEntry>(COLLECTION, req.params.id);
+  const entryId = getParam(req.params.id);
+  const existing = store.getById<ContentEntry>(COLLECTION, entryId);
   if (!existing) {
     res.status(404).json({ success: false, error: "Entry not found" });
     return;
   }
 
-  const updated = store.update<ContentEntry>(COLLECTION, req.params.id, {
+  const updated = store.update<ContentEntry>(COLLECTION, entryId, {
     status: "draft",
     updatedAt: new Date().toISOString(),
   });
@@ -178,7 +184,8 @@ router.put("/:id/unpublish", (req: Request, res: Response) => {
 });
 
 router.put("/:id", (req: Request, res: Response) => {
-  const existingRaw = store.getById<ContentEntry>(COLLECTION, req.params.id);
+  const entryId = getParam(req.params.id);
+  const existingRaw = store.getById<ContentEntry>(COLLECTION, entryId);
   if (!existingRaw) {
     res.status(404).json({ success: false, error: "Entry not found" });
     return;
@@ -205,14 +212,15 @@ router.put("/:id", (req: Request, res: Response) => {
 
   const updated = store.update<ContentEntry>(
     COLLECTION,
-    req.params.id,
+    entryId,
     updates,
   );
   res.json({ success: true, data: normalizeEntry(updated ?? existing) });
 });
 
 router.delete("/:id", (req: Request, res: Response) => {
-  const deleted = store.remove<ContentEntry>(COLLECTION, req.params.id);
+  const entryId = getParam(req.params.id);
+  const deleted = store.remove<ContentEntry>(COLLECTION, entryId);
   if (!deleted) {
     res.status(404).json({ success: false, error: "Entry not found" });
     return;

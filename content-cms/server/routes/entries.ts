@@ -23,6 +23,25 @@ interface ContentEntry {
   updatedAt: string;
 }
 
+interface FieldDefinition {
+  id: string;
+  name: string;
+  slug: string;
+  type: string;
+  required: boolean;
+  localizable?: boolean;
+}
+
+interface ContentModel {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  fields: FieldDefinition[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 const router = Router();
 const COLLECTION = "entries";
 
@@ -36,6 +55,66 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 
 function cloneValues(values: Record<string, unknown>): Record<string, unknown> {
   return JSON.parse(JSON.stringify(values)) as Record<string, unknown>;
+}
+
+function normalizeLocalizedFieldValue(
+  value: unknown,
+  enabledLocales: string[],
+  defaultLocale: string,
+): { value?: Record<string, unknown>; error?: string } {
+  if (value === undefined) {
+    return { value: undefined };
+  }
+
+  if (isObjectRecord(value)) {
+    const next: Record<string, unknown> = {};
+
+    for (const [locale, localeValue] of Object.entries(value)) {
+      if (!enabledLocales.includes(locale)) {
+        return {
+          error: `Unsupported locale "${locale}". Enable it in localization settings first.`,
+        };
+      }
+
+      next[locale] = localeValue;
+    }
+
+    return { value: next };
+  }
+
+  return { value: { [defaultLocale]: value } };
+}
+
+function sanitizeEntryValues(
+  model: ContentModel,
+  values: Record<string, unknown>,
+): { values?: Record<string, unknown>; error?: string } {
+  const settings = store.getLocalizationSettings();
+  const fieldBySlug = new Map(model.fields.map((field) => [field.slug, field]));
+  const sanitized = cloneValues(values);
+
+  for (const [slug, rawValue] of Object.entries(values)) {
+    const field = fieldBySlug.get(slug);
+    if (!field?.localizable) {
+      continue;
+    }
+
+    const localized = normalizeLocalizedFieldValue(
+      rawValue,
+      settings.enabledLocales,
+      settings.defaultLocale,
+    );
+
+    if (localized.error) {
+      return {
+        error: `${field.name}: ${localized.error}`,
+      };
+    }
+
+    sanitized[slug] = localized.value ?? {};
+  }
+
+  return { values: sanitized };
 }
 
 function normalizeEntry(entry: Partial<ContentEntry>): ContentEntry {
@@ -103,9 +182,18 @@ router.post("/", (req: Request, res: Response) => {
     return;
   }
 
-  const model = store.getById("models", modelId);
+  const model = store.getById<ContentModel>("models", modelId);
   if (!model) {
     res.status(404).json({ success: false, error: "Content model not found" });
+    return;
+  }
+
+  const sanitized = sanitizeEntryValues(model, values);
+  if (sanitized.error || !sanitized.values) {
+    res.status(400).json({
+      success: false,
+      error: sanitized.error ?? "Invalid entry values",
+    });
     return;
   }
 
@@ -113,7 +201,7 @@ router.post("/", (req: Request, res: Response) => {
   const entry: ContentEntry = {
     id: uuidv4(),
     modelId,
-    values: cloneValues(values),
+    values: sanitized.values,
     status: "draft",
     versions: [],
     currentVersionId: null,
@@ -203,7 +291,25 @@ router.put("/:id", (req: Request, res: Response) => {
       return;
     }
 
-    const nextValues = cloneValues(values);
+    const model = store.getById<ContentModel>("models", existing.modelId);
+    if (!model) {
+      res.status(404).json({
+        success: false,
+        error: "Content model not found",
+      });
+      return;
+    }
+
+    const sanitized = sanitizeEntryValues(model, values);
+    if (sanitized.error || !sanitized.values) {
+      res.status(400).json({
+        success: false,
+        error: sanitized.error ?? "Invalid entry values",
+      });
+      return;
+    }
+
+    const nextValues = sanitized.values;
     updates.values = nextValues;
     if (JSON.stringify(existing.values) !== JSON.stringify(nextValues)) {
       updates.status = "draft";

@@ -17,6 +17,7 @@ interface FieldDefinition {
   slug: string;
   type: string;
   required: boolean;
+  localizable?: boolean;
   placeholder?: string;
   options?: string[];
 }
@@ -48,6 +49,17 @@ interface ContentEntry {
   currentVersionId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+interface LocaleOption {
+  code: string;
+  label: string;
+}
+
+interface LocalizationSettings {
+  defaultLocale: string;
+  enabledLocales: string[];
+  availableLocales: LocaleOption[];
 }
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "content-cms-test-"));
@@ -224,5 +236,93 @@ describe("content CMS persistence", () => {
     );
     expect(versionsResponse.data).toHaveLength(1);
     expect(versionsResponse.data?.[0]?.values.body).toBe(richTextBody);
+  });
+
+  it("stores account-level localization settings and localized entry values", async () => {
+    const settingsResponse = await request<LocalizationSettings>(
+      "/api/settings/localization",
+    );
+    expect(settingsResponse.data?.defaultLocale).toBe("en-US");
+    expect(settingsResponse.data?.enabledLocales).toEqual(["en-US"]);
+
+    const updatedSettings = await request<LocalizationSettings>(
+      "/api/settings/localization",
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          enabledLocales: ["es-ES", "en-US"],
+        }),
+      },
+    );
+    expect(updatedSettings.data?.enabledLocales).toEqual(["en-US", "es-ES"]);
+
+    const localizedModelResponse = await request<ContentModel>("/api/models", {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Articles",
+        description: "Localized articles",
+        fields: [
+          {
+            id: "localized-title",
+            name: "Title",
+            slug: "title",
+            type: "text",
+            required: true,
+            localizable: true,
+          },
+          {
+            id: "summary",
+            name: "Summary",
+            slug: "summary",
+            type: "textarea",
+            required: false,
+            localizable: true,
+          },
+        ],
+      }),
+    });
+
+    expect(localizedModelResponse.data?.fields[0]?.localizable).toBe(true);
+
+    const localizedEntryResponse = await request<ContentEntry>("/api/entries", {
+      method: "POST",
+      body: JSON.stringify({
+        modelId: localizedModelResponse.data?.id,
+        values: {
+          title: {
+            "en-US": "Hello world",
+            "es-ES": "Hola mundo",
+          },
+          summary: {
+            "en-US": "English summary",
+          },
+        },
+      }),
+    });
+
+    expect(localizedEntryResponse.data?.values.title).toEqual({
+      "en-US": "Hello world",
+      "es-ES": "Hola mundo",
+    });
+
+    const invalidLocaleRequest = fetch(`${baseUrl}/api/entries`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        modelId: localizedModelResponse.data?.id,
+        values: {
+          title: {
+            "en-US": "Hello world",
+            "fr-FR": "Bonjour le monde",
+          },
+        },
+      }),
+    });
+
+    const invalidLocaleResponse = await invalidLocaleRequest;
+    expect(invalidLocaleResponse.status).toBe(400);
+    const invalidLocaleBody =
+      (await invalidLocaleResponse.json()) as ApiResponse<ContentEntry>;
+    expect(invalidLocaleBody.error).toContain("Unsupported locale");
   });
 });

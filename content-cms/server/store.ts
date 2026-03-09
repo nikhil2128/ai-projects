@@ -9,6 +9,7 @@ interface FieldDefinition {
   slug: string;
   type: string;
   required: boolean;
+  localizable?: boolean;
   placeholder?: string;
   options?: string[];
 }
@@ -72,7 +73,32 @@ interface EntryVersionRow {
   created_at: string;
 }
 
+interface LocaleOption {
+  code: string;
+  label: string;
+}
+
+export interface LocalizationSettings {
+  defaultLocale: string;
+  enabledLocales: string[];
+  availableLocales: LocaleOption[];
+}
+
 type CollectionName = "models" | "entries";
+
+const DEFAULT_LOCALE = "en-US";
+const AVAILABLE_LOCALE_OPTIONS: LocaleOption[] = [
+  { code: "en-US", label: "English (United States)" },
+  { code: "en-GB", label: "English (United Kingdom)" },
+  { code: "es-ES", label: "Spanish (Spain)" },
+  { code: "fr-FR", label: "French (France)" },
+  { code: "de-DE", label: "German (Germany)" },
+  { code: "it-IT", label: "Italian (Italy)" },
+  { code: "pt-BR", label: "Portuguese (Brazil)" },
+  { code: "nl-NL", label: "Dutch (Netherlands)" },
+  { code: "ja-JP", label: "Japanese (Japan)" },
+  { code: "zh-CN", label: "Chinese (Simplified)" },
+];
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.CMS_DATA_DIR || path.join(__dirname, "..", "data");
@@ -94,6 +120,27 @@ function parseJson<T>(value: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function normalizeEnabledLocales(locales: unknown): string[] {
+  const allowedCodes = new Set(AVAILABLE_LOCALE_OPTIONS.map((locale) => locale.code));
+  const next = Array.isArray(locales)
+    ? locales.filter(
+        (locale): locale is string =>
+          typeof locale === "string" && allowedCodes.has(locale),
+      )
+    : [];
+  const deduped = Array.from(new Set(next.filter((locale) => locale !== DEFAULT_LOCALE)));
+
+  return [DEFAULT_LOCALE, ...deduped];
+}
+
+function buildLocalizationSettings(enabledLocales: unknown): LocalizationSettings {
+  return {
+    defaultLocale: DEFAULT_LOCALE,
+    enabledLocales: normalizeEnabledLocales(enabledLocales),
+    availableLocales: AVAILABLE_LOCALE_OPTIONS,
+  };
 }
 
 function readLegacyCollection<T>(collection: CollectionName): T[] {
@@ -587,4 +634,36 @@ export function removeByField<T>(
   }
 
   return 0;
+}
+
+export function getLocalizationSettings(): LocalizationSettings {
+  const row = db
+    .prepare("SELECT value FROM app_metadata WHERE key = 'localization_settings'")
+    .get() as { value: string } | undefined;
+
+  const parsed = row
+    ? parseJson<{ enabledLocales?: string[] }>(row.value, {})
+    : undefined;
+
+  return buildLocalizationSettings(parsed?.enabledLocales);
+}
+
+export function updateLocalizationSettings(
+  enabledLocales: string[],
+): LocalizationSettings {
+  const settings = buildLocalizationSettings(enabledLocales);
+
+  db.prepare(
+    `
+      INSERT INTO app_metadata (key, value)
+      VALUES ('localization_settings', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `,
+  ).run(
+    JSON.stringify({
+      enabledLocales: settings.enabledLocales,
+    }),
+  );
+
+  return settings;
 }

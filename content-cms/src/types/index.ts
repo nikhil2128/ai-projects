@@ -13,6 +13,7 @@ export interface FieldDefinition {
   slug: string;
   type: FieldType;
   required: boolean;
+  localizable?: boolean;
   placeholder?: string;
   options?: string[];
 }
@@ -28,6 +29,17 @@ export interface ContentModel {
 }
 
 export type EntryStatus = "draft" | "published" | "archived";
+
+export interface LocaleOption {
+  code: string;
+  label: string;
+}
+
+export interface LocalizationSettings {
+  defaultLocale: string;
+  enabledLocales: string[];
+  availableLocales: LocaleOption[];
+}
 
 export interface EntryVersion {
   id: string;
@@ -52,6 +64,7 @@ export interface ContentEntry {
 
 export type AppView =
   | "models"
+  | "settings"
   | "model-builder"
   | "model-edit"
   | "entries"

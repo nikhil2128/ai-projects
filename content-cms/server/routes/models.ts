@@ -8,6 +8,7 @@ interface FieldDefinition {
   slug: string;
   type: string;
   required: boolean;
+  localizable?: boolean;
   placeholder?: string;
   options?: string[];
 }
@@ -24,6 +25,7 @@ interface ContentModel {
 
 const router = Router();
 const COLLECTION = "models";
+const LOCALIZABLE_FIELD_TYPES = new Set(["text", "textarea", "richtext"]);
 
 function getParam(param: string | string[] | undefined): string {
   return Array.isArray(param) ? (param[0] ?? "") : (param ?? "");
@@ -43,6 +45,8 @@ function toFieldDefinition(field: Partial<FieldDefinition>): FieldDefinition | n
     return null;
   }
 
+  const supportsLocalization = LOCALIZABLE_FIELD_TYPES.has(field.type);
+
   return {
     id: typeof field.id === "string" && field.id ? field.id : uuidv4(),
     name: field.name,
@@ -52,6 +56,7 @@ function toFieldDefinition(field: Partial<FieldDefinition>): FieldDefinition | n
         : slugify(field.name),
     type: field.type,
     required: Boolean(field.required),
+    localizable: supportsLocalization ? Boolean(field.localizable) : false,
     placeholder:
       typeof field.placeholder === "string" ? field.placeholder : undefined,
     options: Array.isArray(field.options)

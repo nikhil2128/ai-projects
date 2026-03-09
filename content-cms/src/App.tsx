@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Header from "./components/Header";
 import ModelList from "./components/ModelList";
 import ModelBuilder from "./components/ModelBuilder";
 import EntryList from "./components/EntryList";
 import EntryForm from "./components/EntryForm";
+import LocalizationSettings from "./components/LocalizationSettings";
 import type {
   ContentModel,
   ContentEntry,
   AppView,
   FieldDefinition,
   EntrySaveAction,
+  LocalizationSettings as LocalizationSettingsType,
 } from "./types";
 import {
   createModel,
@@ -18,6 +20,8 @@ import {
   createEntry,
   updateEntry,
   publishEntry,
+  fetchLocalizationSettings,
+  updateLocalizationSettings,
 } from "./utils/api";
 
 interface AppState {
@@ -32,6 +36,16 @@ export default function App() {
     activeModel: null,
     activeEntry: null,
   });
+  const [localizationSettings, setLocalizationSettings] =
+    useState<LocalizationSettingsType>({
+      defaultLocale: "en-US",
+      enabledLocales: ["en-US"],
+      availableLocales: [],
+    });
+
+  useEffect(() => {
+    fetchLocalizationSettings().then(setLocalizationSettings).catch(console.error);
+  }, []);
 
   const navigate = (
     view: AppView,
@@ -51,6 +65,9 @@ export default function App() {
     if (state.view === "model-builder") {
       crumbs.push({ label: "Models", onClick: () => navigate("models") });
       crumbs.push({ label: "New Model" });
+    } else if (state.view === "settings") {
+      crumbs.push({ label: "Models", onClick: () => navigate("models") });
+      crumbs.push({ label: "Localization Settings" });
     } else if (state.view === "model-edit" && state.activeModel) {
       crumbs.push({ label: "Models", onClick: () => navigate("models") });
       crumbs.push({ label: `Edit: ${state.activeModel.name}` });
@@ -118,10 +135,17 @@ export default function App() {
     }
   };
 
+  const handleUpdateLocalizationSettings = async (enabledLocales: string[]) => {
+    const updated = await updateLocalizationSettings(enabledLocales);
+    setLocalizationSettings(updated);
+    navigate("models", null, null);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50/30">
       <Header
         onNavigateHome={() => navigate("models", null, null)}
+        onOpenSettings={() => navigate("settings", null, null)}
         breadcrumb={breadcrumb}
       />
 
@@ -130,6 +154,14 @@ export default function App() {
           onCreateModel={() => navigate("model-builder", null, null)}
           onEditModel={(model) => navigate("model-edit", model, null)}
           onViewEntries={(model) => navigate("entries", model, null)}
+        />
+      )}
+
+      {state.view === "settings" && (
+        <LocalizationSettings
+          settings={localizationSettings}
+          onSave={handleUpdateLocalizationSettings}
+          onCancel={() => navigate("models", null, null)}
         />
       )}
 
@@ -161,6 +193,7 @@ export default function App() {
       {state.view === "entry-form" && state.activeModel && (
         <EntryForm
           model={state.activeModel}
+          localizationSettings={localizationSettings}
           initial={state.activeEntry ?? undefined}
           onSave={
             state.activeEntry ? handleUpdateEntry : handleCreateEntry

@@ -5,6 +5,7 @@ import type {
   FieldDefinition,
   EntrySaveAction,
   EntryVersion,
+  LocalizationSettings,
 } from "../types";
 import RichTextEditor from "./RichTextEditor";
 import { fetchEntryVersions } from "../utils/api";
@@ -12,12 +13,53 @@ import { buildEntryDiff } from "../utils/diff";
 
 interface EntryFormProps {
   model: ContentModel;
+  localizationSettings: LocalizationSettings;
   initial?: ContentEntry;
   onSave: (
     values: Record<string, unknown>,
     action: EntrySaveAction,
   ) => Promise<void>;
   onCancel: () => void;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function getLocalizedFieldValue(
+  value: unknown,
+  defaultLocale: string,
+): Record<string, unknown> {
+  if (isObjectRecord(value)) {
+    return value;
+  }
+
+  if (value === undefined || value === null || value === "") {
+    return {};
+  }
+
+  return { [defaultLocale]: value };
+}
+
+function normalizeEntryValues(
+  values: Record<string, unknown>,
+  model: ContentModel,
+  defaultLocale: string,
+): Record<string, unknown> {
+  const normalized = { ...values };
+
+  for (const field of model.fields) {
+    if (!field.localizable) {
+      continue;
+    }
+
+    normalized[field.slug] = getLocalizedFieldValue(
+      normalized[field.slug],
+      defaultLocale,
+    );
+  }
+
+  return normalized;
 }
 
 function FieldRenderer({
@@ -126,18 +168,31 @@ function FieldRenderer({
 
 export default function EntryForm({
   model,
+  localizationSettings,
   initial,
   onSave,
   onCancel,
 }: EntryFormProps) {
-  const [values, setValues] = useState<Record<string, unknown>>(
-    initial?.values ?? {},
+  const initialValues = useMemo(
+    () =>
+      normalizeEntryValues(
+        initial?.values ?? {},
+        model,
+        localizationSettings.defaultLocale,
+      ),
+    [initial?.values, localizationSettings.defaultLocale, model],
   );
+  const [values, setValues] = useState<Record<string, unknown>>(initialValues);
   const [savingAction, setSavingAction] = useState<EntrySaveAction | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [versions, setVersions] = useState<EntryVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setValues(initialValues);
+    setErrors({});
+  }, [initialValues]);
 
   useEffect(() => {
     if (!initial?.id) {
@@ -179,15 +234,57 @@ export default function EntryForm({
     });
   };
 
+  const updateLocalizedValue = (slug: string, locale: string, val: unknown) => {
+    setValues((prev) => {
+      const existing = getLocalizedFieldValue(
+        prev[slug],
+        localizationSettings.defaultLocale,
+      );
+      return {
+        ...prev,
+        [slug]: {
+          ...existing,
+          [locale]: val,
+        },
+      };
+    });
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next[slug];
+      delete next[`${slug}:${locale}`];
+      return next;
+    });
+  };
+
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
+
     for (const field of model.fields) {
       if (!field.required) continue;
+
+      if (field.localizable) {
+        const localeValues = getLocalizedFieldValue(
+          values[field.slug],
+          localizationSettings.defaultLocale,
+        );
+        const defaultValue = localeValues[localizationSettings.defaultLocale];
+        if (
+          defaultValue === undefined ||
+          defaultValue === null ||
+          defaultValue === ""
+        ) {
+          newErrors[`${field.slug}:${localizationSettings.defaultLocale}`] =
+            `${field.name} is required in ${localizationSettings.defaultLocale}`;
+        }
+        continue;
+      }
+
       const val = values[field.slug];
       if (val === undefined || val === null || val === "") {
         newErrors[field.slug] = `${field.name} is required`;
       }
     }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -224,16 +321,16 @@ export default function EntryForm({
 
   const hasUnsavedChanges =
     initial !== undefined &&
-    JSON.stringify(initial.values) !== JSON.stringify(values);
+    JSON.stringify(initialValues) !== JSON.stringify(values);
 
   const statusLabel =
     hasUnsavedChanges || initial?.status === "draft"
       ? "Draft"
       : initial?.status === "published"
-      ? "Published"
-      : initial?.status === "archived"
-        ? "Archived"
-        : "Draft";
+        ? "Published"
+        : initial?.status === "archived"
+          ? "Archived"
+          : "Draft";
 
   const isSaving = savingAction !== null;
   const publishLabel = isSaving
@@ -264,10 +361,10 @@ export default function EntryForm({
                 hasUnsavedChanges || initial.status === "draft"
                   ? "bg-slate-100 text-slate-700"
                   : initial.status === "published"
-                  ? "bg-emerald-100 text-emerald-700"
-                  : initial.status === "archived"
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-slate-100 text-slate-700"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : initial.status === "archived"
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-slate-100 text-slate-700"
               }`}
             >
               {statusLabel}
@@ -301,30 +398,94 @@ export default function EntryForm({
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] gap-6 items-start">
         <div className="space-y-6">
-          {model.fields.map((field) => (
-            <div
-              key={field.id}
-              className="bg-white rounded-2xl border border-slate-200 p-5"
-            >
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                {field.name}
-                {field.required && <span className="text-red-400 ml-1">*</span>}
-                <span className="ml-2 text-xs font-normal text-slate-400">
-                  {field.type}
-                </span>
-              </label>
-              <FieldRenderer
-                field={field}
-                value={values[field.slug]}
-                onChange={(val) => updateValue(field.slug, val)}
-              />
-              {errors[field.slug] && (
-                <p className="mt-1.5 text-sm text-red-500">
-                  {errors[field.slug]}
-                </p>
-              )}
-            </div>
-          ))}
+          {model.fields.map((field) => {
+            const localeValues = field.localizable
+              ? getLocalizedFieldValue(
+                  values[field.slug],
+                  localizationSettings.defaultLocale,
+                )
+              : null;
+
+            return (
+              <div
+                key={field.id}
+                className="bg-white rounded-2xl border border-slate-200 p-5"
+              >
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  {field.name}
+                  {field.required && <span className="text-red-400 ml-1">*</span>}
+                  <span className="ml-2 text-xs font-normal text-slate-400">
+                    {field.type}
+                  </span>
+                  {field.localizable && (
+                    <span className="ml-2 inline-flex px-2 py-0.5 text-[11px] font-medium rounded-full bg-violet-50 text-violet-700">
+                      Localized
+                    </span>
+                  )}
+                </label>
+
+                {field.localizable && (
+                  <p className="text-sm text-slate-500 mb-4">
+                    Add translations for the enabled locales below. Required
+                    localized fields must have a value in{" "}
+                    <span className="font-medium text-slate-700">
+                      {localizationSettings.defaultLocale}
+                    </span>
+                    .
+                  </p>
+                )}
+
+                {!field.localizable && (
+                  <>
+                    <FieldRenderer
+                      field={field}
+                      value={values[field.slug]}
+                      onChange={(val) => updateValue(field.slug, val)}
+                    />
+                    {errors[field.slug] && (
+                      <p className="mt-1.5 text-sm text-red-500">
+                        {errors[field.slug]}
+                      </p>
+                    )}
+                  </>
+                )}
+
+                {field.localizable && localeValues && (
+                  <div className="space-y-4">
+                    {localizationSettings.enabledLocales.map((locale) => (
+                      <div
+                        key={`${field.id}-${locale}`}
+                        className="rounded-xl border border-slate-200 p-4 bg-slate-50/60"
+                      >
+                        <div className="flex items-center gap-2 mb-3">
+                          <p className="text-sm font-medium text-slate-700">
+                            {locale}
+                          </p>
+                          {locale === localizationSettings.defaultLocale && (
+                            <span className="px-2 py-0.5 text-[11px] font-medium rounded-full bg-slate-200 text-slate-700">
+                              Default
+                            </span>
+                          )}
+                        </div>
+                        <FieldRenderer
+                          field={field}
+                          value={localeValues[locale]}
+                          onChange={(val) =>
+                            updateLocalizedValue(field.slug, locale, val)
+                          }
+                        />
+                        {errors[`${field.slug}:${locale}`] && (
+                          <p className="mt-1.5 text-sm text-red-500">
+                            {errors[`${field.slug}:${locale}`]}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <aside className="bg-white rounded-2xl border border-slate-200 p-5 sticky top-20">

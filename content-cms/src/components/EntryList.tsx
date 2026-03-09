@@ -8,6 +8,8 @@ import {
   archiveEntry,
 } from "../utils/api";
 
+const DEFAULT_LOCALE = "en-US";
+
 interface EntryListProps {
   model: ContentModel;
   onCreateEntry: () => void;
@@ -76,6 +78,9 @@ export default function EntryList({
     );
     if (!firstTextField) return entry.id.slice(0, 8);
     const val = entry.values[firstTextField.slug];
+    if (firstTextField.localizable) {
+      return getLocalizedPreviewValue(val);
+    }
     if (typeof val === "string") return val || "(empty)";
     return String(val ?? "(empty)");
   };
@@ -86,8 +91,34 @@ export default function EntryList({
     );
     if (textFields.length < 2) return null;
     const val = entry.values[textFields[1].slug];
+    if (textFields[1].localizable) {
+      const preview = getLocalizedPreviewValue(val);
+      return preview === "(empty)" ? null : preview;
+    }
     if (typeof val === "string" && val.trim()) return val;
     return null;
+  };
+
+  const getLocalizedPreviewValue = (value: unknown): string => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return String(value ?? "(empty)");
+    }
+
+    const localeValues = value as Record<string, unknown>;
+    const preferred =
+      localeValues[DEFAULT_LOCALE] ??
+      Object.values(localeValues).find(
+        (localeValue) =>
+          localeValue !== undefined &&
+          localeValue !== null &&
+          String(localeValue).trim() !== "",
+      );
+
+    if (typeof preferred === "string") {
+      return preferred || "(empty)";
+    }
+
+    return String(preferred ?? "(empty)");
   };
 
   const statusBadge = (status: ContentEntry["status"]) => {

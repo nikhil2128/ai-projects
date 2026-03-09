@@ -1,4 +1,9 @@
-import type { ContentModel, ContentEntry, EntryVersion } from "../types";
+import type {
+  ContentModel,
+  ContentEntry,
+  EntryVersion,
+  LocalizationSettings,
+} from "../types";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -52,6 +57,21 @@ export async function updateModel(
 
 export async function deleteModel(id: string): Promise<void> {
   await request(`/api/models/${id}`, { method: "DELETE" });
+}
+
+export async function fetchLocalizationSettings(): Promise<LocalizationSettings> {
+  const res = await request<LocalizationSettings>("/api/settings/localization");
+  return res.data!;
+}
+
+export async function updateLocalizationSettings(
+  enabledLocales: string[],
+): Promise<LocalizationSettings> {
+  const res = await request<LocalizationSettings>("/api/settings/localization", {
+    method: "PUT",
+    body: JSON.stringify({ enabledLocales }),
+  });
+  return res.data!;
 }
 
 export async function fetchEntries(modelId: string): Promise<ContentEntry[]> {

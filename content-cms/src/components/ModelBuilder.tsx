@@ -23,6 +23,7 @@ function slugify(text: string): string {
 }
 
 const FIELD_TYPES = Object.keys(FIELD_TYPE_META) as FieldType[];
+const LOCALIZABLE_FIELD_TYPES: FieldType[] = ["text", "textarea", "richtext"];
 
 export default function ModelBuilder({
   initial,
@@ -45,6 +46,7 @@ export default function ModelBuilder({
       slug: "",
       type,
       required: false,
+      localizable: false,
       placeholder: "",
       options: type === "dropdown" ? ["Option 1", "Option 2"] : undefined,
     };
@@ -102,6 +104,9 @@ export default function ModelBuilder({
     name.trim().length > 0 &&
     fields.length > 0 &&
     fields.every((f) => f.name.trim().length > 0);
+
+  const supportsLocalization = (type: FieldType) =>
+    LOCALIZABLE_FIELD_TYPES.includes(type);
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-10 animate-fade-in">
@@ -250,6 +255,12 @@ export default function ModelBuilder({
                     </span>
                   )}
 
+                  {field.localizable && (
+                    <span className="text-xs font-medium text-violet-700 bg-violet-50 px-2 py-0.5 rounded-full">
+                      Localized
+                    </span>
+                  )}
+
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -331,6 +342,33 @@ export default function ModelBuilder({
                         </span>
                       </label>
                     </div>
+
+                    {supportsLocalization(field.type) && (
+                      <div className="mt-3 flex items-center gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(field.localizable)}
+                            onChange={(e) =>
+                              updateField(field.id, {
+                                localizable: e.target.checked,
+                              })
+                            }
+                            className="w-4 h-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                          />
+                          <span className="text-sm text-slate-600">
+                            Enable localization for this field
+                          </span>
+                        </label>
+                      </div>
+                    )}
+
+                    {supportsLocalization(field.type) && (
+                      <p className="mt-2 text-xs text-slate-400">
+                        Localized fields store separate values per enabled account
+                        locale.
+                      </p>
+                    )}
 
                     {field.type === "dropdown" && (
                       <div className="mt-4">

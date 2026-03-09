@@ -1,9 +1,14 @@
 interface HeaderProps {
   onNavigateHome: () => void;
+  onOpenSettings: () => void;
   breadcrumb?: { label: string; onClick?: () => void }[];
 }
 
-export default function Header({ onNavigateHome, breadcrumb }: HeaderProps) {
+export default function Header({
+  onNavigateHome,
+  onOpenSettings,
+  breadcrumb,
+}: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-6 flex items-center h-16 gap-4">
@@ -64,6 +69,15 @@ export default function Header({ onNavigateHome, breadcrumb }: HeaderProps) {
             ))}
           </nav>
         )}
+
+        <div className="ml-auto">
+          <button
+            onClick={onOpenSettings}
+            className="px-3.5 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+          >
+            Localization
+          </button>
+        </div>
       </div>
     </header>
   );

@@ -1,5 +1,6 @@
 import type { AppConfig } from '../types';
 import { AlphabetTracer } from './alphabet-tracer/AlphabetTracer';
+import { CVCReader } from './cvc-reader/CVCReader';
 import { ComingSoonApp } from './ComingSoonApp';
 
 export const apps: AppConfig[] = [
@@ -11,6 +12,15 @@ export const apps: AppConfig[] = [
     color: '#FF6B6B',
     gradient: 'linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%)',
     component: AlphabetTracer,
+  },
+  {
+    id: 'cvc-reader',
+    name: 'Word Reader',
+    description: 'Read CVC words aloud and practice phonics!',
+    icon: '📖',
+    color: '#6BCB77',
+    gradient: 'linear-gradient(135deg, #6BCB77 0%, #4ECDC4 100%)',
+    component: CVCReader,
   },
   {
     id: 'number-counting',

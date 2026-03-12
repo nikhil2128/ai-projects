@@ -13,10 +13,20 @@ router.post("/", async (req, res) => {
       return;
     }
 
+    const chartSummary = result.slides.map((s) => ({
+      slide: s.slideNumber,
+      charts: Array.isArray(s.charts) ? s.charts.length : 0,
+      chartTypes: Array.isArray(s.charts) ? s.charts.map((c) => c?.type) : [],
+    }));
+    console.log("[generate-ppt] Generating report with chart data:", JSON.stringify(chartSummary));
+
     const buffer = await generateReport(result);
+
     const safeName = result.fileName
       .replace(/\.(pptx?|PPTX?)$/, "")
       .replace(/[^a-zA-Z0-9_\- ]/g, "_");
+
+    console.log("[generate-ppt] Report generated successfully, size:", buffer.length, "bytes");
 
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
     res.setHeader("Content-Disposition", `attachment; filename="${safeName}_Report.pptx"`);
@@ -24,7 +34,7 @@ router.post("/", async (req, res) => {
     res.send(buffer);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Report generation failed";
-    console.error("Report generation error:", err);
+    console.error("[generate-ppt] Report generation error:", err);
     res.status(500).json({ error: message });
   }
 });

@@ -17,20 +17,12 @@ const COLORS = {
 };
 
 const CHART_COLORS = [
-  "6366f1", "8b5cf6", "ec4899", "f97316",
-  "22c55e", "06b6d4", "eab308", "f43f5e",
+  "818cf8", "a78bfa", "f472b6", "fb923c", "34d399",
+  "38bdf8", "fbbf24", "f87171", "2dd4bf", "c084fc",
 ];
 
-type ChartName = "area" | "bar" | "bar3d" | "bubble" | "doughnut" | "line" | "pie" | "radar" | "scatter";
-const CHART_TYPE_MAP: Record<string, ChartName> = {
-  bar: "bar",
-  line: "line",
-  pie: "pie",
-  area: "area",
-  radar: "radar",
-};
-
 type ReportChart = AnalysisResult["slides"][number]["charts"][number];
+type ChartName = "bar" | "line" | "pie" | "area" | "radar";
 type ChartSeries = {
   name: string;
   labels: string[];
@@ -51,7 +43,11 @@ function toChartNumber(value: unknown): number {
   return 0;
 }
 
-function buildChartSeries(chart: ReportChart): ChartSeries[] {
+function normalizeChartData(chart: ReportChart): ChartSeries[] {
+  if (!chart?.data || !Array.isArray(chart.data.labels) || !Array.isArray(chart.data.datasets)) {
+    return [];
+  }
+
   const labels = chart.data.labels.map((label, idx) => {
     const text = String(label ?? "").trim();
     return text || `Item ${idx + 1}`;
@@ -63,7 +59,7 @@ function buildChartSeries(chart: ReportChart): ChartSeries[] {
 
   if (chart.type === "pie") {
     const dataset = chart.data.datasets[0];
-    if (!dataset) return [];
+    if (!dataset || !Array.isArray(dataset.data)) return [];
 
     return [{
       name: dataset.label?.trim() || chart.title || "Series 1",
@@ -72,54 +68,25 @@ function buildChartSeries(chart: ReportChart): ChartSeries[] {
     }];
   }
 
-  return chart.data.datasets.map((dataset, idx) => ({
-    name: dataset.label?.trim() || `Series ${idx + 1}`,
-    labels,
-    values: labels.map((_, labelIdx) => toChartNumber(dataset.data[labelIdx])),
-  }));
+  return chart.data.datasets
+    .filter((ds): ds is typeof ds => !!ds && Array.isArray(ds.data))
+    .map((dataset, idx) => ({
+      name: dataset.label?.trim() || `Series ${idx + 1}`,
+      labels,
+      values: labels.map((_, labelIdx) => toChartNumber(dataset.data[labelIdx])),
+    }));
 }
 
-function getChartOptions(
-  chartType: ChartName,
-  seriesCount: number,
-  labelCount: number,
-): Record<string, unknown> {
-  const baseOptions = {
-    showTitle: false,
-    showLegend: seriesCount > 1 || chartType === "pie",
-    legendPos: "b",
-    legendFontSize: 9,
-    chartColors: CHART_COLORS.slice(0, Math.max(seriesCount, labelCount)),
-  };
-
-  switch (chartType) {
-    case "pie":
-      return {
-        ...baseOptions,
-        showLegend: true,
-        showPercent: true,
-        showValue: false,
-        showLeaderLines: true,
-        dataLabelPosition: "bestFit",
-      };
-    case "radar":
-      return {
-        ...baseOptions,
-        radarStyle: "filled",
-        showValue: false,
-      };
-    default:
-      return {
-        ...baseOptions,
-        showValue: true,
-        valAxisLabelFontSize: 9,
-        catAxisLabelFontSize: 9,
-        dataLabelFontSize: 8,
-      };
-  }
+function resolveChartType(
+  pptx: _PptxGenJSImport,
+  chartType: ReportChart["type"],
+): _PptxGenJSImport.CHART_NAME {
+  const chartTypes = pptx.ChartType as Record<ChartName, _PptxGenJSImport.CHART_NAME>;
+  return chartTypes[chartType] ?? chartTypes.bar;
 }
 
-function addChartBlock(
+function addNativeChart(
+  pptx: _PptxGenJSImport,
   slide: _PptxGenJSImport.Slide,
   chart: ReportChart,
   layout: {
@@ -132,8 +99,7 @@ function addChartBlock(
     titleW?: number;
   },
 ): void {
-  const chartType = CHART_TYPE_MAP[chart.type] ?? "bar";
-  const chartData = buildChartSeries(chart);
+  const chartData = normalizeChartData(chart);
 
   if (
     layout.titleX !== undefined
@@ -148,35 +114,63 @@ function addChartBlock(
       fontSize: 13,
       bold: true,
       color: COLORS.titleText,
-      fontFace: "Calibri",
+      fontFace: "Arial",
     });
   }
 
   if (chartData.length === 0) {
-    slide.addText("Chart data could not be normalized for PowerPoint export.", {
+    slide.addText("No chart data available for export.", {
       x: layout.x,
       y: layout.y,
       w: layout.w,
       h: 0.4,
       fontSize: 11,
       color: COLORS.mutedText,
-      fontFace: "Calibri",
+      fontFace: "Arial",
       italic: true,
     });
     return;
   }
 
-  slide.addChart(
-    chartType as _PptxGenJSImport.CHART_NAME,
-    chartData,
-    {
+  const isPieType = chart.type === "pie";
+  const colorCount = isPieType
+    ? chartData[0]?.labels.length ?? CHART_COLORS.length
+    : chartData.length;
+  const chartColors = CHART_COLORS.slice(0, Math.max(colorCount, 1));
+
+  try {
+    slide.addChart(resolveChartType(pptx, chart.type), chartData, {
       x: layout.x,
       y: layout.y,
       w: layout.w,
       h: layout.h,
-      ...getChartOptions(chartType, chartData.length, chartData[0]?.labels.length ?? 0),
-    },
-  );
+      showTitle: false,
+      showLegend: true,
+      legendPos: "b",
+      legendFontSize: 9,
+      legendColor: COLORS.bodyText,
+      chartColors,
+      showValue: isPieType,
+      showPercent: isPieType,
+      catAxisLabelColor: COLORS.bodyText,
+      catAxisLabelFontSize: 10,
+      valAxisLabelColor: COLORS.bodyText,
+      valAxisLabelFontSize: 10,
+      valGridLine: { style: "dash", color: "e2e8f0" },
+    });
+  } catch (err) {
+    console.error(`[pptxGenerator] Failed to add chart "${chart.title}":`, err);
+    slide.addText(`Chart could not be rendered: ${chart.title}`, {
+      x: layout.x,
+      y: layout.y,
+      w: layout.w,
+      h: 0.4,
+      fontSize: 11,
+      color: COLORS.mutedText,
+      fontFace: "Arial",
+      italic: true,
+    });
+  }
 }
 
 function deduplicateActions(result: AnalysisResult): ActionItem[] {
@@ -290,7 +284,7 @@ function addAnalysisSlide(
   }
 
   if (hasChart && slideData.charts[0]) {
-    addChartBlock(slide, slideData.charts[0], {
+    addNativeChart(pptx, slide, slideData.charts[0], {
       titleX: 6.6, titleY: 1.9, titleW: 6,
       x: 6.6, y: 2.5, w: 6, h: 4.2,
     });
@@ -318,7 +312,7 @@ function addExtraChartSlide(
     fontFace: "Calibri",
   });
 
-  addChartBlock(slide, chart, {
+  addNativeChart(pptx, slide, chart, {
     x: 1.5, y: 1.8, w: 10, h: 5.2,
   });
 }
@@ -387,11 +381,12 @@ export async function generateReport(result: AnalysisResult): Promise<Buffer> {
   addTitleSlide(pptx, result);
 
   for (const slideData of result.slides) {
-    const hasChart = slideData.charts.length > 0;
+    const charts = Array.isArray(slideData.charts) ? slideData.charts : [];
+    const hasChart = charts.length > 0;
     addAnalysisSlide(pptx, slideData, hasChart);
 
-    for (let i = 1; i < slideData.charts.length; i++) {
-      addExtraChartSlide(pptx, slideData.slideNumber, slideData.charts[i]!);
+    for (let i = 1; i < charts.length; i++) {
+      addExtraChartSlide(pptx, slideData.slideNumber, charts[i]!);
     }
   }
 

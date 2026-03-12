@@ -1,0 +1,184 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Data Export Service — Serverless CSV export pipeline.
+  Accepts a paginated API URL, fetches all data, generates a CSV,
+  uploads to S3, and emails a download link.
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 256
+    Architectures:
+      - arm64
+    Environment:
+      Variables:
+        NODE_ENV: !Ref Environment
+        DYNAMODB_TABLE: !Ref ExportJobsTable
+        SQS_QUEUE_URL: !Ref ExportProcessingQueue
+        S3_BUCKET: !Ref ExportsBucket
+        SES_FROM_EMAIL: !Ref SesFromEmail
+        EXPORT_MAX_PAGES: !Ref ExportMaxPages
+        EXPORT_DEFAULT_PAGE_SIZE: !Ref ExportDefaultPageSize
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues: [development, staging, production]
+
+  SesFromEmail:
+    Type: String
+    Default: exports@example.com
+
+  ExportMaxPages:
+    Type: String
+    Default: '10000'
+
+  ExportDefaultPageSize:
+    Type: String
+    Default: '500'
+
+  ApiThrottleRateLimit:
+    Type: Number
+    Default: 10
+
+  ApiThrottleBurstLimit:
+    Type: Number
+    Default: 30
+
+Resources:
+  # ── API Gateway ──────────────────────────────────────────
+  ExportApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: v1
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          ThrottlingRateLimit: !Ref ApiThrottleRateLimit
+          ThrottlingBurstLimit: !Ref ApiThrottleBurstLimit
+
+  # ── API Lambda ───────────────────────────────────────────
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: dist/handlers/api.handler
+      Description: Handles export creation and status queries
+      MemorySize: 256
+      Timeout: 29
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ExportJobsTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ExportProcessingQueue.QueueName
+      Events:
+        CreateExport:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ExportApi
+            Path: /api/v1/exports
+            Method: POST
+        GetExportStatus:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ExportApi
+            Path: /api/v1/exports/{id}
+            Method: GET
+
+  # ── Processor Lambda ─────────────────────────────────────
+  ProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: dist/handlers/processor.handler
+      Description: Processes export jobs — fetches API data, builds CSV, uploads to S3, sends email
+      MemorySize: 1024
+      Timeout: 900
+      EphemeralStorage:
+        Size: 2048
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ExportJobsTable
+        - S3CrudPolicy:
+            BucketName: !Ref ExportsBucket
+        - SESCrudPolicy:
+            IdentityName: !Ref SesFromEmail
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ExportProcessingQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+
+  # ── SQS Queue ────────────────────────────────────────────
+  ExportProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-export-processing'
+      VisibilityTimeout: 960
+      MessageRetentionPeriod: 604800
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ExportDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  ExportDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-export-dlq'
+      MessageRetentionPeriod: 1209600
+
+  # ── DynamoDB Table ───────────────────────────────────────
+  ExportJobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-export-jobs'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # ── S3 Bucket ────────────────────────────────────────────
+  ExportsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-exports'
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireExports
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${ExportApi}.execute-api.${AWS::Region}.amazonaws.com/v1'
+
+  ExportJobsTableName:
+    Description: DynamoDB table for export jobs
+    Value: !Ref ExportJobsTable
+
+  ExportProcessingQueueUrl:
+    Description: SQS queue URL for export processing
+    Value: !Ref ExportProcessingQueue
+
+  ExportsBucketName:
+    Description: S3 bucket for export files
+    Value: !Ref ExportsBucket

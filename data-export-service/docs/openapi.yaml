@@ -1,0 +1,330 @@
+openapi: 3.0.3
+info:
+  title: Data Export Service API
+  version: 1.0.0
+  description: |
+    API for creating CSV export jobs and polling their status.
+
+    Deployment note:
+    The AWS SAM stack publishes an API Gateway stage named `v1`, while the
+    route paths are also versioned under `/api/v1`. In a deployed environment,
+    a full create URL typically looks like:
+
+    `https://{api-id}.execute-api.{region}.amazonaws.com/v1/api/v1/exports`
+servers:
+  - url: https://{apiId}.execute-api.{region}.amazonaws.com/v1
+    description: AWS API Gateway deployed stage
+    variables:
+      apiId:
+        default: example
+      region:
+        default: us-east-1
+tags:
+  - name: Exports
+    description: Create export jobs and retrieve export status
+paths:
+  /api/v1/exports:
+    post:
+      tags:
+        - Exports
+      summary: Create export job
+      description: |
+        Validates an export request, persists a job in DynamoDB, and enqueues
+        the job for asynchronous processing.
+      operationId: createExport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExportRequest'
+            examples:
+              minimal:
+                summary: Minimal request
+                value:
+                  apiUrl: https://api.example.com/orders
+                  email: ops@example.com
+              cursor:
+                summary: Cursor-based request
+                value:
+                  apiUrl: https://api.example.com/orders
+                  email: ops@example.com
+                  paginationStrategy: cursor
+                  headers:
+                    Authorization: Bearer token
+                  queryParams:
+                    status: active
+                  pageSize: 100
+                  dataPath: results
+                  cursorPath: meta.next
+                  cursorParam: after
+                  fileName: active-orders
+      responses:
+        '202':
+          description: Export job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportStatusResponse'
+              examples:
+                accepted:
+                  value:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    status: pending
+                    totalRecords: 0
+                    pagesProcessed: 0
+                    downloadUrl: null
+                    errorMessage: null
+                    createdAt: '2026-01-15T10:00:00.000Z'
+                    startedAt: null
+                    completedAt: null
+        '400':
+          description: Invalid request body or validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidEmail:
+                  value:
+                    statusCode: 400
+                    timestamp: '2026-01-15T10:00:00.000Z'
+                    path: /api/v1/exports
+                    message:
+                      - email must be an email
+                    error: Bad Request
+        '500':
+          description: Unhandled server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    options:
+      tags:
+        - Exports
+      summary: CORS preflight
+      operationId: optionsExports
+      responses:
+        '200':
+          description: CORS preflight response
+  /api/v1/exports/{id}:
+    get:
+      tags:
+        - Exports
+      summary: Get export status
+      description: Retrieves the current status of a previously created export job.
+      operationId: getExportStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Export job UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Export status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportStatusResponse'
+              examples:
+                processing:
+                  value:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    status: processing
+                    totalRecords: 500
+                    pagesProcessed: 1
+                    downloadUrl: null
+                    errorMessage: null
+                    createdAt: '2026-01-15T10:00:00.000Z'
+                    startedAt: '2026-01-15T10:01:00.000Z'
+                    completedAt: null
+                completed:
+                  value:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    status: completed
+                    totalRecords: 1500
+                    pagesProcessed: 3
+                    downloadUrl: https://signed-url.example.com/file.csv
+                    errorMessage: null
+                    createdAt: '2026-01-15T10:00:00.000Z'
+                    startedAt: '2026-01-15T10:01:00.000Z'
+                    completedAt: '2026-01-15T10:05:00.000Z'
+                failed:
+                  value:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    status: failed
+                    totalRecords: 0
+                    pagesProcessed: 0
+                    downloadUrl: null
+                    errorMessage: Failed after 3 attempts. Last error: Network error
+                    createdAt: '2026-01-15T10:00:00.000Z'
+                    startedAt: '2026-01-15T10:01:00.000Z'
+                    completedAt: null
+        '400':
+          description: Invalid UUID path parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidId:
+                  value:
+                    statusCode: 400
+                    timestamp: '2026-01-15T10:00:00.000Z'
+                    path: /api/v1/exports/not-a-uuid
+                    message: Validation failed (uuid is expected)
+                    error: Bad Request
+        '404':
+          description: Export job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                notFound:
+                  value:
+                    statusCode: 404
+                    timestamp: '2026-01-15T10:00:00.000Z'
+                    path: /api/v1/exports/550e8400-e29b-41d4-a716-446655440000
+                    message: Export job 550e8400-e29b-41d4-a716-446655440000 not found
+                    error: Not Found
+        '500':
+          description: Unhandled server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    CreateExportRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - apiUrl
+        - email
+      properties:
+        apiUrl:
+          type: string
+          format: uri
+          description: Fully qualified URL of the paginated source API
+        email:
+          type: string
+          format: email
+          description: Recipient email for the export notification
+        paginationStrategy:
+          $ref: '#/components/schemas/PaginationStrategy'
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: Headers forwarded to the source API
+        queryParams:
+          type: object
+          additionalProperties:
+            type: string
+          description: Query parameters appended to every page request
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 5000
+          description: |
+            Number of records requested per page. If omitted, the service uses
+            `EXPORT_DEFAULT_PAGE_SIZE`.
+        dataPath:
+          type: string
+          default: data
+          description: Dot-notation path to the array of records in the source API response
+        cursorPath:
+          type: string
+          nullable: true
+          description: Dot-notation path to the next cursor value
+        cursorParam:
+          type: string
+          nullable: true
+          description: Query parameter name used to submit the cursor
+        fileName:
+          type: string
+          nullable: true
+          description: Output file name without the `.csv` extension
+    ExportStatus:
+      type: string
+      enum:
+        - pending
+        - processing
+        - completed
+        - failed
+    PaginationStrategy:
+      type: string
+      enum:
+        - page
+        - offset
+        - cursor
+    ExportStatusResponse:
+      type: object
+      required:
+        - id
+        - status
+        - totalRecords
+        - pagesProcessed
+        - downloadUrl
+        - errorMessage
+        - createdAt
+        - startedAt
+        - completedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/ExportStatus'
+        totalRecords:
+          type: integer
+          minimum: 0
+        pagesProcessed:
+          type: integer
+          minimum: 0
+        downloadUrl:
+          type: string
+          nullable: true
+          description: Presigned S3 URL returned when the export is completed
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+    ErrorResponse:
+      type: object
+      required:
+        - statusCode
+        - timestamp
+        - path
+        - message
+        - error
+      properties:
+        statusCode:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        error:
+          type: string

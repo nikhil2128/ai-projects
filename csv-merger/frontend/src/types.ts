@@ -39,4 +39,18 @@ export interface MergeResponse {
   // csvContent removed — download via streaming GET endpoint
 }
 
-export type AppStep = "upload" | "analyze" | "result";
+export type AppStep = "upload" | "analyze" | "result" | "charts";
+
+export type ChartType = "bar" | "line" | "pie" | "scatter";
+
+export interface ChartSuggestion {
+  id: string;
+  type: ChartType;
+  title: string;
+  description: string;
+  xKey: string;
+  xLabel: string;
+  yKeys: string[];
+  yLabels: string[];
+  data: Record<string, unknown>[];
+}

@@ -1,4 +1,4 @@
-import { Upload, Search, FileOutput } from "lucide-react";
+import { Upload, Search, FileOutput, BarChart3 } from "lucide-react";
 import { AppStep } from "../types";
 import React from "react";
 
@@ -10,6 +10,7 @@ const steps: { key: AppStep; label: string; icon: React.ReactNode }[] = [
   { key: "upload", label: "Upload", icon: <Upload size={18} /> },
   { key: "analyze", label: "Analyze", icon: <Search size={18} /> },
   { key: "result", label: "Result", icon: <FileOutput size={18} /> },
+  { key: "charts", label: "Charts", icon: <BarChart3 size={18} /> },
 ];
 
 export function Stepper({ currentStep }: StepperProps) {

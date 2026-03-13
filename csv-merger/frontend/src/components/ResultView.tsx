@@ -11,12 +11,14 @@ import {
   ToggleLeft,
   Type,
   Loader,
+  BarChart3,
 } from "lucide-react";
 
 interface ResultViewProps {
   result: MergeResult;
   sessionId: string;
   onReset: () => void;
+  onViewCharts: () => void;
 }
 
 const typeIcons: Record<string, React.ReactNode> = {
@@ -33,7 +35,7 @@ const typeColors: Record<string, string> = {
   string: "badge--gray",
 };
 
-export function ResultView({ result, sessionId, onReset }: ResultViewProps) {
+export function ResultView({ result, sessionId, onReset, onViewCharts }: ResultViewProps) {
   const [isDownloading, setIsDownloading] = useState(false);
 
   const handleDownload = async () => {
@@ -203,10 +205,17 @@ export function ResultView({ result, sessionId, onReset }: ResultViewProps) {
         </div>
       </div>
 
-      {/* Download button bottom */}
+      {/* Bottom actions */}
       <div className="result-footer">
         <button
           className="btn btn--primary btn--large"
+          onClick={onViewCharts}
+        >
+          <BarChart3 size={20} />
+          Analyze &amp; View Charts
+        </button>
+        <button
+          className="btn btn--secondary btn--large"
           onClick={handleDownload}
           disabled={isDownloading}
         >

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FileUploader } from "./components/FileUploader";
 import { AnalysisView } from "./components/AnalysisView";
 import { ResultView } from "./components/ResultView";
+import { ChartView } from "./components/ChartView";
 import { Stepper } from "./components/Stepper";
 import { uploadFiles, mergeFiles, deleteSession } from "./api";
 import {
@@ -128,6 +129,15 @@ function App() {
           <ResultView
             result={mergeResult}
             sessionId={sessionId}
+            onReset={handleReset}
+            onViewCharts={() => setStep("charts")}
+          />
+        )}
+
+        {step === "charts" && mergeResult && (
+          <ChartView
+            result={mergeResult}
+            onBack={() => setStep("result")}
             onReset={handleReset}
           />
         )}

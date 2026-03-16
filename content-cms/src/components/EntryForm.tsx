@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import type {
   AuthUser,
   ContentModel,
@@ -64,6 +64,93 @@ function normalizeEntryValues(
   }
 
   return normalized;
+}
+
+interface FormState {
+  values: Record<string, unknown>;
+  errors: Record<string, string>;
+  savingAction: EntrySaveAction | null;
+  publishing: boolean;
+}
+
+type FormAction =
+  | { type: "RESET"; values: Record<string, unknown> }
+  | { type: "SET_FIELD"; slug: string; value: unknown }
+  | { type: "SET_LOCALIZED_FIELD"; slug: string; locale: string; defaultLocale: string; value: unknown }
+  | { type: "SET_ERRORS"; errors: Record<string, string> }
+  | { type: "START_SAVE"; action: EntrySaveAction }
+  | { type: "END_SAVE" }
+  | { type: "START_PUBLISH" }
+  | { type: "END_PUBLISH" }
+  | { type: "REVERT"; values: Record<string, unknown> };
+
+function formReducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case "RESET":
+      return { ...state, values: action.values, errors: {} };
+    case "SET_FIELD": {
+      const errors = { ...state.errors };
+      delete errors[action.slug];
+      return { ...state, values: { ...state.values, [action.slug]: action.value }, errors };
+    }
+    case "SET_LOCALIZED_FIELD": {
+      const existing = getLocalizedFieldValue(state.values[action.slug], action.defaultLocale);
+      const errors = { ...state.errors };
+      delete errors[action.slug];
+      delete errors[`${action.slug}:${action.locale}`];
+      return {
+        ...state,
+        values: { ...state.values, [action.slug]: { ...existing, [action.locale]: action.value } },
+        errors,
+      };
+    }
+    case "SET_ERRORS":
+      return { ...state, errors: action.errors };
+    case "START_SAVE":
+      return { ...state, savingAction: action.action };
+    case "END_SAVE":
+      return { ...state, savingAction: null };
+    case "START_PUBLISH":
+      return { ...state, publishing: true };
+    case "END_PUBLISH":
+      return { ...state, publishing: false };
+    case "REVERT":
+      return { ...state, values: action.values };
+  }
+}
+
+function useEntryVersions(entryId: string | undefined) {
+  const [versions, setVersions] = useState<EntryVersion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!entryId) {
+      setVersions([]);
+      setSelectedId(null);
+      return;
+    }
+
+    let active = true;
+    const load = async () => {
+      try {
+        setLoading(true);
+        const data = await fetchEntryVersions(entryId);
+        if (!active) return;
+        setVersions(data);
+        setSelectedId((prev) =>
+          prev && data.some((v) => v.id === prev) ? prev : data[0]?.id ?? null,
+        );
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { active = false; };
+  }, [entryId]);
+
+  return { versions, loading, selectedId, setSelectedId };
 }
 
 function FieldRenderer({
@@ -204,79 +291,37 @@ export default function EntryForm({
       ),
     [initial?.values, localizationSettings.defaultLocale, model],
   );
-  const [values, setValues] = useState<Record<string, unknown>>(initialValues);
-  const [savingAction, setSavingAction] = useState<EntrySaveAction | null>(null);
-  const [publishing, setPublishing] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [versions, setVersions] = useState<EntryVersion[]>([]);
-  const [versionsLoading, setVersionsLoading] = useState(false);
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [state, dispatch] = useReducer(formReducer, {
+    values: initialValues,
+    errors: {},
+    savingAction: null,
+    publishing: false,
+  });
+  const { values, errors, savingAction, publishing } = state;
   const [showRevertModal, setShowRevertModal] = useState(false);
 
+  const {
+    versions,
+    loading: versionsLoading,
+    selectedId: selectedVersionId,
+    setSelectedId: setSelectedVersionId,
+  } = useEntryVersions(initial?.id);
+
   useEffect(() => {
-    setValues(initialValues);
-    setErrors({});
+    dispatch({ type: "RESET", values: initialValues });
   }, [initialValues]);
 
-  useEffect(() => {
-    if (!initial?.id) {
-      setVersions([]);
-      setSelectedVersionId(null);
-      return;
-    }
-
-    let active = true;
-    const loadVersions = async () => {
-      try {
-        setVersionsLoading(true);
-        const data = await fetchEntryVersions(initial.id);
-        if (!active) return;
-        setVersions(data);
-        setSelectedVersionId((prev) =>
-          prev && data.some((version) => version.id === prev)
-            ? prev
-            : data[0]?.id ?? null,
-        );
-      } finally {
-        if (active) setVersionsLoading(false);
-      }
-    };
-
-    loadVersions();
-
-    return () => {
-      active = false;
-    };
-  }, [initial?.id]);
-
   const updateValue = (slug: string, val: unknown) => {
-    setValues((prev) => ({ ...prev, [slug]: val }));
-    setErrors((prev) => {
-      const next = { ...prev };
-      delete next[slug];
-      return next;
-    });
+    dispatch({ type: "SET_FIELD", slug, value: val });
   };
 
   const updateLocalizedValue = (slug: string, locale: string, val: unknown) => {
-    setValues((prev) => {
-      const existing = getLocalizedFieldValue(
-        prev[slug],
-        localizationSettings.defaultLocale,
-      );
-      return {
-        ...prev,
-        [slug]: {
-          ...existing,
-          [locale]: val,
-        },
-      };
-    });
-    setErrors((prev) => {
-      const next = { ...prev };
-      delete next[slug];
-      delete next[`${slug}:${locale}`];
-      return next;
+    dispatch({
+      type: "SET_LOCALIZED_FIELD",
+      slug,
+      locale,
+      defaultLocale: localizationSettings.defaultLocale,
+      value: val,
     });
   };
 
@@ -309,27 +354,27 @@ export default function EntryForm({
       }
     }
 
-    setErrors(newErrors);
+    dispatch({ type: "SET_ERRORS", errors: newErrors });
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (action: EntrySaveAction) => {
     if (!validate()) return;
-    setSavingAction(action);
+    dispatch({ type: "START_SAVE", action });
     try {
       await onSave(values, action);
     } finally {
-      setSavingAction(null);
+      dispatch({ type: "END_SAVE" });
     }
   };
 
   const handlePublish = async () => {
     if (!onPublish) return;
-    setPublishing(true);
+    dispatch({ type: "START_PUBLISH" });
     try {
       await onPublish();
     } finally {
-      setPublishing(false);
+      dispatch({ type: "END_PUBLISH" });
     }
   };
 
@@ -651,7 +696,7 @@ export default function EntryForm({
           versionNumber={selectedVersion.versionNumber}
           onClose={() => setShowRevertModal(false)}
           onApply={(revertedValues) => {
-            setValues(revertedValues);
+            dispatch({ type: "REVERT", values: revertedValues });
             setShowRevertModal(false);
           }}
         />

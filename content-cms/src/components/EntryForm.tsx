@@ -8,6 +8,7 @@ import type {
   LocalizationSettings,
 } from "../types";
 import RichTextEditor from "./RichTextEditor";
+import VersionRevertModal from "./VersionRevertModal";
 import { fetchEntryVersions } from "../utils/api";
 import { buildEntryDiff } from "../utils/diff";
 
@@ -188,6 +189,7 @@ export default function EntryForm({
   const [versions, setVersions] = useState<EntryVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [showRevertModal, setShowRevertModal] = useState(false);
 
   useEffect(() => {
     setValues(initialValues);
@@ -543,52 +545,75 @@ export default function EntryForm({
                   </p>
                 )}
                 {selectedVersion && diffs.length > 0 && (
-                  <div className="space-y-3 max-h-[28rem] overflow-auto pr-1">
-                    {diffs.map((diff) => (
-                      <div
-                        key={diff.field}
-                        className="rounded-xl border border-slate-200 overflow-hidden"
-                      >
-                        <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600">
-                          @@ {fieldLabelBySlug[diff.field] ?? diff.field}
-                        </div>
-                        <pre className="text-xs leading-5 p-3 overflow-x-auto bg-slate-950 text-slate-100">
-                          <code>
-                            {diff.lines.map((line, idx) => {
-                              const prefix =
-                                line.type === "add"
-                                  ? "+"
-                                  : line.type === "remove"
-                                    ? "-"
-                                    : " ";
-                              const lineClass =
-                                line.type === "add"
-                                  ? "text-emerald-300"
-                                  : line.type === "remove"
-                                    ? "text-rose-300"
-                                    : "text-slate-300";
+                  <>
+                    <div className="space-y-3 max-h-[28rem] overflow-auto pr-1">
+                      {diffs.map((diff) => (
+                        <div
+                          key={diff.field}
+                          className="rounded-xl border border-slate-200 overflow-hidden"
+                        >
+                          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-medium text-slate-600">
+                            @@ {fieldLabelBySlug[diff.field] ?? diff.field}
+                          </div>
+                          <pre className="text-xs leading-5 p-3 overflow-x-auto bg-slate-950 text-slate-100">
+                            <code>
+                              {diff.lines.map((line, idx) => {
+                                const prefix =
+                                  line.type === "add"
+                                    ? "+"
+                                    : line.type === "remove"
+                                      ? "-"
+                                      : " ";
+                                const lineClass =
+                                  line.type === "add"
+                                    ? "text-emerald-300"
+                                    : line.type === "remove"
+                                      ? "text-rose-300"
+                                      : "text-slate-300";
 
-                              return (
-                                <span
-                                  key={`${diff.field}-${idx}`}
-                                  className={`block ${lineClass}`}
-                                >
-                                  {prefix}
-                                  {line.text || " "}
-                                </span>
-                              );
-                            })}
-                          </code>
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
+                                return (
+                                  <span
+                                    key={`${diff.field}-${idx}`}
+                                    className={`block ${lineClass}`}
+                                  >
+                                    {prefix}
+                                    {line.text || " "}
+                                  </span>
+                                );
+                              })}
+                            </code>
+                          </pre>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowRevertModal(true)}
+                      className="mt-3 w-full px-4 py-2 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-xl hover:bg-violet-100 transition-colors"
+                    >
+                      Revert Fields...
+                    </button>
+                  </>
                 )}
               </div>
             </>
           )}
         </aside>
       </div>
+
+      {showRevertModal && selectedVersion && (
+        <VersionRevertModal
+          fields={model.fields}
+          previousValues={selectedVersion.values}
+          currentValues={values}
+          versionNumber={selectedVersion.versionNumber}
+          onClose={() => setShowRevertModal(false)}
+          onApply={(revertedValues) => {
+            setValues(revertedValues);
+            setShowRevertModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }

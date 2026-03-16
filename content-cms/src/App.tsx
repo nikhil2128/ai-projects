@@ -5,7 +5,9 @@ import ModelBuilder from "./components/ModelBuilder";
 import EntryList from "./components/EntryList";
 import EntryForm from "./components/EntryForm";
 import LocalizationSettings from "./components/LocalizationSettings";
+import LoginPage from "./components/LoginPage";
 import type {
+  AuthUser,
   ContentModel,
   ContentEntry,
   AppView,
@@ -14,6 +16,9 @@ import type {
   LocalizationSettings as LocalizationSettingsType,
 } from "./types";
 import {
+  getStoredToken,
+  clearStoredToken,
+  getMe,
   createModel,
   updateModel,
   fetchModel,
@@ -31,6 +36,9 @@ interface AppState {
 }
 
 export default function App() {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
   const [state, setState] = useState<AppState>({
     view: "models",
     activeModel: null,
@@ -44,8 +52,34 @@ export default function App() {
     });
 
   useEffect(() => {
-    fetchLocalizationSettings().then(setLocalizationSettings).catch(console.error);
+    const token = getStoredToken();
+    if (!token) {
+      setAuthLoading(false);
+      return;
+    }
+
+    getMe()
+      .then(setUser)
+      .catch(() => {
+        clearStoredToken();
+      })
+      .finally(() => setAuthLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchLocalizationSettings().then(setLocalizationSettings).catch(console.error);
+  }, [user]);
+
+  const handleLogin = (loggedInUser: AuthUser) => {
+    setUser(loggedInUser);
+  };
+
+  const handleLogout = () => {
+    clearStoredToken();
+    setUser(null);
+    setState({ view: "models", activeModel: null, activeEntry: null });
+  };
 
   const navigate = (
     view: AppView,
@@ -113,7 +147,7 @@ export default function App() {
   ) => {
     if (!state.activeModel) return;
     const created = await createEntry(state.activeModel.id, values);
-    if (action === "publish") {
+    if (action === "publish" && user?.role === "approver") {
       await publishEntry(created.id);
     }
     const freshModel = await fetchModel(state.activeModel.id);
@@ -126,9 +160,18 @@ export default function App() {
   ) => {
     if (!state.activeEntry) return;
     await updateEntry(state.activeEntry.id, values);
-    if (action === "publish") {
+    if (action === "publish" && user?.role === "approver") {
       await publishEntry(state.activeEntry.id);
     }
+    if (state.activeModel) {
+      const freshModel = await fetchModel(state.activeModel.id);
+      navigate("entries", freshModel, null);
+    }
+  };
+
+  const handlePublishEntry = async () => {
+    if (!state.activeEntry) return;
+    await publishEntry(state.activeEntry.id);
     if (state.activeModel) {
       const freshModel = await fetchModel(state.activeModel.id);
       navigate("entries", freshModel, null);
@@ -141,11 +184,25 @@ export default function App() {
     navigate("models", null, null);
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50/30 flex items-center justify-center">
+        <div className="animate-pulse text-slate-400">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50/30">
       <Header
+        user={user}
         onNavigateHome={() => navigate("models", null, null)}
         onOpenSettings={() => navigate("settings", null, null)}
+        onLogout={handleLogout}
         breadcrumb={breadcrumb}
       />
 
@@ -183,6 +240,7 @@ export default function App() {
       {state.view === "entries" && state.activeModel && (
         <EntryList
           model={state.activeModel}
+          user={user}
           onCreateEntry={() => navigate("entry-form", state.activeModel, null)}
           onEditEntry={(entry) =>
             navigate("entry-form", state.activeModel, entry)
@@ -195,8 +253,14 @@ export default function App() {
           model={state.activeModel}
           localizationSettings={localizationSettings}
           initial={state.activeEntry ?? undefined}
+          user={user}
           onSave={
             state.activeEntry ? handleUpdateEntry : handleCreateEntry
+          }
+          onPublish={
+            user.role === "approver" && state.activeEntry
+              ? handlePublishEntry
+              : undefined
           }
           onCancel={() => navigate("entries", state.activeModel, null)}
         />

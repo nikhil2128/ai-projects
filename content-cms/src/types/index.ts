@@ -1,112 +1,122 @@
+export type UserRole = "writer" | "reviewer" | "approver";
+
+export interface AuthUser {
+	id: string;
+	username: string;
+	displayName: string;
+	role: UserRole;
+}
+
 export type FieldType =
-  | "text"
-  | "textarea"
-  | "number"
-  | "date"
-  | "dropdown"
-  | "toggle"
-  | "richtext";
+	| "text"
+	| "textarea"
+	| "number"
+	| "date"
+	| "dropdown"
+	| "toggle"
+	| "richtext";
 
 export interface FieldDefinition {
-  id: string;
-  name: string;
-  slug: string;
-  type: FieldType;
-  required: boolean;
-  localizable?: boolean;
-  placeholder?: string;
-  options?: string[];
+	id: string;
+	name: string;
+	slug: string;
+	type: FieldType;
+	required: boolean;
+	localizable?: boolean;
+	placeholder?: string;
+	options?: string[];
 }
 
 export interface ContentModel {
-  id: string;
-  name: string;
-  slug: string;
-  description: string;
-  fields: FieldDefinition[];
-  createdAt: string;
-  updatedAt: string;
+	id: string;
+	name: string;
+	slug: string;
+	description: string;
+	fields: FieldDefinition[];
+	createdAt: string;
+	updatedAt: string;
 }
 
 export type EntryStatus = "draft" | "published" | "archived";
 
 export interface LocaleOption {
-  code: string;
-  label: string;
+	code: string;
+	label: string;
 }
 
 export interface LocalizationSettings {
-  defaultLocale: string;
-  enabledLocales: string[];
-  availableLocales: LocaleOption[];
+	defaultLocale: string;
+	enabledLocales: string[];
+	availableLocales: LocaleOption[];
 }
 
 export interface EntryVersion {
-  id: string;
-  entryId: string;
-  versionNumber: number;
-  values: Record<string, unknown>;
-  createdAt: string;
+	id: string;
+	entryId: string;
+	versionNumber: number;
+	values: Record<string, unknown>;
+	createdAt: string;
 }
 
 export type EntrySaveAction = "save-draft" | "publish";
 
 export interface ContentEntry {
-  id: string;
-  modelId: string;
-  values: Record<string, unknown>;
-  status: EntryStatus;
-  versions: EntryVersion[];
-  currentVersionId: string | null;
-  createdAt: string;
-  updatedAt: string;
+	id: string;
+	modelId: string;
+	values: Record<string, unknown>;
+	status: EntryStatus;
+	versions: EntryVersion[];
+	currentVersionId: string | null;
+	createdBy: string | null;
+	createdAt: string;
+	updatedAt: string;
 }
 
 export type AppView =
-  | "models"
-  | "settings"
-  | "model-builder"
-  | "model-edit"
-  | "entries"
-  | "entry-form";
+	| "models"
+	| "settings"
+	| "model-builder"
+	| "model-edit"
+	| "entries"
+	| "entry-form";
 
 export const FIELD_TYPE_META: Record<
-  FieldType,
-  { label: string; icon: string; description: string }
+	FieldType,
+	{ label: string; icon: string; description: string }
 > = {
-  text: {
-    label: "Text Input",
-    icon: "Aa",
-    description: "Single-line text field",
-  },
-  textarea: {
-    label: "Text Area",
-    icon: "¶",
-    description: "Multi-line plain text",
-  },
-  number: {
-    label: "Number",
-    icon: "#",
-    description: "Numeric value",
-  },
-  date: {
-    label: "Date",
-    icon: "📅",
-    description: "Date picker",
-  },
-  dropdown: {
-    label: "Dropdown",
-    icon: "▾",
-    description: "Select from predefined options",
-  },
-  toggle: {
-    label: "Toggle",
-    icon: "◉",
-    description: "Boolean on/off switch",
-  },
-  richtext: {
-    label: "Rich Text",
-    icon: "✎",
-    description: "Rich text editor with formatting",
-  },
+	text: {
+		label: "Text Input",
+		icon: "Aa",
+		description: "Single-line text field",
+	},
+	textarea: {
+		label: "Text Area",
+		icon: "¶",
+		description: "Multi-line plain text",
+	},
+	number: {
+		label: "Number",
+		icon: "#",
+		description: "Numeric value",
+	},
+	date: {
+		label: "Date",
+		icon: "📅",
+		description: "Date picker",
+	},
+	dropdown: {
+		label: "Dropdown",
+		icon: "▾",
+		description: "Select from predefined options",
+	},
+	toggle: {
+		label: "Toggle",
+		icon: "◉",
+		description: "Boolean on/off switch",
+	},
+	richtext: {
+		label: "Rich Text",
+		icon: "✎",
+		description: "Rich text editor with formatting",
+	},
 };

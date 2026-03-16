@@ -8,6 +8,7 @@ interface RichTextEditorProps {
   value: string;
   onChange: (html: string) => void;
   placeholder?: string;
+  disabled?: boolean;
 }
 
 function ToolbarButton({
@@ -26,11 +27,10 @@ function ToolbarButton({
       type="button"
       onClick={onClick}
       title={title}
-      className={`p-1.5 rounded-md text-sm font-medium transition-colors ${
-        active
+      className={`p-1.5 rounded-md text-sm font-medium transition-colors ${active
           ? "bg-violet-100 text-violet-700"
           : "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-      }`}
+        }`}
     >
       {children}
     </button>
@@ -41,6 +41,7 @@ export default function RichTextEditor({
   value,
   onChange,
   placeholder,
+  disabled,
 }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
@@ -53,6 +54,7 @@ export default function RichTextEditor({
       }),
     ],
     content: value,
+    editable: !disabled,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
@@ -67,8 +69,8 @@ export default function RichTextEditor({
   if (!editor) return null;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden focus-within:ring-2 focus-within:ring-violet-500/30 focus-within:border-violet-400 transition-all">
-      <div className="flex items-center gap-0.5 px-3 py-2 border-b border-slate-100 bg-slate-50/50 flex-wrap">
+    <div className={`rounded-xl border border-slate-200 bg-white overflow-hidden transition-all ${disabled ? "opacity-70" : "focus-within:ring-2 focus-within:ring-violet-500/30 focus-within:border-violet-400"}`}>
+      {!disabled && <div className="flex items-center gap-0.5 px-3 py-2 border-b border-slate-100 bg-slate-50/50 flex-wrap">
         <ToolbarButton
           active={editor.isActive("bold")}
           onClick={() => editor.chain().focus().toggleBold().run()}
@@ -215,7 +217,7 @@ export default function RichTextEditor({
         >
           ―
         </ToolbarButton>
-      </div>
+      </div>}
       <EditorContent editor={editor} />
     </div>
   );

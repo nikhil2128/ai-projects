@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
+  AuthUser,
   ContentModel,
   ContentEntry,
   FieldDefinition,
@@ -16,10 +17,12 @@ interface EntryFormProps {
   model: ContentModel;
   localizationSettings: LocalizationSettings;
   initial?: ContentEntry;
+  user: AuthUser;
   onSave: (
     values: Record<string, unknown>,
     action: EntrySaveAction,
   ) => Promise<void>;
+  onPublish?: () => Promise<void>;
   onCancel: () => void;
 }
 
@@ -67,13 +70,15 @@ function FieldRenderer({
   field,
   value,
   onChange,
+  disabled,
 }: {
   field: FieldDefinition;
   value: unknown;
   onChange: (val: unknown) => void;
+  disabled?: boolean;
 }) {
   const baseInput =
-    "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all";
+    "w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all disabled:opacity-60 disabled:cursor-not-allowed";
 
   switch (field.type) {
     case "text":
@@ -84,6 +89,7 @@ function FieldRenderer({
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder || `Enter ${field.name}`}
           className={baseInput}
+          disabled={disabled}
         />
       );
 
@@ -95,6 +101,7 @@ function FieldRenderer({
           placeholder={field.placeholder || `Enter ${field.name}`}
           rows={4}
           className={`${baseInput} resize-y`}
+          disabled={disabled}
         />
       );
 
@@ -108,6 +115,7 @@ function FieldRenderer({
           }
           placeholder={field.placeholder || "0"}
           className={baseInput}
+          disabled={disabled}
         />
       );
 
@@ -118,6 +126,7 @@ function FieldRenderer({
           value={(value as string) ?? ""}
           onChange={(e) => onChange(e.target.value)}
           className={baseInput}
+          disabled={disabled}
         />
       );
 
@@ -127,6 +136,7 @@ function FieldRenderer({
           value={(value as string) ?? ""}
           onChange={(e) => onChange(e.target.value)}
           className={baseInput}
+          disabled={disabled}
         >
           <option value="">Select {field.name}...</option>
           {(field.options ?? []).map((opt) => (
@@ -139,12 +149,13 @@ function FieldRenderer({
 
     case "toggle":
       return (
-        <label className="relative inline-flex items-center cursor-pointer">
+        <label className={`relative inline-flex items-center ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
           <input
             type="checkbox"
             checked={!!value}
             onChange={(e) => onChange(e.target.checked)}
             className="sr-only peer"
+            disabled={disabled}
           />
           <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-violet-600 peer-focus:ring-4 peer-focus:ring-violet-100 transition-colors after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full" />
           <span className="ml-3 text-sm text-slate-600">
@@ -159,6 +170,7 @@ function FieldRenderer({
           value={(value as string) ?? ""}
           onChange={(html) => onChange(html)}
           placeholder={field.placeholder || `Write ${field.name}...`}
+          disabled={disabled}
         />
       );
 
@@ -171,9 +183,18 @@ export default function EntryForm({
   model,
   localizationSettings,
   initial,
+  user,
   onSave,
+  onPublish,
   onCancel,
 }: EntryFormProps) {
+  const isWriter = user.role === "writer";
+  const isApprover = user.role === "approver";
+  const canEdit =
+    isWriter &&
+    (!initial || !initial.createdBy || initial.createdBy === user.id);
+  const readOnly = !canEdit;
+
   const initialValues = useMemo(
     () =>
       normalizeEntryValues(
@@ -185,6 +206,7 @@ export default function EntryForm({
   );
   const [values, setValues] = useState<Record<string, unknown>>(initialValues);
   const [savingAction, setSavingAction] = useState<EntrySaveAction | null>(null);
+  const [publishing, setPublishing] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [versions, setVersions] = useState<EntryVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
@@ -301,6 +323,16 @@ export default function EntryForm({
     }
   };
 
+  const handlePublish = async () => {
+    if (!onPublish) return;
+    setPublishing(true);
+    try {
+      await onPublish();
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const selectedVersion = useMemo(
     () => versions.find((version) => version.id === selectedVersionId) ?? null,
     [selectedVersionId, versions],
@@ -335,11 +367,6 @@ export default function EntryForm({
           : "Draft";
 
   const isSaving = savingAction !== null;
-  const publishLabel = isSaving
-    ? savingAction === "publish"
-      ? "Publishing..."
-      : "Publish"
-    : "Publish";
   const draftLabel = isSaving
     ? savingAction === "save-draft"
       ? "Saving..."
@@ -355,46 +382,58 @@ export default function EntryForm({
       <div className="flex items-center justify-between mb-8 gap-4">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-slate-800">
-            {initial ? "Edit Entry" : `New ${model.name}`}
+            {readOnly
+              ? "View Entry"
+              : initial
+                ? "Edit Entry"
+                : `New ${model.name}`}
           </h1>
           {initial && (
             <span
-              className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                hasUnsavedChanges || initial.status === "draft"
+              className={`px-2.5 py-1 text-xs font-medium rounded-full ${hasUnsavedChanges || initial.status === "draft"
                   ? "bg-slate-100 text-slate-700"
                   : initial.status === "published"
                     ? "bg-emerald-100 text-emerald-700"
                     : initial.status === "archived"
                       ? "bg-amber-100 text-amber-700"
                       : "bg-slate-100 text-slate-700"
-              }`}
+                }`}
             >
               {statusLabel}
+            </span>
+          )}
+          {readOnly && (
+            <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-500">
+              Read-only
             </span>
           )}
         </div>
         <div className="flex gap-3">
           <button
             onClick={onCancel}
-            disabled={isSaving}
+            disabled={isSaving || publishing}
             className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
           >
-            Cancel
+            {readOnly ? "Back" : "Cancel"}
           </button>
-          <button
-            onClick={() => handleSubmit("save-draft")}
-            disabled={isSaving}
-            className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {draftLabel}
-          </button>
-          <button
-            onClick={() => handleSubmit("publish")}
-            disabled={isSaving}
-            className="px-5 py-2 text-sm font-medium text-white bg-gradient-to-r from-violet-600 to-indigo-600 rounded-xl hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {publishLabel}
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => handleSubmit("save-draft")}
+              disabled={isSaving}
+              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {draftLabel}
+            </button>
+          )}
+          {isApprover && initial && onPublish && initial.status !== "published" && (
+            <button
+              onClick={handlePublish}
+              disabled={publishing}
+              className="px-5 py-2 text-sm font-medium text-white bg-gradient-to-r from-emerald-600 to-green-600 rounded-xl hover:from-emerald-700 hover:to-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {publishing ? "Publishing..." : "Approve & Publish"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -403,9 +442,9 @@ export default function EntryForm({
           {model.fields.map((field) => {
             const localeValues = field.localizable
               ? getLocalizedFieldValue(
-                  values[field.slug],
-                  localizationSettings.defaultLocale,
-                )
+                values[field.slug],
+                localizationSettings.defaultLocale,
+              )
               : null;
 
             return (
@@ -426,7 +465,7 @@ export default function EntryForm({
                   )}
                 </label>
 
-                {field.localizable && (
+                {field.localizable && !readOnly && (
                   <p className="text-sm text-slate-500 mb-4">
                     Add translations for the enabled locales below. Required
                     localized fields must have a value in{" "}
@@ -443,6 +482,7 @@ export default function EntryForm({
                       field={field}
                       value={values[field.slug]}
                       onChange={(val) => updateValue(field.slug, val)}
+                      disabled={readOnly}
                     />
                     {errors[field.slug] && (
                       <p className="mt-1.5 text-sm text-red-500">
@@ -475,6 +515,7 @@ export default function EntryForm({
                           onChange={(val) =>
                             updateLocalizedValue(field.slug, locale, val)
                           }
+                          disabled={readOnly}
                         />
                         {errors[`${field.slug}:${locale}`] && (
                           <p className="mt-1.5 text-sm text-red-500">
@@ -519,11 +560,10 @@ export default function EntryForm({
                     key={version.id}
                     type="button"
                     onClick={() => setSelectedVersionId(version.id)}
-                    className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${
-                      selectedVersionId === version.id
+                    className={`w-full text-left rounded-xl border px-3 py-2 transition-colors ${selectedVersionId === version.id
                         ? "border-violet-300 bg-violet-50"
                         : "border-slate-200 hover:bg-slate-50"
-                    }`}
+                      }`}
                   >
                     <p className="text-sm font-medium text-slate-700">
                       Version {version.versionNumber}
@@ -586,13 +626,15 @@ export default function EntryForm({
                         </div>
                       ))}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowRevertModal(true)}
-                      className="mt-3 w-full px-4 py-2 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-xl hover:bg-violet-100 transition-colors"
-                    >
-                      Revert Fields...
-                    </button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => setShowRevertModal(true)}
+                        className="mt-3 w-full px-4 py-2 text-sm font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-xl hover:bg-violet-100 transition-colors"
+                      >
+                        Revert Fields...
+                      </button>
+                    )}
                   </>
                 )}
               </div>

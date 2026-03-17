@@ -1,0 +1,327 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Content CMS - Tenant Infrastructure Stack (per-tenant isolated resources).
+  Each tenant gets its own Cognito User Pool, DynamoDB tables, and IAM role.
+
+Parameters:
+  TenantId:
+    Type: String
+    Description: Unique identifier for this tenant
+  CompanyName:
+    Type: String
+    Description: Human-readable company name
+  CompanySlug:
+    Type: String
+    Description: URL-safe slug for the company
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  AdminUsername:
+    Type: String
+    Description: Username for the initial admin user
+  AdminDisplayName:
+    Type: String
+    Description: Display name for the initial admin user
+  AdminPassword:
+    Type: String
+    NoEcho: true
+    Description: Temporary password for the initial admin user
+
+Resources:
+
+  # ============================================================
+  # Cognito User Pool (per-tenant auth isolation)
+  # ============================================================
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub 'cms-${TenantId}-${Environment}'
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      UsernameConfiguration:
+        CaseSensitive: false
+      Schema:
+        - Name: display_name
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+          StringAttributeConstraints:
+            MaxLength: '256'
+            MinLength: '1'
+        - Name: tenant_id
+          AttributeDataType: String
+          Mutable: false
+          Required: false
+          StringAttributeConstraints:
+            MaxLength: '128'
+            MinLength: '1'
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+          TemporaryPasswordValidityDays: 7
+      UserPoolTags:
+        TenantId: !Ref TenantId
+        Environment: !Ref Environment
+        Service: content-cms
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub 'cms-${TenantId}-client'
+      UserPoolId: !Ref UserPool
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 24
+      IdTokenValidity: 24
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  # Cognito Groups map to application roles
+  WriterGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: writer
+      UserPoolId: !Ref UserPool
+      Description: Content writers - can create and edit own entries
+      Precedence: 30
+
+  ReviewerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: reviewer
+      UserPoolId: !Ref UserPool
+      Description: Content reviewers - can view all entries
+      Precedence: 20
+
+  ApproverGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: approver
+      UserPoolId: !Ref UserPool
+      Description: Content approvers - can publish, archive, and manage users
+      Precedence: 10
+
+  # Initial admin user
+  AdminUser:
+    Type: AWS::Cognito::UserPoolUser
+    DependsOn:
+      - ApproverGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      Username: !Ref AdminUsername
+      DesiredDeliveryMediums: []
+      ForceAliasCreation: false
+      UserAttributes:
+        - Name: 'custom:display_name'
+          Value: !Ref AdminDisplayName
+        - Name: 'custom:tenant_id'
+          Value: !Ref TenantId
+
+  AdminUserGroupAttachment:
+    Type: AWS::Cognito::UserPoolUserToGroupAttachment
+    DependsOn: AdminUser
+    Properties:
+      GroupName: approver
+      Username: !Ref AdminUsername
+      UserPoolId: !Ref UserPool
+
+  # ============================================================
+  # DynamoDB Tables (per-tenant data isolation)
+  # ============================================================
+
+  ContentModelsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub 'cms-${TenantId}-models'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: TenantId
+          Value: !Ref TenantId
+
+  ContentEntriesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub 'cms-${TenantId}-entries'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: modelId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: ModelIdIndex
+          KeySchema:
+            - AttributeName: modelId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: TenantId
+          Value: !Ref TenantId
+
+  EntryVersionsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub 'cms-${TenantId}-versions'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: entryId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: EntryIdIndex
+          KeySchema:
+            - AttributeName: entryId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: TenantId
+          Value: !Ref TenantId
+
+  TenantSettingsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub 'cms-${TenantId}-settings'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: settingKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: settingKey
+          KeyType: HASH
+      Tags:
+        - Key: TenantId
+          Value: !Ref TenantId
+
+  # ============================================================
+  # IAM Role (per-tenant, scoped to ONLY this tenant's resources)
+  # ============================================================
+
+  TenantExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'cms-tenant-${TenantId}-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                'aws:PrincipalTag/Service': content-cms
+      Policies:
+        - PolicyName: TenantScopedDynamoDB
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowOnlyThisTenantTables
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:BatchGetItem
+                Resource:
+                  - !GetAtt ContentModelsTable.Arn
+                  - !GetAtt ContentEntriesTable.Arn
+                  - !GetAtt EntryVersionsTable.Arn
+                  - !GetAtt TenantSettingsTable.Arn
+                  - !Sub '${ContentEntriesTable.Arn}/index/*'
+                  - !Sub '${EntryVersionsTable.Arn}/index/*'
+        - PolicyName: TenantScopedCognito
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowOnlyThisTenantUserPool
+                Effect: Allow
+                Action:
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:AdminDeleteUser
+                  - cognito-idp:AdminUpdateUserAttributes
+                  - cognito-idp:AdminAddUserToGroup
+                  - cognito-idp:AdminRemoveUserFromGroup
+                  - cognito-idp:AdminSetUserPassword
+                  - cognito-idp:AdminListGroupsForUser
+                  - cognito-idp:ListUsers
+                  - cognito-idp:ListUsersInGroup
+                Resource:
+                  - !GetAtt UserPool.Arn
+      Tags:
+        - Key: TenantId
+          Value: !Ref TenantId
+        - Key: Service
+          Value: content-cms
+
+Outputs:
+  TenantId:
+    Value: !Ref TenantId
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolArn:
+    Value: !GetAtt UserPool.Arn
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  TenantExecutionRoleArn:
+    Value: !GetAtt TenantExecutionRole.Arn
+  ModelsTableName:
+    Value: !Ref ContentModelsTable
+  EntriesTableName:
+    Value: !Ref ContentEntriesTable
+  VersionsTableName:
+    Value: !Ref EntryVersionsTable
+  SettingsTableName:
+    Value: !Ref TenantSettingsTable

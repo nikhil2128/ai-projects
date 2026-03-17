@@ -1,0 +1,591 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Content CMS - Base Infrastructure Stack
+  Shared resources across all tenants: API Gateway, Lambda functions, Tenant Registry.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  AllowedOrigins:
+    Type: String
+    Default: '*'
+    Description: CORS allowed origins
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 256
+    Architectures:
+      - arm64
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        TENANT_REGISTRY_TABLE: !Ref TenantRegistryTable
+        REGION: !Ref AWS::Region
+        ACCOUNT_ID: !Ref AWS::AccountId
+
+Resources:
+
+  # ============================================================
+  # API Gateway
+  # ============================================================
+
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub content-cms-api-${Environment}
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key'"
+        AllowOrigin: !Sub "'${AllowedOrigins}'"
+      Auth:
+        DefaultAuthorizer: TenantAuthorizer
+        Authorizers:
+          TenantAuthorizer:
+            FunctionArn: !GetAtt AuthorizerFunction.Arn
+            FunctionPayloadType: TOKEN
+            Identity:
+              Header: Authorization
+              ReauthorizeEvery: 300
+        AddDefaultAuthorizerToCorsPreflight: false
+      GatewayResponses:
+        UNAUTHORIZED:
+          StatusCode: 401
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !Sub "'${AllowedOrigins}'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+          ResponseTemplates:
+            application/json: '{"success": false, "error": "Unauthorized"}'
+        ACCESS_DENIED:
+          StatusCode: 403
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: !Sub "'${AllowedOrigins}'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+          ResponseTemplates:
+            application/json: '{"success": false, "error": "Access denied"}'
+
+  # ============================================================
+  # DynamoDB - Tenant Registry (shared)
+  # ============================================================
+
+  TenantRegistryTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub content-cms-tenant-registry-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: tenantId
+          AttributeType: S
+        - AttributeName: slug
+          AttributeType: S
+        - AttributeName: userPoolId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: tenantId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: SlugIndex
+          KeySchema:
+            - AttributeName: slug
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: UserPoolIdIndex
+          KeySchema:
+            - AttributeName: userPoolId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  # ============================================================
+  # IAM Roles
+  # ============================================================
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub content-cms-lambda-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: TenantRegistryAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt TenantRegistryTable.Arn
+                  - !Sub '${TenantRegistryTable.Arn}/index/*'
+        - PolicyName: TenantDynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/cms-*'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/cms-*/index/*'
+        - PolicyName: CognitoAdminAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminInitiateAuth
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:AdminUpdateUserAttributes
+                  - cognito-idp:AdminDeleteUser
+                  - cognito-idp:AdminAddUserToGroup
+                  - cognito-idp:AdminRemoveUserFromGroup
+                  - cognito-idp:AdminSetUserPassword
+                  - cognito-idp:AdminListGroupsForUser
+                  - cognito-idp:ListUsers
+                  - cognito-idp:ListUsersInGroup
+                Resource:
+                  - !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*'
+        - PolicyName: CloudFormationTenantStacks
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                Resource:
+                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/cms-tenant-*/*'
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !GetAtt TenantStackExecutionRole.Arn
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${DeploymentBucket}/*'
+
+  TenantStackExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub content-cms-tenant-cfn-role-${Environment}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TenantStackResources
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:CreateTable
+                  - dynamodb:DeleteTable
+                  - dynamodb:DescribeTable
+                  - dynamodb:UpdateTable
+                  - dynamodb:UpdateTimeToLive
+                  - dynamodb:DescribeTimeToLive
+                  - dynamodb:DescribeContinuousBackups
+                  - dynamodb:UpdateContinuousBackups
+                  - dynamodb:TagResource
+                  - dynamodb:UntagResource
+                  - dynamodb:ListTagsOfResource
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/cms-*'
+              - Effect: Allow
+                Action:
+                  - cognito-idp:CreateUserPool
+                  - cognito-idp:DeleteUserPool
+                  - cognito-idp:UpdateUserPool
+                  - cognito-idp:DescribeUserPool
+                  - cognito-idp:CreateUserPoolClient
+                  - cognito-idp:DeleteUserPoolClient
+                  - cognito-idp:UpdateUserPoolClient
+                  - cognito-idp:DescribeUserPoolClient
+                  - cognito-idp:CreateGroup
+                  - cognito-idp:DeleteGroup
+                  - cognito-idp:GetGroup
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminSetUserPassword
+                  - cognito-idp:AdminAddUserToGroup
+                  - cognito-idp:SetUserPoolMfaConfig
+                  - cognito-idp:TagResource
+                  - cognito-idp:UntagResource
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                Resource:
+                  - !Sub 'arn:aws:iam::${AWS::AccountId}:role/cms-tenant-*'
+
+  # ============================================================
+  # S3 Bucket for deployments
+  # ============================================================
+
+  DeploymentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub content-cms-deployments-${AWS::AccountId}-${Environment}
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # ============================================================
+  # Lambda Functions
+  # ============================================================
+
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub content-cms-authorizer-${Environment}
+      Handler: authorizer/handler.handler
+      CodeUri: lambda/
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 10
+      MemorySize: 256
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - src/authorizer/handler.ts
+        External:
+          - '@aws-sdk/*'
+
+  AuthLoginFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub content-cms-auth-login-${Environment}
+      Handler: auth/handler.loginHandler
+      CodeUri: lambda/
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        Login:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/auth/login
+            Method: POST
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - src/auth/handler.ts
+        External:
+          - '@aws-sdk/*'
+
+  AuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub content-cms-auth-${Environment}
+      Handler: auth/handler.handler
+      CodeUri: lambda/
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        GetMe:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/auth/me
+            Method: GET
+        ListUsers:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/auth/users
+            Method: GET
+        CreateUser:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/auth/users
+            Method: POST
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - src/auth/handler.ts
+        External:
+          - '@aws-sdk/*'
+
+  TenantResolverFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub content-cms-tenant-resolver-${Environment}
+      Handler: tenant-resolver/handler.handler
+      CodeUri: lambda/
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          TENANT_STACK_TEMPLATE_URL: !Sub 'https://${DeploymentBucket}.s3.${AWS::Region}.amazonaws.com/cloudformation/tenant-stack.yaml'
+          TENANT_STACK_ROLE_ARN: !GetAtt TenantStackExecutionRole.Arn
+          BASE_STACK_NAME: !Ref AWS::StackName
+      Events:
+        ResolveTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/tenant/resolve
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        RegisterTenant:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/tenant/register
+            Method: POST
+            Auth:
+              Authorizer: NONE
+        TenantStatus:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/tenant/status/{registrationId}
+            Method: GET
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - src/tenant-resolver/handler.ts
+        External:
+          - '@aws-sdk/*'
+
+  ModelsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub content-cms-models-${Environment}
+      Handler: models/handler.handler
+      CodeUri: lambda/
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        ListModels:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/models
+            Method: GET
+        CreateModel:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/models
+            Method: POST
+        GetModel:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/models/{id}
+            Method: GET
+        UpdateModel:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/models/{id}
+            Method: PUT
+        DeleteModel:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/models/{id}
+            Method: DELETE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - src/models/handler.ts
+        External:
+          - '@aws-sdk/*'
+
+  EntriesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub content-cms-entries-${Environment}
+      Handler: entries/handler.handler
+      CodeUri: lambda/
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      Events:
+        CreateEntry:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/entries
+            Method: POST
+        ListEntriesByModel:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/entries/model/{modelId}
+            Method: GET
+        GetEntry:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/entries/{id}
+            Method: GET
+        UpdateEntry:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/entries/{id}
+            Method: PUT
+        DeleteEntry:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/entries/{id}
+            Method: DELETE
+        GetVersions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/entries/{id}/versions
+            Method: GET
+        PublishEntry:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/entries/{id}/publish
+            Method: PUT
+        UnpublishEntry:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/entries/{id}/unpublish
+            Method: PUT
+        ArchiveEntry:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/entries/{id}/archive
+            Method: PUT
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - src/entries/handler.ts
+        External:
+          - '@aws-sdk/*'
+
+  SettingsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub content-cms-settings-${Environment}
+      Handler: settings/handler.handler
+      CodeUri: lambda/
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Events:
+        GetLocalization:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/settings/localization
+            Method: GET
+        UpdateLocalization:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /api/settings/localization
+            Method: PUT
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        EntryPoints:
+          - src/settings/handler.ts
+        External:
+          - '@aws-sdk/*'
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiUrl'
+  TenantRegistryTableName:
+    Description: DynamoDB table name for tenant registry
+    Value: !Ref TenantRegistryTable
+    Export:
+      Name: !Sub '${AWS::StackName}-TenantRegistryTable'
+  TenantRegistryTableArn:
+    Value: !GetAtt TenantRegistryTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TenantRegistryTableArn'
+  LambdaExecutionRoleArn:
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaRoleArn'
+  TenantStackExecutionRoleArn:
+    Value: !GetAtt TenantStackExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TenantCfnRoleArn'
+  DeploymentBucketName:
+    Value: !Ref DeploymentBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-DeploymentBucket'

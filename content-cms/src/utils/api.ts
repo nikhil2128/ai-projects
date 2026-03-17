@@ -1,5 +1,6 @@
 import type {
 	AuthUser,
+	CompanyUser,
 	ContentModel,
 	ContentEntry,
 	EntryVersion,
@@ -43,6 +44,7 @@ async function request<T>(
 		if (
 			res.status === 401 &&
 			url !== "/api/auth/login" &&
+			url !== "/api/auth/register-company" &&
 			url !== "/api/auth/me"
 		) {
 			clearStoredToken();
@@ -55,6 +57,7 @@ async function request<T>(
 }
 
 export async function login(
+	companySlug: string,
 	username: string,
 	password: string,
 ): Promise<{ token: string; user: AuthUser }> {
@@ -62,7 +65,7 @@ export async function login(
 		"/api/auth/login",
 		{
 			method: "POST",
-			body: JSON.stringify({ username, password }),
+			body: JSON.stringify({ companySlug, username, password }),
 		},
 	);
 	const data = res.data!;
@@ -70,8 +73,45 @@ export async function login(
 	return data;
 }
 
+export async function registerCompany(data: {
+	companyName: string;
+	companySlug?: string;
+	adminDisplayName: string;
+	adminUsername: string;
+	password: string;
+}): Promise<{ token: string; user: AuthUser }> {
+	const res = await request<{ token: string; user: AuthUser }>(
+		"/api/auth/register-company",
+		{
+			method: "POST",
+			body: JSON.stringify(data),
+		},
+	);
+	const payload = res.data!;
+	setStoredToken(payload.token);
+	return payload;
+}
+
 export async function getMe(): Promise<AuthUser> {
 	const res = await request<AuthUser>("/api/auth/me");
+	return res.data!;
+}
+
+export async function fetchCompanyUsers(): Promise<CompanyUser[]> {
+	const res = await request<CompanyUser[]>("/api/auth/users");
+	return res.data ?? [];
+}
+
+export async function createCompanyUser(data: {
+	username: string;
+	displayName: string;
+	password: string;
+	role: AuthUser["role"];
+}): Promise<CompanyUser> {
+	const res = await request<CompanyUser>("/api/auth/users", {
+		method: "POST",
+		body: JSON.stringify(data),
+	});
 	return res.data!;
 }
 

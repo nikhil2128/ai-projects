@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { AuthUser } from "../types";
-import { login } from "../utils/api";
+import { login, registerCompany } from "../utils/api";
 
 interface LoginPageProps {
   onLogin: (user: AuthUser) => void;
@@ -14,22 +14,38 @@ const DEMO_USERS = [
 ];
 
 export default function LoginPage({ onLogin }: LoginPageProps) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [companySlug, setCompanySlug] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [registerCompanySlug, setRegisterCompanySlug] = useState("");
+  const [adminDisplayName, setAdminDisplayName] = useState("");
+  const [adminUsername, setAdminUsername] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const suggestedSlug = useMemo(() => {
+    return companyName
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, "")
+      .replace(/[\s_]+/g, "-")
+      .replace(/-+/g, "-");
+  }, [companyName]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || !password.trim()) {
-      setError("Username and password are required");
+    if (!companySlug.trim() || !username.trim() || !password.trim()) {
+      setError("Company, username, and password are required");
       return;
     }
 
     setError("");
     setLoading(true);
     try {
-      const { user } = await login(username.trim(), password);
+      const { user } = await login(companySlug.trim(), username.trim(), password);
       onLogin(user);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -38,13 +54,47 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
     }
   };
 
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (
+      !companyName.trim() ||
+      !adminDisplayName.trim() ||
+      !adminUsername.trim() ||
+      !adminPassword.trim()
+    ) {
+      setError(
+        "Company name, admin display name, admin username, and password are required",
+      );
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+    try {
+      const { user } = await registerCompany({
+        companyName: companyName.trim(),
+        companySlug: registerCompanySlug.trim() || suggestedSlug,
+        adminDisplayName: adminDisplayName.trim(),
+        adminUsername: adminUsername.trim(),
+        password: adminPassword,
+      });
+      onLogin(user);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleQuickLogin = async (demoUsername: string) => {
+    setMode("login");
+    setCompanySlug("demo-company");
     setUsername(demoUsername);
     setPassword("password123");
     setError("");
     setLoading(true);
     try {
-      const { user } = await login(demoUsername, "password123");
+      const { user } = await login("demo-company", demoUsername, "password123");
       onLogin(user);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -81,53 +131,187 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
             ContentForge
           </h1>
-          <p className="text-slate-500 mt-1">Sign in to manage your content</p>
+          <p className="text-slate-500 mt-1">
+            Multi-tenant content operations for companies and role-based teams
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600">
-                {error}
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Username
-              </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
-                autoComplete="username"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                autoComplete="current-password"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all"
-              />
-            </div>
-
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-100 mb-5">
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-medium rounded-xl shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setError("");
+              }}
+              className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                mode === "login"
+                  ? "bg-white text-slate-800 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
             >
-              {loading ? "Signing in..." : "Sign In"}
+              Sign In
             </button>
-          </form>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("register");
+                setError("");
+              }}
+              className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                mode === "register"
+                  ? "bg-white text-slate-800 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Register Company
+            </button>
+          </div>
+
+          {mode === "login" ? (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600">
+                  {error}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Company slug
+                </label>
+                <input
+                  type="text"
+                  value={companySlug}
+                  onChange={(e) => setCompanySlug(e.target.value)}
+                  placeholder="your-company"
+                  autoComplete="organization"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Username
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter your username"
+                  autoComplete="username"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-medium rounded-xl shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Signing in..." : "Sign In"}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleRegister} className="space-y-4">
+              {error && (
+                <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600">
+                  {error}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Company name
+                </label>
+                <input
+                  type="text"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="Acme Publishing"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Company slug
+                </label>
+                <input
+                  type="text"
+                  value={registerCompanySlug}
+                  onChange={(e) => setRegisterCompanySlug(e.target.value)}
+                  placeholder={suggestedSlug || "acme-publishing"}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Users will use this slug when signing in.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Admin display name
+                </label>
+                <input
+                  type="text"
+                  value={adminDisplayName}
+                  onChange={(e) => setAdminDisplayName(e.target.value)}
+                  placeholder="Jane Admin"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Admin username
+                </label>
+                <input
+                  type="text"
+                  value={adminUsername}
+                  onChange={(e) => setAdminUsername(e.target.value)}
+                  placeholder="jane"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  placeholder="Create a password"
+                  autoComplete="new-password"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400 transition-all"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-medium rounded-xl shadow-sm hover:shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Creating company..." : "Create Company"}
+              </button>
+            </form>
+          )}
         </div>
 
         <div className="mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
@@ -135,7 +319,14 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
             Demo Accounts
           </h3>
           <p className="text-xs text-slate-500 mb-3">
-            Password for all accounts: <code className="px-1.5 py-0.5 rounded bg-slate-100 font-mono text-slate-600">password123</code>
+            Company slug:{" "}
+            <code className="px-1.5 py-0.5 rounded bg-slate-100 font-mono text-slate-600">
+              demo-company
+            </code>{" "}
+            · Password for all accounts:{" "}
+            <code className="px-1.5 py-0.5 rounded bg-slate-100 font-mono text-slate-600">
+              password123
+            </code>
           </p>
           <div className="space-y-2">
             {DEMO_USERS.map((user) => (

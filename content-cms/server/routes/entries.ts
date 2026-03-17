@@ -15,6 +15,7 @@ interface EntryVersion {
 
 interface ContentEntry {
 	id: string;
+	companyId: string;
 	modelId: string;
 	values: Record<string, unknown>;
 	status: EntryStatus;
@@ -89,9 +90,10 @@ function normalizeLocalizedFieldValue(
 
 function sanitizeEntryValues(
 	model: ContentModel,
+	companyId: string,
 	values: Record<string, unknown>,
 ): { values?: Record<string, unknown>; error?: string } {
-	const settings = store.getLocalizationSettings();
+	const settings = store.getLocalizationSettings(companyId);
 	const fieldBySlug = new Map(model.fields.map((field) => [field.slug, field]));
 	const sanitized = cloneValues(values);
 
@@ -124,6 +126,7 @@ function normalizeEntry(entry: Partial<ContentEntry>): ContentEntry {
 
 	return {
 		id: entry.id ?? "",
+		companyId: entry.companyId ?? "",
 		modelId: entry.modelId ?? "",
 		values: isObjectRecord(entry.values) ? entry.values : {},
 		status:
@@ -146,14 +149,23 @@ function normalizeEntry(entry: Partial<ContentEntry>): ContentEntry {
 router.get("/model/:modelId", (req: Request, res: Response) => {
 	const modelId = getParam(req.params.modelId);
 	const entries = store
-		.findByField<ContentEntry>(COLLECTION, "modelId", modelId)
+		.findByField<ContentEntry>(
+			COLLECTION,
+			"modelId",
+			modelId,
+			req.user!.companyId,
+		)
 		.map(normalizeEntry);
 	res.json({ success: true, data: entries });
 });
 
 router.get("/:id/versions", (req: Request, res: Response) => {
 	const entryId = getParam(req.params.id);
-	const existing = store.getById<ContentEntry>(COLLECTION, entryId);
+	const existing = store.getById<ContentEntry>(
+		COLLECTION,
+		entryId,
+		req.user!.companyId,
+	);
 	if (!existing) {
 		res.status(404).json({ success: false, error: "Entry not found" });
 		return;
@@ -168,7 +180,11 @@ router.get("/:id/versions", (req: Request, res: Response) => {
 
 router.get("/:id", (req: Request, res: Response) => {
 	const entryId = getParam(req.params.id);
-	const existing = store.getById<ContentEntry>(COLLECTION, entryId);
+	const existing = store.getById<ContentEntry>(
+		COLLECTION,
+		entryId,
+		req.user!.companyId,
+	);
 	if (!existing) {
 		res.status(404).json({ success: false, error: "Entry not found" });
 		return;
@@ -187,13 +203,17 @@ router.post("/", requireRole("writer"), (req: Request, res: Response) => {
 		return;
 	}
 
-	const model = store.getById<ContentModel>("models", modelId);
+	const model = store.getById<ContentModel>(
+		"models",
+		modelId,
+		req.user!.companyId,
+	);
 	if (!model) {
 		res.status(404).json({ success: false, error: "Content model not found" });
 		return;
 	}
 
-	const sanitized = sanitizeEntryValues(model, values);
+	const sanitized = sanitizeEntryValues(model, req.user!.companyId, values);
 	if (sanitized.error || !sanitized.values) {
 		res.status(400).json({
 			success: false,
@@ -205,6 +225,7 @@ router.post("/", requireRole("writer"), (req: Request, res: Response) => {
 	const now = new Date().toISOString();
 	const entry: ContentEntry = {
 		id: uuidv4(),
+		companyId: req.user!.companyId,
 		modelId,
 		values: sanitized.values,
 		status: "draft",
@@ -224,7 +245,11 @@ router.put(
 	requireRole("approver"),
 	(req: Request, res: Response) => {
 		const entryId = getParam(req.params.id);
-		const existingRaw = store.getById<ContentEntry>(COLLECTION, entryId);
+		const existingRaw = store.getById<ContentEntry>(
+			COLLECTION,
+			entryId,
+			req.user!.companyId,
+		);
 		if (!existingRaw) {
 			res.status(404).json({ success: false, error: "Entry not found" });
 			return;
@@ -240,12 +265,17 @@ router.put(
 			createdAt: now,
 		};
 
-		const updated = store.update<ContentEntry>(COLLECTION, entryId, {
-			status: "published",
-			versions: [...existing.versions, version],
-			currentVersionId: version.id,
-			updatedAt: now,
-		});
+		const updated = store.update<ContentEntry>(
+			COLLECTION,
+			entryId,
+			{
+				status: "published",
+				versions: [...existing.versions, version],
+				currentVersionId: version.id,
+				updatedAt: now,
+			},
+			req.user!.companyId,
+		);
 
 		res.json({ success: true, data: normalizeEntry(updated ?? existing) });
 	},
@@ -256,16 +286,25 @@ router.put(
 	requireRole("approver"),
 	(req: Request, res: Response) => {
 		const entryId = getParam(req.params.id);
-		const existing = store.getById<ContentEntry>(COLLECTION, entryId);
+		const existing = store.getById<ContentEntry>(
+			COLLECTION,
+			entryId,
+			req.user!.companyId,
+		);
 		if (!existing) {
 			res.status(404).json({ success: false, error: "Entry not found" });
 			return;
 		}
 
-		const updated = store.update<ContentEntry>(COLLECTION, entryId, {
-			status: "archived",
-			updatedAt: new Date().toISOString(),
-		});
+		const updated = store.update<ContentEntry>(
+			COLLECTION,
+			entryId,
+			{
+				status: "archived",
+				updatedAt: new Date().toISOString(),
+			},
+			req.user!.companyId,
+		);
 		res.json({ success: true, data: normalizeEntry(updated ?? existing) });
 	},
 );
@@ -275,23 +314,36 @@ router.put(
 	requireRole("approver"),
 	(req: Request, res: Response) => {
 		const entryId = getParam(req.params.id);
-		const existing = store.getById<ContentEntry>(COLLECTION, entryId);
+		const existing = store.getById<ContentEntry>(
+			COLLECTION,
+			entryId,
+			req.user!.companyId,
+		);
 		if (!existing) {
 			res.status(404).json({ success: false, error: "Entry not found" });
 			return;
 		}
 
-		const updated = store.update<ContentEntry>(COLLECTION, entryId, {
-			status: "draft",
-			updatedAt: new Date().toISOString(),
-		});
+		const updated = store.update<ContentEntry>(
+			COLLECTION,
+			entryId,
+			{
+				status: "draft",
+				updatedAt: new Date().toISOString(),
+			},
+			req.user!.companyId,
+		);
 		res.json({ success: true, data: normalizeEntry(updated ?? existing) });
 	},
 );
 
 router.put("/:id", requireRole("writer"), (req: Request, res: Response) => {
 	const entryId = getParam(req.params.id);
-	const existingRaw = store.getById<ContentEntry>(COLLECTION, entryId);
+	const existingRaw = store.getById<ContentEntry>(
+		COLLECTION,
+		entryId,
+		req.user!.companyId,
+	);
 	if (!existingRaw) {
 		res.status(404).json({ success: false, error: "Entry not found" });
 		return;
@@ -319,7 +371,11 @@ router.put("/:id", requireRole("writer"), (req: Request, res: Response) => {
 			return;
 		}
 
-		const model = store.getById<ContentModel>("models", existing.modelId);
+		const model = store.getById<ContentModel>(
+			"models",
+			existing.modelId,
+			req.user!.companyId,
+		);
 		if (!model) {
 			res.status(404).json({
 				success: false,
@@ -328,7 +384,11 @@ router.put("/:id", requireRole("writer"), (req: Request, res: Response) => {
 			return;
 		}
 
-		const sanitized = sanitizeEntryValues(model, values);
+		const sanitized = sanitizeEntryValues(
+			model,
+			req.user!.companyId,
+			values,
+		);
 		if (sanitized.error || !sanitized.values) {
 			res.status(400).json({
 				success: false,
@@ -344,13 +404,22 @@ router.put("/:id", requireRole("writer"), (req: Request, res: Response) => {
 		}
 	}
 
-	const updated = store.update<ContentEntry>(COLLECTION, entryId, updates);
+	const updated = store.update<ContentEntry>(
+		COLLECTION,
+		entryId,
+		updates,
+		req.user!.companyId,
+	);
 	res.json({ success: true, data: normalizeEntry(updated ?? existing) });
 });
 
 router.delete("/:id", requireRole("writer"), (req: Request, res: Response) => {
 	const entryId = getParam(req.params.id);
-	const existing = store.getById<ContentEntry>(COLLECTION, entryId);
+	const existing = store.getById<ContentEntry>(
+		COLLECTION,
+		entryId,
+		req.user!.companyId,
+	);
 	if (!existing) {
 		res.status(404).json({ success: false, error: "Entry not found" });
 		return;
@@ -365,7 +434,7 @@ router.delete("/:id", requireRole("writer"), (req: Request, res: Response) => {
 		return;
 	}
 
-	store.remove<ContentEntry>(COLLECTION, entryId);
+	store.remove<ContentEntry>(COLLECTION, entryId, req.user!.companyId);
 	res.json({ success: true });
 });
 

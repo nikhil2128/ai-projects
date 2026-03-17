@@ -15,6 +15,7 @@ interface FieldDefinition {
 
 interface ContentModel {
   id: string;
+  companyId: string;
   name: string;
   slug: string;
   description: string;
@@ -66,13 +67,17 @@ function toFieldDefinition(field: Partial<FieldDefinition>): FieldDefinition | n
 }
 
 router.get("/", (_req: Request, res: Response) => {
-  const models = store.getAll<ContentModel>(COLLECTION);
+  const models = store.getAll<ContentModel>(COLLECTION, _req.user!.companyId);
   res.json({ success: true, data: models });
 });
 
 router.get("/:id", (req: Request, res: Response) => {
   const modelId = getParam(req.params.id);
-  const model = store.getById<ContentModel>(COLLECTION, modelId);
+  const model = store.getById<ContentModel>(
+    COLLECTION,
+    modelId,
+    req.user!.companyId,
+  );
   if (!model) {
     res.status(404).json({ success: false, error: "Model not found" });
     return;
@@ -108,6 +113,7 @@ router.post("/", (req: Request, res: Response) => {
   const now = new Date().toISOString();
   const model: ContentModel = {
     id: uuidv4(),
+    companyId: req.user!.companyId,
     name,
     slug: slugify(name),
     description: description || "",
@@ -122,7 +128,11 @@ router.post("/", (req: Request, res: Response) => {
 
 router.put("/:id", (req: Request, res: Response) => {
   const modelId = getParam(req.params.id);
-  const existing = store.getById<ContentModel>(COLLECTION, modelId);
+  const existing = store.getById<ContentModel>(
+    COLLECTION,
+    modelId,
+    req.user!.companyId,
+  );
   if (!existing) {
     res.status(404).json({ success: false, error: "Model not found" });
     return;
@@ -153,18 +163,27 @@ router.put("/:id", (req: Request, res: Response) => {
     updates.fields = fieldDefinitions;
   }
 
-  const updated = store.update<ContentModel>(COLLECTION, modelId, updates);
+  const updated = store.update<ContentModel>(
+    COLLECTION,
+    modelId,
+    updates,
+    req.user!.companyId,
+  );
   res.json({ success: true, data: updated });
 });
 
 router.delete("/:id", (req: Request, res: Response) => {
   const modelId = getParam(req.params.id);
-  const deleted = store.remove<ContentModel>(COLLECTION, modelId);
+  const deleted = store.remove<ContentModel>(
+    COLLECTION,
+    modelId,
+    req.user!.companyId,
+  );
   if (!deleted) {
     res.status(404).json({ success: false, error: "Model not found" });
     return;
   }
-  store.removeByField("entries", "modelId", modelId);
+  store.removeByField("entries", "modelId", modelId, req.user!.companyId);
   res.json({ success: true });
 });
 

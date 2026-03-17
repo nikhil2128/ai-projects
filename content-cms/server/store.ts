@@ -18,6 +18,7 @@ interface FieldDefinition {
 
 interface ContentModel {
 	id: string;
+	companyId: string;
 	name: string;
 	slug: string;
 	description: string;
@@ -27,6 +28,7 @@ interface ContentModel {
 }
 
 type EntryStatus = "draft" | "published" | "archived";
+export type UserRole = "writer" | "reviewer" | "approver";
 
 interface EntryVersion {
 	id: string;
@@ -38,6 +40,7 @@ interface EntryVersion {
 
 interface ContentEntry {
 	id: string;
+	companyId: string;
 	modelId: string;
 	values: Record<string, unknown>;
 	status: EntryStatus;
@@ -50,6 +53,7 @@ interface ContentEntry {
 
 interface ModelRow {
 	id: string;
+	company_id: string;
 	name: string;
 	slug: string;
 	description: string;
@@ -60,6 +64,7 @@ interface ModelRow {
 
 interface EntryRow {
 	id: string;
+	company_id: string;
 	model_id: string;
 	values_json: string;
 	status: EntryStatus;
@@ -69,13 +74,14 @@ interface EntryRow {
 	updated_at: string;
 }
 
-interface UserRow {
+export interface UserRow {
 	id: string;
+	company_id: string;
 	username: string;
 	password_hash: string;
 	password_salt: string;
 	display_name: string;
-	role: string;
+	role: UserRole;
 	created_at: string;
 }
 
@@ -87,9 +93,32 @@ interface EntryVersionRow {
 	created_at: string;
 }
 
+interface CompanyRow {
+	id: string;
+	name: string;
+	slug: string;
+	created_at: string;
+}
+
 interface LocaleOption {
 	code: string;
 	label: string;
+}
+
+export interface Company {
+	id: string;
+	name: string;
+	slug: string;
+	createdAt: string;
+}
+
+export interface CompanyUser {
+	id: string;
+	companyId: string;
+	username: string;
+	displayName: string;
+	role: UserRole;
+	createdAt: string;
 }
 
 export interface LocalizationSettings {
@@ -98,9 +127,26 @@ export interface LocalizationSettings {
 	availableLocales: LocaleOption[];
 }
 
+export interface CreateCompanyInput {
+	companyName: string;
+	companySlug: string;
+	adminUsername: string;
+	adminDisplayName: string;
+	password: string;
+}
+
+export interface CreateCompanyUserInput {
+	username: string;
+	displayName: string;
+	password: string;
+	role: UserRole;
+}
+
 type CollectionName = "models" | "entries";
 
 const DEFAULT_LOCALE = "en-US";
+const DEFAULT_COMPANY_NAME = "Demo Company";
+const DEFAULT_COMPANY_SLUG = "demo-company";
 const AVAILABLE_LOCALE_OPTIONS: LocaleOption[] = [
 	{ code: "en-US", label: "English (United States)" },
 	{ code: "en-GB", label: "English (United Kingdom)" },
@@ -135,6 +181,26 @@ function parseJson<T>(value: string, fallback: T): T {
 	} catch {
 		return fallback;
 	}
+}
+
+function mapCompany(row: CompanyRow): Company {
+	return {
+		id: row.id,
+		name: row.name,
+		slug: row.slug,
+		createdAt: row.created_at,
+	};
+}
+
+function mapCompanyUser(row: UserRow): CompanyUser {
+	return {
+		id: row.id,
+		companyId: row.company_id,
+		username: row.username,
+		displayName: row.display_name,
+		role: row.role,
+		createdAt: row.created_at,
+	};
 }
 
 function normalizeEnabledLocales(locales: unknown): string[] {
@@ -198,6 +264,7 @@ function loadVersions(entryId: string): EntryVersion[] {
 function mapModel(row: ModelRow): ContentModel {
 	return {
 		id: row.id,
+		companyId: row.company_id,
 		name: row.name,
 		slug: row.slug,
 		description: row.description,
@@ -210,6 +277,7 @@ function mapModel(row: ModelRow): ContentModel {
 function mapEntry(row: EntryRow): ContentEntry {
 	return {
 		id: row.id,
+		companyId: row.company_id,
 		modelId: row.model_id,
 		values: parseJson<Record<string, unknown>>(row.values_json, {}),
 		status: row.status,
@@ -258,16 +326,18 @@ function insertModel(model: ContentModel) {
 		`
       INSERT INTO content_models (
         id,
+        company_id,
         name,
         slug,
         description,
         fields_json,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
 	).run(
 		model.id,
+		model.companyId,
 		model.name,
 		model.slug,
 		model.description,
@@ -282,6 +352,7 @@ function insertEntry(entry: ContentEntry) {
 		`
       INSERT INTO content_entries (
         id,
+        company_id,
         model_id,
         values_json,
         status,
@@ -289,13 +360,14 @@ function insertEntry(entry: ContentEntry) {
         created_by,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
 	);
 
 	const createWithVersions = db.transaction((nextEntry: ContentEntry) => {
 		createEntry.run(
 			nextEntry.id,
+			nextEntry.companyId,
 			nextEntry.modelId,
 			JSON.stringify(nextEntry.values),
 			nextEntry.status,
@@ -321,7 +393,7 @@ function updateModelRecord(model: ContentModel) {
         fields_json = ?,
         created_at = ?,
         updated_at = ?
-      WHERE id = ?
+      WHERE id = ? AND company_id = ?
     `,
 	).run(
 		model.name,
@@ -331,6 +403,7 @@ function updateModelRecord(model: ContentModel) {
 		model.createdAt,
 		model.updatedAt,
 		model.id,
+		model.companyId,
 	);
 }
 
@@ -345,7 +418,7 @@ function updateEntryRecord(entry: ContentEntry, syncVersions: boolean) {
         current_version_id = ?,
         created_at = ?,
         updated_at = ?
-      WHERE id = ?
+      WHERE id = ? AND company_id = ?
     `,
 	);
 
@@ -359,6 +432,7 @@ function updateEntryRecord(entry: ContentEntry, syncVersions: boolean) {
 				nextEntry.createdAt,
 				nextEntry.updatedAt,
 				nextEntry.id,
+				nextEntry.companyId,
 			);
 
 			if (shouldSyncVersions) {
@@ -390,7 +464,7 @@ function hasLegacyMigrationCompleted(): boolean {
 	return Boolean(row?.value);
 }
 
-function migrateLegacyJsonData() {
+function migrateLegacyJsonData(defaultCompanyId: string) {
 	if (hasLegacyMigrationCompleted()) {
 		return;
 	}
@@ -417,23 +491,23 @@ function migrateLegacyJsonData() {
 		return;
 	}
 
-	const models = readLegacyCollection<ContentModel>("models");
-	const entries = readLegacyCollection<ContentEntry>("entries");
+	const models = readLegacyCollection<Omit<ContentModel, "companyId">>("models");
+	const entries = readLegacyCollection<Omit<ContentEntry, "companyId">>("entries");
 
 	if (models.length === 0 && entries.length === 0) {
 		markLegacyMigrationComplete();
 		return;
 	}
 
-	// Import any previously persisted JSON data into SQLite once on first boot.
 	const migrate = db.transaction(() => {
 		for (const model of models) {
-			insertModel(model);
+			insertModel({ ...model, companyId: defaultCompanyId });
 		}
 
 		for (const entry of entries) {
 			insertEntry({
 				...entry,
+				companyId: defaultCompanyId,
 				versions: Array.isArray(entry.versions) ? entry.versions : [],
 			});
 		}
@@ -452,6 +526,13 @@ function initDatabase() {
 	database.pragma("journal_mode = WAL");
 
 	database.exec(`
+    CREATE TABLE IF NOT EXISTS companies (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT UNIQUE NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
@@ -494,6 +575,13 @@ function initDatabase() {
       UNIQUE (entry_id, version_number)
     );
 
+    CREATE TABLE IF NOT EXISTS company_settings (
+      company_id TEXT PRIMARY KEY,
+      localization_settings_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_content_entries_model_id
       ON content_entries(model_id);
 
@@ -509,6 +597,165 @@ function initDatabase() {
 	return database;
 }
 
+function tableColumns(tableName: string): { name: string }[] {
+	return db.pragma(`table_info(${tableName})`) as { name: string }[];
+}
+
+function ensureDefaultCompany(): string {
+	const existing = getCompanyBySlug(DEFAULT_COMPANY_SLUG);
+	if (existing) {
+		return existing.id;
+	}
+
+	const firstCompany = db
+		.prepare("SELECT id, name, slug, created_at FROM companies ORDER BY created_at ASC LIMIT 1")
+		.get() as CompanyRow | undefined;
+	if (firstCompany) {
+		return firstCompany.id;
+	}
+
+	const companyId = crypto.randomUUID();
+	db.prepare(
+		`
+      INSERT INTO companies (id, name, slug, created_at)
+      VALUES (?, ?, ?, ?)
+    `,
+	).run(
+		companyId,
+		DEFAULT_COMPANY_NAME,
+		DEFAULT_COMPANY_SLUG,
+		new Date().toISOString(),
+	);
+	return companyId;
+}
+
+function migrateUsersTable(defaultCompanyId: string) {
+	const columns = tableColumns("users");
+	if (
+		columns.some((column) => column.name === "company_id") &&
+		columns.some((column) => column.name === "username")
+	) {
+		db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_company_username
+      ON users(company_id, username)
+    `);
+		return;
+	}
+
+	db.exec(`
+    CREATE TABLE users_v2 (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      password_salt TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('writer', 'reviewer', 'approver')),
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      UNIQUE (company_id, username)
+    )
+  `);
+
+	db.prepare(
+		`
+      INSERT INTO users_v2 (
+        id,
+        company_id,
+        username,
+        password_hash,
+        password_salt,
+        display_name,
+        role,
+        created_at
+      )
+      SELECT
+        id,
+        ?,
+        username,
+        password_hash,
+        password_salt,
+        display_name,
+        role,
+        created_at
+      FROM users
+    `,
+	).run(defaultCompanyId);
+
+	db.exec(`
+    DROP TABLE users;
+    ALTER TABLE users_v2 RENAME TO users;
+    CREATE INDEX IF NOT EXISTS idx_users_company_id ON users(company_id);
+  `);
+}
+
+function migrateCompanyScopedColumn(tableName: "content_models" | "content_entries", defaultCompanyId: string) {
+	const columns = tableColumns(tableName);
+	if (!columns.some((column) => column.name === "company_id")) {
+		db.exec(`ALTER TABLE ${tableName} ADD COLUMN company_id TEXT`);
+	}
+	if (tableName === "content_entries" && !columns.some((column) => column.name === "created_by")) {
+		db.exec("ALTER TABLE content_entries ADD COLUMN created_by TEXT");
+	}
+	db.prepare(
+		`UPDATE ${tableName} SET company_id = ? WHERE company_id IS NULL OR company_id = ''`,
+	).run(defaultCompanyId);
+}
+
+function migrateLocalizationSettings(defaultCompanyId: string) {
+	const existing = db
+		.prepare("SELECT company_id FROM company_settings WHERE company_id = ?")
+		.get(defaultCompanyId) as { company_id: string } | undefined;
+	if (existing) {
+		return;
+	}
+
+	const legacy = db
+		.prepare(
+			"SELECT value FROM app_metadata WHERE key = 'localization_settings'",
+		)
+		.get() as { value: string } | undefined;
+
+	const parsed = legacy
+		? parseJson<{ enabledLocales?: string[] }>(legacy.value, {})
+		: {};
+	const settings = buildLocalizationSettings(parsed.enabledLocales);
+
+	db.prepare(
+		`
+      INSERT INTO company_settings (company_id, localization_settings_json, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(company_id) DO UPDATE SET
+        localization_settings_json = excluded.localization_settings_json,
+        updated_at = excluded.updated_at
+    `,
+	).run(
+		defaultCompanyId,
+		JSON.stringify({ enabledLocales: settings.enabledLocales }),
+		new Date().toISOString(),
+	);
+}
+
+function migrateSchema(): string {
+	const defaultCompanyId = ensureDefaultCompany();
+	migrateUsersTable(defaultCompanyId);
+	migrateCompanyScopedColumn("content_models", defaultCompanyId);
+	migrateCompanyScopedColumn("content_entries", defaultCompanyId);
+
+	db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_users_company_id
+      ON users(company_id);
+
+    CREATE INDEX IF NOT EXISTS idx_content_models_company_id
+      ON content_models(company_id);
+
+    CREATE INDEX IF NOT EXISTS idx_content_entries_company_id
+      ON content_entries(company_id);
+  `);
+
+	return defaultCompanyId;
+}
+
 function assertCollection(
 	collection: string,
 ): asserts collection is CollectionName {
@@ -518,18 +765,10 @@ function assertCollection(
 }
 
 const db = initDatabase();
-migrateSchema();
-migrateLegacyJsonData();
+const defaultCompanyId = migrateSchema();
+migrateLegacyJsonData(defaultCompanyId);
+migrateLocalizationSettings(defaultCompanyId);
 seedDemoUsers();
-
-function migrateSchema() {
-	const columns = db.pragma("table_info(content_entries)") as {
-		name: string;
-	}[];
-	if (!columns.some((col) => col.name === "created_by")) {
-		db.exec("ALTER TABLE content_entries ADD COLUMN created_by TEXT");
-	}
-}
 
 function seedDemoUsers() {
 	const count = (
@@ -539,7 +778,14 @@ function seedDemoUsers() {
 	).count;
 	if (count > 0) return;
 
-	const demoUsers = [
+	const demoCompany = getCompanyBySlug(DEFAULT_COMPANY_SLUG) ?? {
+		id: defaultCompanyId,
+		name: DEFAULT_COMPANY_NAME,
+		slug: DEFAULT_COMPANY_SLUG,
+		createdAt: new Date().toISOString(),
+	};
+
+	const demoUsers: CreateCompanyUserInput[] = [
 		{
 			username: "alice",
 			displayName: "Alice Writer",
@@ -566,41 +812,162 @@ function seedDemoUsers() {
 		},
 	];
 
-	const insert = db.prepare(
-		`
-      INSERT INTO users (id, username, password_hash, password_salt, display_name, role, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `,
-	);
-
-	const now = new Date().toISOString();
 	for (const user of demoUsers) {
-		const { hash, salt } = hashPassword(user.password);
-		insert.run(
-			crypto.randomUUID(),
-			user.username,
-			hash,
-			salt,
-			user.displayName,
-			user.role,
-			now,
-		);
+		createCompanyUser(demoCompany.id, user);
 	}
 }
 
-export function getAll<T>(collection: string): T[] {
+export function getCompanyBySlug(slug: string): Company | undefined {
+	const row = db
+		.prepare("SELECT id, name, slug, created_at FROM companies WHERE slug = ?")
+		.get(slug) as CompanyRow | undefined;
+	return row ? mapCompany(row) : undefined;
+}
+
+export function getCompanyById(id: string): Company | undefined {
+	const row = db
+		.prepare("SELECT id, name, slug, created_at FROM companies WHERE id = ?")
+		.get(id) as CompanyRow | undefined;
+	return row ? mapCompany(row) : undefined;
+}
+
+export function createCompanyWithAdmin(
+	input: CreateCompanyInput,
+): { company: Company; user: CompanyUser } {
+	const createInTransaction = db.transaction(
+		(nextInput: CreateCompanyInput): { company: Company; user: CompanyUser } => {
+			const existingCompany = getCompanyBySlug(nextInput.companySlug);
+			if (existingCompany) {
+				throw new Error("Company slug is already in use");
+			}
+
+			const companyId = crypto.randomUUID();
+			const createdAt = new Date().toISOString();
+			db.prepare(
+				`
+          INSERT INTO companies (id, name, slug, created_at)
+          VALUES (?, ?, ?, ?)
+        `,
+			).run(
+				companyId,
+				nextInput.companyName,
+				nextInput.companySlug,
+				createdAt,
+			);
+
+			const user = createCompanyUser(companyId, {
+				username: nextInput.adminUsername,
+				displayName: nextInput.adminDisplayName,
+				password: nextInput.password,
+				role: "approver",
+			});
+
+			db.prepare(
+				`
+          INSERT INTO company_settings (company_id, localization_settings_json, updated_at)
+          VALUES (?, ?, ?)
+        `,
+			).run(
+				companyId,
+				JSON.stringify({ enabledLocales: [DEFAULT_LOCALE] }),
+				createdAt,
+			);
+
+			return {
+				company: {
+					id: companyId,
+					name: nextInput.companyName,
+					slug: nextInput.companySlug,
+					createdAt,
+				},
+				user,
+			};
+		},
+	);
+
+	return createInTransaction(input);
+}
+
+export function createCompanyUser(
+	companyId: string,
+	input: CreateCompanyUserInput,
+): CompanyUser {
+	const company = getCompanyById(companyId);
+	if (!company) {
+		throw new Error("Company not found");
+	}
+
+	const existingUser = getUserByUsername(companyId, input.username);
+	if (existingUser) {
+		throw new Error("Username is already in use for this company");
+	}
+
+	const { hash, salt } = hashPassword(input.password);
+	const createdAt = new Date().toISOString();
+	const userId = crypto.randomUUID();
+
+	db.prepare(
+		`
+      INSERT INTO users (
+        id,
+        company_id,
+        username,
+        password_hash,
+        password_salt,
+        display_name,
+        role,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+	).run(
+		userId,
+		companyId,
+		input.username,
+		hash,
+		salt,
+		input.displayName,
+		input.role,
+		createdAt,
+	);
+
+	return {
+		id: userId,
+		companyId,
+		username: input.username,
+		displayName: input.displayName,
+		role: input.role,
+		createdAt,
+	};
+}
+
+export function listCompanyUsers(companyId: string): CompanyUser[] {
+	const rows = db
+		.prepare(
+			`
+        SELECT *
+        FROM users
+        WHERE company_id = ?
+        ORDER BY created_at ASC
+      `,
+		)
+		.all(companyId) as UserRow[];
+	return rows.map(mapCompanyUser);
+}
+
+export function getAll<T>(collection: string, companyId: string): T[] {
 	assertCollection(collection);
 
 	if (collection === "models") {
 		const rows = db
 			.prepare(
 				`
-          SELECT id, name, slug, description, fields_json, created_at, updated_at
+          SELECT id, company_id, name, slug, description, fields_json, created_at, updated_at
           FROM content_models
+          WHERE company_id = ?
           ORDER BY created_at ASC
         `,
 			)
-			.all() as ModelRow[];
+			.all(companyId) as ModelRow[];
 
 		return rows.map((row) => mapModel(row) as unknown as T);
 	}
@@ -608,12 +975,13 @@ export function getAll<T>(collection: string): T[] {
 	const rows = db
 		.prepare(
 			`
-        SELECT id, model_id, values_json, status, current_version_id, created_by, created_at, updated_at
+        SELECT id, company_id, model_id, values_json, status, current_version_id, created_by, created_at, updated_at
         FROM content_entries
+        WHERE company_id = ?
         ORDER BY created_at ASC
       `,
 		)
-		.all() as EntryRow[];
+		.all(companyId) as EntryRow[];
 
 	return rows.map((row) => mapEntry(row) as unknown as T);
 }
@@ -621,6 +989,7 @@ export function getAll<T>(collection: string): T[] {
 export function getById<T extends { id: string }>(
 	collection: string,
 	id: string,
+	companyId: string,
 ): T | undefined {
 	assertCollection(collection);
 
@@ -628,12 +997,12 @@ export function getById<T extends { id: string }>(
 		const row = db
 			.prepare(
 				`
-          SELECT id, name, slug, description, fields_json, created_at, updated_at
+          SELECT id, company_id, name, slug, description, fields_json, created_at, updated_at
           FROM content_models
-          WHERE id = ?
+          WHERE id = ? AND company_id = ?
         `,
 			)
-			.get(id) as ModelRow | undefined;
+			.get(id, companyId) as ModelRow | undefined;
 
 		return row ? (mapModel(row) as unknown as T) : undefined;
 	}
@@ -641,17 +1010,17 @@ export function getById<T extends { id: string }>(
 	const row = db
 		.prepare(
 			`
-        SELECT id, model_id, values_json, status, current_version_id, created_by, created_at, updated_at
+        SELECT id, company_id, model_id, values_json, status, current_version_id, created_by, created_at, updated_at
         FROM content_entries
-        WHERE id = ?
+        WHERE id = ? AND company_id = ?
       `,
 		)
-		.get(id) as EntryRow | undefined;
+		.get(id, companyId) as EntryRow | undefined;
 
 	return row ? (mapEntry(row) as unknown as T) : undefined;
 }
 
-export function create<T extends { id: string }>(
+export function create<T extends { id: string; companyId: string }>(
 	collection: string,
 	item: T,
 ): T {
@@ -666,14 +1035,15 @@ export function create<T extends { id: string }>(
 	return item;
 }
 
-export function update<T extends { id: string }>(
+export function update<T extends { id: string; companyId: string }>(
 	collection: string,
 	id: string,
 	updates: Partial<T>,
+	companyId: string,
 ): T | undefined {
 	assertCollection(collection);
 
-	const existing = getById<T>(collection, id);
+	const existing = getById<T>(collection, id, companyId);
 	if (!existing) {
 		return undefined;
 	}
@@ -682,26 +1052,31 @@ export function update<T extends { id: string }>(
 
 	if (collection === "models") {
 		updateModelRecord(nextItem as unknown as ContentModel);
-		return getById<T>(collection, id);
+		return getById<T>(collection, id, companyId);
 	}
 
 	updateEntryRecord(
 		nextItem as unknown as ContentEntry,
 		Object.prototype.hasOwnProperty.call(updates, "versions"),
 	);
-	return getById<T>(collection, id);
+	return getById<T>(collection, id, companyId);
 }
 
 export function remove<T extends { id: string }>(
 	collection: string,
 	id: string,
+	companyId: string,
 ): boolean {
 	assertCollection(collection);
 
 	const result =
 		collection === "models"
-			? db.prepare("DELETE FROM content_models WHERE id = ?").run(id)
-			: db.prepare("DELETE FROM content_entries WHERE id = ?").run(id);
+			? db
+					.prepare("DELETE FROM content_models WHERE id = ? AND company_id = ?")
+					.run(id, companyId)
+			: db
+					.prepare("DELETE FROM content_entries WHERE id = ? AND company_id = ?")
+					.run(id, companyId);
 
 	return result.changes > 0;
 }
@@ -710,6 +1085,7 @@ export function findByField<T>(
 	collection: string,
 	field: string,
 	value: unknown,
+	companyId: string,
 ): T[] {
 	assertCollection(collection);
 
@@ -717,18 +1093,18 @@ export function findByField<T>(
 		const rows = db
 			.prepare(
 				`
-          SELECT id, model_id, values_json, status, current_version_id, created_by, created_at, updated_at
+          SELECT id, company_id, model_id, values_json, status, current_version_id, created_by, created_at, updated_at
           FROM content_entries
-          WHERE model_id = ?
+          WHERE model_id = ? AND company_id = ?
           ORDER BY created_at ASC
         `,
 			)
-			.all(String(value)) as EntryRow[];
+			.all(String(value), companyId) as EntryRow[];
 
 		return rows.map((row) => mapEntry(row) as unknown as T);
 	}
 
-	return getAll<Record<string, unknown>>(collection).filter(
+	return getAll<Record<string, unknown>>(collection, companyId).filter(
 		(item) => item[field] === value,
 	) as T[];
 }
@@ -737,13 +1113,16 @@ export function removeByField<T>(
 	collection: string,
 	field: string,
 	value: unknown,
+	companyId: string,
 ): number {
 	assertCollection(collection);
 
 	if (collection === "entries" && field === "modelId") {
 		const result = db
-			.prepare("DELETE FROM content_entries WHERE model_id = ?")
-			.run(String(value));
+			.prepare(
+				"DELETE FROM content_entries WHERE model_id = ? AND company_id = ?",
+			)
+			.run(String(value), companyId);
 
 		return result.changes;
 	}
@@ -751,47 +1130,65 @@ export function removeByField<T>(
 	return 0;
 }
 
-export function getLocalizationSettings(): LocalizationSettings {
+export function getLocalizationSettings(companyId: string): LocalizationSettings {
 	const row = db
 		.prepare(
-			"SELECT value FROM app_metadata WHERE key = 'localization_settings'",
+			`
+        SELECT localization_settings_json
+        FROM company_settings
+        WHERE company_id = ?
+      `,
 		)
-		.get() as { value: string } | undefined;
+		.get(companyId) as { localization_settings_json: string } | undefined;
 
 	const parsed = row
-		? parseJson<{ enabledLocales?: string[] }>(row.value, {})
+		? parseJson<{ enabledLocales?: string[] }>(row.localization_settings_json, {})
 		: undefined;
 
 	return buildLocalizationSettings(parsed?.enabledLocales);
 }
 
-export function getUserByUsername(username: string): UserRow | undefined {
-	return db.prepare("SELECT * FROM users WHERE username = ?").get(username) as
-		| UserRow
-		| undefined;
+export function getUserByUsername(
+	companyId: string,
+	username: string,
+): UserRow | undefined {
+	return db
+		.prepare("SELECT * FROM users WHERE company_id = ? AND username = ?")
+		.get(companyId, username) as UserRow | undefined;
 }
 
-export function getUserById(id: string): UserRow | undefined {
+export function getUserById(id: string, companyId?: string): UserRow | undefined {
+	if (companyId) {
+		return db
+			.prepare("SELECT * FROM users WHERE id = ? AND company_id = ?")
+			.get(id, companyId) as UserRow | undefined;
+	}
+
 	return db.prepare("SELECT * FROM users WHERE id = ?").get(id) as
 		| UserRow
 		| undefined;
 }
 
 export function updateLocalizationSettings(
+	companyId: string,
 	enabledLocales: string[],
 ): LocalizationSettings {
 	const settings = buildLocalizationSettings(enabledLocales);
 
 	db.prepare(
 		`
-      INSERT INTO app_metadata (key, value)
-      VALUES ('localization_settings', ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      INSERT INTO company_settings (company_id, localization_settings_json, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(company_id) DO UPDATE SET
+        localization_settings_json = excluded.localization_settings_json,
+        updated_at = excluded.updated_at
     `,
 	).run(
+		companyId,
 		JSON.stringify({
 			enabledLocales: settings.enabledLocales,
 		}),
+		new Date().toISOString(),
 	);
 
 	return settings;

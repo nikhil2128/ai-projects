@@ -6,8 +6,10 @@ import EntryList from "./components/EntryList";
 import EntryForm from "./components/EntryForm";
 import LocalizationSettings from "./components/LocalizationSettings";
 import LoginPage from "./components/LoginPage";
+import UserManagement from "./components/UserManagement";
 import type {
   AuthUser,
+  CompanyUser,
   ContentModel,
   ContentEntry,
   AppView,
@@ -19,6 +21,8 @@ import {
   getStoredToken,
   clearStoredToken,
   getMe,
+  fetchCompanyUsers,
+  createCompanyUser as createCompanyUserRequest,
   createModel,
   updateModel,
   fetchModel,
@@ -50,6 +54,7 @@ export default function App() {
       enabledLocales: ["en-US"],
       availableLocales: [],
     });
+  const [companyUsers, setCompanyUsers] = useState<CompanyUser[]>([]);
 
   useEffect(() => {
     const token = getStoredToken();
@@ -71,6 +76,11 @@ export default function App() {
     fetchLocalizationSettings().then(setLocalizationSettings).catch(console.error);
   }, [user]);
 
+  useEffect(() => {
+    if (!user || state.view !== "users" || user.role !== "approver") return;
+    fetchCompanyUsers().then(setCompanyUsers).catch(console.error);
+  }, [user, state.view]);
+
   const handleLogin = (loggedInUser: AuthUser) => {
     setUser(loggedInUser);
   };
@@ -78,6 +88,7 @@ export default function App() {
   const handleLogout = () => {
     clearStoredToken();
     setUser(null);
+    setCompanyUsers([]);
     setState({ view: "models", activeModel: null, activeEntry: null });
   };
 
@@ -102,6 +113,9 @@ export default function App() {
     } else if (state.view === "settings") {
       crumbs.push({ label: "Models", onClick: () => navigate("models") });
       crumbs.push({ label: "Localization Settings" });
+    } else if (state.view === "users") {
+      crumbs.push({ label: "Models", onClick: () => navigate("models") });
+      crumbs.push({ label: "User Management" });
     } else if (state.view === "model-edit" && state.activeModel) {
       crumbs.push({ label: "Models", onClick: () => navigate("models") });
       crumbs.push({ label: `Edit: ${state.activeModel.name}` });
@@ -184,6 +198,16 @@ export default function App() {
     navigate("models", null, null);
   };
 
+  const handleCreateCompanyUser = async (data: {
+    username: string;
+    displayName: string;
+    password: string;
+    role: AuthUser["role"];
+  }) => {
+    const created = await createCompanyUserRequest(data);
+    setCompanyUsers((current: CompanyUser[]) => [...current, created]);
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50/30 flex items-center justify-center">
@@ -202,6 +226,9 @@ export default function App() {
         user={user}
         onNavigateHome={() => navigate("models", null, null)}
         onOpenSettings={() => navigate("settings", null, null)}
+        onOpenUsers={
+          user.role === "approver" ? () => navigate("users", null, null) : undefined
+        }
         onLogout={handleLogout}
         breadcrumb={breadcrumb}
       />
@@ -219,6 +246,14 @@ export default function App() {
           settings={localizationSettings}
           onSave={handleUpdateLocalizationSettings}
           onCancel={() => navigate("models", null, null)}
+        />
+      )}
+
+      {state.view === "users" && user.role === "approver" && (
+        <UserManagement
+          companyName={user.companyName}
+          users={companyUsers}
+          onCreateUser={handleCreateCompanyUser}
         />
       )}
 

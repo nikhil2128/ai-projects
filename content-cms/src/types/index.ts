@@ -2,9 +2,21 @@ export type UserRole = "writer" | "reviewer" | "approver";
 
 export interface AuthUser {
 	id: string;
+	companyId: string;
+	companyName: string;
+	companySlug: string;
 	username: string;
 	displayName: string;
 	role: UserRole;
+}
+
+export interface CompanyUser {
+	id: string;
+	companyId: string;
+	username: string;
+	displayName: string;
+	role: UserRole;
+	createdAt: string;
 }
 
 export type FieldType =
@@ -29,6 +41,7 @@ export interface FieldDefinition {
 
 export interface ContentModel {
 	id: string;
+	companyId: string;
 	name: string;
 	slug: string;
 	description: string;
@@ -62,6 +75,7 @@ export type EntrySaveAction = "save-draft" | "publish";
 
 export interface ContentEntry {
 	id: string;
+	companyId: string;
 	modelId: string;
 	values: Record<string, unknown>;
 	status: EntryStatus;
@@ -75,6 +89,7 @@ export interface ContentEntry {
 export type AppView =
 	| "models"
 	| "settings"
+	| "users"
 	| "model-builder"
 	| "model-edit"
 	| "entries"

@@ -4,6 +4,7 @@ interface HeaderProps {
   user: AuthUser;
   onNavigateHome: () => void;
   onOpenSettings: () => void;
+  onOpenUsers?: () => void;
   onLogout: () => void;
   breadcrumb?: { label: string; onClick?: () => void }[];
 }
@@ -18,6 +19,7 @@ export default function Header({
   user,
   onNavigateHome,
   onOpenSettings,
+  onOpenUsers,
   onLogout,
   breadcrumb,
 }: HeaderProps) {
@@ -83,6 +85,14 @@ export default function Header({
         )}
 
         <div className="ml-auto flex items-center gap-3">
+          {user.role === "approver" && onOpenUsers && (
+            <button
+              onClick={onOpenUsers}
+              className="px-3.5 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+            >
+              Users
+            </button>
+          )}
           <button
             onClick={onOpenSettings}
             className="px-3.5 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
@@ -97,6 +107,9 @@ export default function Header({
             <div className="hidden sm:block">
               <p className="text-sm font-medium text-slate-700 leading-tight">
                 {user.displayName}
+              </p>
+              <p className="text-xs text-slate-500 leading-tight">
+                {user.companyName}
               </p>
               <span
                 className={`inline-block px-1.5 py-0.5 text-[10px] font-medium rounded-full ${ROLE_BADGE[user.role] ?? "bg-slate-100 text-slate-700"}`}

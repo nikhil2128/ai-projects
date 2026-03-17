@@ -6,6 +6,9 @@ export type UserRole = "writer" | "reviewer" | "approver";
 
 export interface AuthUser {
 	id: string;
+	companyId: string;
+	companyName: string;
+	companySlug: string;
 	username: string;
 	displayName: string;
 	role: UserRole;
@@ -17,6 +20,7 @@ const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
 interface TokenPayload {
 	userId: string;
+	companyId: string;
 	iat: number;
 	exp: number;
 }
@@ -28,13 +32,14 @@ function hmacSign(header: string, body: string): string {
 		.digest("base64url");
 }
 
-export function createToken(userId: string): string {
+export function createToken(userId: string, companyId: string): string {
 	const header = Buffer.from(
 		JSON.stringify({ alg: "HS256", typ: "JWT" }),
 	).toString("base64url");
 	const payload = Buffer.from(
 		JSON.stringify({
 			userId,
+			companyId,
 			iat: Date.now(),
 			exp: Date.now() + TOKEN_EXPIRY_MS,
 		}),
@@ -91,14 +96,23 @@ export function requireAuth(
 		return;
 	}
 
-	const user = store.getUserById(payload.userId);
+	const user = store.getUserById(payload.userId, payload.companyId);
 	if (!user) {
 		res.status(401).json({ success: false, error: "User not found" });
 		return;
 	}
 
+	const company = store.getCompanyById(user.company_id);
+	if (!company) {
+		res.status(401).json({ success: false, error: "Company not found" });
+		return;
+	}
+
 	req.user = {
 		id: user.id,
+		companyId: company.id,
+		companyName: company.name,
+		companySlug: company.slug,
 		username: user.username,
 		displayName: user.display_name,
 		role: user.role as UserRole,

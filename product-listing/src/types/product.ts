@@ -14,6 +14,11 @@ export interface Product {
   availabilityStatus: string;
 }
 
+export interface ProductCategory {
+  slug: string;
+  name: string;
+}
+
 export interface ProductsResponse {
   products: Product[];
   total: number;

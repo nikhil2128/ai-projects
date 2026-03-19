@@ -10,10 +10,14 @@ const mockFetchProducts = vi.mocked(api.fetchProducts);
 const mockFetchProductsByCategory = vi.mocked(api.fetchProductsByCategory);
 const mockSearchProducts = vi.mocked(api.searchProducts);
 const mockFetchCategories = vi.mocked(api.fetchCategories);
+const mockGetCachedCategories = vi.mocked(api.getCachedCategories);
+const mockGetCachedProducts = vi.mocked(api.getCachedProducts);
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers({ shouldAdvanceTime: true });
+  mockGetCachedCategories.mockReturnValue(null);
+  mockGetCachedProducts.mockReturnValue(null);
 
   mockFetchCategories.mockResolvedValue([
     createCategory({ slug: "electronics", name: "Electronics" }),
@@ -47,6 +51,26 @@ describe("useProducts", () => {
     expect(result.current.categories).toHaveLength(2);
     expect(result.current.page).toBe(1);
     expect(result.current.totalPages).toBe(2);
+  });
+
+  it("hydrates initial products and categories from cache", () => {
+    mockGetCachedProducts.mockReturnValue({
+      products: [createProduct({ id: 99, title: "Cached product" })],
+      total: 1,
+      skip: 0,
+      limit: 10,
+    });
+    mockGetCachedCategories.mockReturnValue([
+      createCategory({ slug: "cached", name: "Cached" }),
+    ]);
+
+    const { result } = renderHook(() => useProducts());
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.products[0]?.title).toBe("Cached product");
+    expect(result.current.categories[0]?.name).toBe("Cached");
+    expect(mockFetchProducts).not.toHaveBeenCalled();
+    expect(mockFetchCategories).not.toHaveBeenCalled();
   });
 
   it("handles category fetch failure gracefully", async () => {

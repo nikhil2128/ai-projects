@@ -1,11 +1,16 @@
+import { memo } from "react";
 import type { Product } from "../types/product";
 import { StarRating } from "./StarRating";
 
 interface ProductCardProps {
   product: Product;
+  priority?: boolean;
 }
 
-export function ProductCard({ product }: ProductCardProps) {
+export const ProductCard = memo(function ProductCard({
+  product,
+  priority = false,
+}: ProductCardProps) {
   const discountedPrice = product.price * (1 - product.discountPercentage / 100);
   const isLowStock = product.availabilityStatus === "Low Stock";
 
@@ -16,7 +21,9 @@ export function ProductCard({ product }: ProductCardProps) {
           src={product.thumbnail}
           alt={product.title}
           className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300"
-          loading="lazy"
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
+          decoding="async"
         />
         {product.discountPercentage > 5 && (
           <span className="absolute top-3 left-3 bg-rose-500 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
@@ -63,4 +70,4 @@ export function ProductCard({ product }: ProductCardProps) {
       </div>
     </article>
   );
-}
+});

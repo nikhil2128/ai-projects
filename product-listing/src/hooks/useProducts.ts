@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { Product, ProductCategory } from "../types/product";
 import {
   fetchCategories,
   fetchProducts,
   fetchProductsByCategory,
+  getCachedCategories,
+  getCachedProducts,
   searchProducts,
 } from "../services/productApi";
 
@@ -12,14 +14,20 @@ const FILTERED_RESULTS_LIMIT = 100;
 const ALL_CATEGORIES_VALUE = "all";
 
 export function useProducts() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<ProductCategory[]>([]);
-  const [total, setTotal] = useState(0);
+  const initialProductsResponse = useMemo(() => getCachedProducts(PAGE_SIZE, 0), []);
+  const initialCategories = useMemo(() => getCachedCategories() ?? [], []);
+  const shouldSkipInitialProductsFetch = useRef(Boolean(initialProductsResponse));
+  const shouldSkipInitialCategoriesFetch = useRef(initialCategories.length > 0);
+  const latestRequestId = useRef(0);
+
+  const [products, setProducts] = useState<Product[]>(() => initialProductsResponse?.products ?? []);
+  const [categories, setCategories] = useState<ProductCategory[]>(initialCategories);
+  const [total, setTotal] = useState(() => initialProductsResponse?.total ?? 0);
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES_VALUE);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !initialProductsResponse);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,30 +39,27 @@ export function useProducts() {
   }, [searchQuery]);
 
   useEffect(() => {
-    let cancelled = false;
-
     const loadCategories = async () => {
       try {
         const data = await fetchCategories();
-        if (!cancelled) {
-          setCategories(data);
-        }
+        setCategories(data);
       } catch {
-        if (!cancelled) {
-          setCategories([]);
-        }
+        setCategories([]);
       }
     };
 
-    loadCategories();
+    if (shouldSkipInitialCategoriesFetch.current) {
+      shouldSkipInitialCategoriesFetch.current = false;
+      return;
+    }
 
-    return () => {
-      cancelled = true;
-    };
+    loadCategories();
   }, []);
 
   const loadProducts = useCallback(
     async (currentPage: number, query: string, category: string) => {
+      const requestId = ++latestRequestId.current;
+
       setLoading(true);
       setError(null);
 
@@ -67,6 +72,10 @@ export function useProducts() {
             (product) => product.category === category,
           );
 
+          if (requestId !== latestRequestId.current) {
+            return;
+          }
+
           setProducts(filteredProducts.slice(skip, skip + PAGE_SIZE));
           setTotal(filteredProducts.length);
           return;
@@ -78,18 +87,38 @@ export function useProducts() {
             ? await fetchProductsByCategory(category, PAGE_SIZE, skip)
             : await fetchProducts(PAGE_SIZE, skip);
 
+        if (requestId !== latestRequestId.current) {
+          return;
+        }
+
         setProducts(data.products);
         setTotal(data.total);
       } catch (err) {
+        if (requestId !== latestRequestId.current) {
+          return;
+        }
+
         setError(err instanceof Error ? err.message : "Something went wrong");
       } finally {
-        setLoading(false);
+        if (requestId === latestRequestId.current) {
+          setLoading(false);
+        }
       }
     },
     [],
   );
 
   useEffect(() => {
+    if (
+      shouldSkipInitialProductsFetch.current &&
+      page === 1 &&
+      debouncedSearchQuery === "" &&
+      selectedCategory === ALL_CATEGORIES_VALUE
+    ) {
+      shouldSkipInitialProductsFetch.current = false;
+      return;
+    }
+
     loadProducts(page, debouncedSearchQuery, selectedCategory);
   }, [page, debouncedSearchQuery, selectedCategory, loadProducts]);
 

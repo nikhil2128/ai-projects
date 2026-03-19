@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ProductCategory } from "../types/product";
 
 interface ProductFiltersProps {
@@ -8,7 +9,7 @@ interface ProductFiltersProps {
   onCategoryChange: (value: string) => void;
 }
 
-export function ProductFilters({
+export const ProductFilters = memo(function ProductFilters({
   searchQuery,
   selectedCategory,
   categories,
@@ -47,4 +48,4 @@ export function ProductFilters({
       </div>
     </section>
   );
-}
+});

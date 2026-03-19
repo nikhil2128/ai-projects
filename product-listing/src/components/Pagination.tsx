@@ -1,13 +1,19 @@
+import { memo, useMemo } from "react";
+
 interface PaginationProps {
   page: number;
   totalPages: number;
   onPageChange: (page: number) => void;
 }
 
-export function Pagination({ page, totalPages, onPageChange }: PaginationProps) {
+export const Pagination = memo(function Pagination({
+  page,
+  totalPages,
+  onPageChange,
+}: PaginationProps) {
   if (totalPages <= 1) return null;
 
-  const getVisiblePages = (): (number | "ellipsis")[] => {
+  const visiblePages = useMemo((): (number | "ellipsis")[] => {
     const pages: (number | "ellipsis")[] = [];
     const maxVisible = 7;
 
@@ -28,9 +34,7 @@ export function Pagination({ page, totalPages, onPageChange }: PaginationProps) 
 
     pages.push(totalPages);
     return pages;
-  };
-
-  const visiblePages = getVisiblePages();
+  }, [page, totalPages]);
 
   return (
     <nav className="flex items-center justify-center gap-1.5" aria-label="Pagination">
@@ -84,4 +88,4 @@ export function Pagination({ page, totalPages, onPageChange }: PaginationProps) 
       </button>
     </nav>
   );
-}
+});

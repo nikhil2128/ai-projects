@@ -1,12 +1,21 @@
+import { memo, useMemo } from "react";
+
 interface StarRatingProps {
   rating: number;
   className?: string;
 }
 
-export function StarRating({ rating, className = "" }: StarRatingProps) {
-  const fullStars = Math.floor(rating);
-  const hasHalf = rating - fullStars >= 0.5;
-  const emptyStars = 5 - fullStars - (hasHalf ? 1 : 0);
+export const StarRating = memo(function StarRating({ rating, className = "" }: StarRatingProps) {
+  const { fullStars, hasHalf, emptyStars } = useMemo(() => {
+    const wholeStars = Math.floor(rating);
+    const isHalfStar = rating - wholeStars >= 0.5;
+
+    return {
+      fullStars: wholeStars,
+      hasHalf: isHalfStar,
+      emptyStars: 5 - wholeStars - (isHalfStar ? 1 : 0),
+    };
+  }, [rating]);
 
   return (
     <span className={`inline-flex items-center gap-0.5 ${className}`} aria-label={`${rating} out of 5 stars`}>
@@ -34,4 +43,4 @@ export function StarRating({ rating, className = "" }: StarRatingProps) {
       <span className="ml-1 text-sm text-gray-500">{rating.toFixed(1)}</span>
     </span>
   );
-}
+});

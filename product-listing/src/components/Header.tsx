@@ -1,10 +1,11 @@
+import { memo } from "react";
 import { ViewToggle } from "./ViewToggle";
 
 interface HeaderProps {
   total: number;
 }
 
-export function Header({ total }: HeaderProps) {
+export const Header = memo(function Header({ total }: HeaderProps) {
   return (
     <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-lg border-b border-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
@@ -23,4 +24,4 @@ export function Header({ total }: HeaderProps) {
       </div>
     </header>
   );
-}
+});

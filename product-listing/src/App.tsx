@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useFeatureFlags } from "./context/FeatureFlagContext";
 import { useProducts } from "./hooks/useProducts";
 import { Header } from "./components/Header";
@@ -27,6 +28,25 @@ export default function App() {
   } = useProducts();
 
   const hasProducts = products.length > 0;
+  const productResults = useMemo(() => {
+    if (viewMode === "grid") {
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {products.map((product, index) => (
+            <ProductCard key={product.id} product={product} priority={index < 4} />
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {products.map((product, index) => (
+          <ProductListItem key={product.id} product={product} priority={index < 2} />
+        ))}
+      </div>
+    );
+  }, [products, viewMode]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -54,19 +74,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            {viewMode === "grid" ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                {products.map((product) => (
-                  <ProductCard key={product.id} product={product} />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {products.map((product) => (
-                  <ProductListItem key={product.id} product={product} />
-                ))}
-              </div>
-            )}
+            {productResults}
 
             <div className="mt-10">
               <Pagination

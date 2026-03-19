@@ -8,11 +8,7 @@ import { createProduct, createCategory, renderWithProviders } from "./test/helpe
 vi.mock("./services/productApi");
 
 const mockFetchProducts = vi.mocked(api.fetchProducts);
-const mockFetchProductsByCategory = vi.mocked(api.fetchProductsByCategory);
-const mockSearchProducts = vi.mocked(api.searchProducts);
 const mockFetchCategories = vi.mocked(api.fetchCategories);
-const mockGetCachedCategories = vi.mocked(api.getCachedCategories);
-const mockGetCachedProducts = vi.mocked(api.getCachedProducts);
 
 const sampleProducts = [
   createProduct({ id: 1, title: "iPhone 15", category: "smartphones", brand: "Apple", rating: 4.5 }),
@@ -28,8 +24,6 @@ const sampleCategories = [
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  mockGetCachedCategories.mockReturnValue(null);
-  mockGetCachedProducts.mockReturnValue(null);
 
   mockFetchCategories.mockResolvedValue(sampleCategories);
   mockFetchProducts.mockResolvedValue({

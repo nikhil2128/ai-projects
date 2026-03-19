@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  clearProductApiCache,
   fetchProducts,
   fetchProductsByCategory,
   searchProducts,
@@ -12,7 +11,6 @@ global.fetch = mockFetch;
 
 beforeEach(() => {
   mockFetch.mockReset();
-  clearProductApiCache();
 });
 
 describe("productApi", () => {
@@ -52,19 +50,6 @@ describe("productApi", () => {
       mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
 
       await expect(fetchProducts()).rejects.toThrow("Failed to fetch products: 500");
-    });
-
-    it("reuses cached product responses", async () => {
-      const mockResponse = { products: [], total: 0, skip: 0, limit: 10 };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve(mockResponse),
-      });
-
-      await fetchProducts();
-      await fetchProducts();
-
-      expect(mockFetch).toHaveBeenCalledOnce();
     });
   });
 

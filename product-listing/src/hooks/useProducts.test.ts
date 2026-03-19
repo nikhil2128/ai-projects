@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useProducts } from "./useProducts";
 import * as api from "../services/productApi";
-import { createProduct, createCategory } from "../test/helpers";
+import { createProduct, createCategory, createQueryWrapper } from "../test/helpers";
 
 vi.mock("../services/productApi");
 
@@ -10,14 +10,10 @@ const mockFetchProducts = vi.mocked(api.fetchProducts);
 const mockFetchProductsByCategory = vi.mocked(api.fetchProductsByCategory);
 const mockSearchProducts = vi.mocked(api.searchProducts);
 const mockFetchCategories = vi.mocked(api.fetchCategories);
-const mockGetCachedCategories = vi.mocked(api.getCachedCategories);
-const mockGetCachedProducts = vi.mocked(api.getCachedProducts);
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  mockGetCachedCategories.mockReturnValue(null);
-  mockGetCachedProducts.mockReturnValue(null);
 
   mockFetchCategories.mockResolvedValue([
     createCategory({ slug: "electronics", name: "Electronics" }),
@@ -38,7 +34,7 @@ afterEach(() => {
 
 describe("useProducts", () => {
   it("loads products and categories on mount", async () => {
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     expect(result.current.loading).toBe(true);
 
@@ -53,30 +49,10 @@ describe("useProducts", () => {
     expect(result.current.totalPages).toBe(2);
   });
 
-  it("hydrates initial products and categories from cache", () => {
-    mockGetCachedProducts.mockReturnValue({
-      products: [createProduct({ id: 99, title: "Cached product" })],
-      total: 1,
-      skip: 0,
-      limit: 10,
-    });
-    mockGetCachedCategories.mockReturnValue([
-      createCategory({ slug: "cached", name: "Cached" }),
-    ]);
-
-    const { result } = renderHook(() => useProducts());
-
-    expect(result.current.loading).toBe(false);
-    expect(result.current.products[0]?.title).toBe("Cached product");
-    expect(result.current.categories[0]?.name).toBe("Cached");
-    expect(mockFetchProducts).not.toHaveBeenCalled();
-    expect(mockFetchCategories).not.toHaveBeenCalled();
-  });
-
   it("handles category fetch failure gracefully", async () => {
     mockFetchCategories.mockRejectedValueOnce(new Error("Network error"));
 
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -89,7 +65,7 @@ describe("useProducts", () => {
   it("handles product fetch failure", async () => {
     mockFetchProducts.mockRejectedValueOnce(new Error("Server error"));
 
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -102,7 +78,7 @@ describe("useProducts", () => {
   it("handles non-Error throw", async () => {
     mockFetchProducts.mockRejectedValueOnce("string error");
 
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -112,7 +88,7 @@ describe("useProducts", () => {
   });
 
   it("debounces search query", async () => {
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -137,12 +113,12 @@ describe("useProducts", () => {
     });
 
     await waitFor(() => {
-      expect(mockSearchProducts).toHaveBeenCalledWith("phone", 10, 0);
+      expect(mockSearchProducts).toHaveBeenCalledWith("phone", 10, 0, expect.anything());
     });
   });
 
   it("resets page when search query changes", async () => {
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -163,7 +139,7 @@ describe("useProducts", () => {
       limit: 10,
     });
 
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -174,7 +150,7 @@ describe("useProducts", () => {
     });
 
     await waitFor(() => {
-      expect(mockFetchProductsByCategory).toHaveBeenCalledWith("clothing", 10, 0);
+      expect(mockFetchProductsByCategory).toHaveBeenCalledWith("clothing", 10, 0, expect.anything());
     });
   });
 
@@ -186,7 +162,7 @@ describe("useProducts", () => {
       limit: 10,
     });
 
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -200,7 +176,7 @@ describe("useProducts", () => {
   });
 
   it("does client-side filtering when both search and category are set", async () => {
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -228,7 +204,7 @@ describe("useProducts", () => {
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
-      expect(mockSearchProducts).toHaveBeenCalledWith("phone", 100, 0);
+      expect(mockSearchProducts).toHaveBeenCalledWith("phone", 100, 0, expect.anything());
     });
 
     expect(result.current.products).toHaveLength(2);
@@ -243,7 +219,7 @@ describe("useProducts", () => {
       limit: 10,
     });
 
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -261,7 +237,7 @@ describe("useProducts", () => {
   });
 
   it("ignores out-of-range page numbers", async () => {
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -283,7 +259,7 @@ describe("useProducts", () => {
   it("retries loading products", async () => {
     mockFetchProducts.mockRejectedValueOnce(new Error("fail"));
 
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current.error).toBe("fail");
@@ -301,7 +277,6 @@ describe("useProducts", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.loading).toBe(false);
       expect(result.current.error).toBeNull();
     });
 
@@ -309,7 +284,7 @@ describe("useProducts", () => {
   });
 
   it("trims whitespace from search query for debounce", async () => {
-    const { result } = renderHook(() => useProducts());
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

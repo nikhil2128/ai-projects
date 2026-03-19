@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type { Product } from "../types/product";
 import {
   fetchCategories,
@@ -26,12 +26,10 @@ function useDebounce(value: string, delayMs: number): string {
 }
 
 export function useProducts() {
-  const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES_VALUE);
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-  const skip = (page - 1) * PAGE_SIZE;
   const hasSearch = debouncedSearchQuery.length > 0;
   const hasCategory = selectedCategory !== ALL_CATEGORIES_VALUE;
   const hasBothFilters = hasSearch && hasCategory;
@@ -42,71 +40,64 @@ export function useProducts() {
     staleTime: CATEGORIES_STALE_TIME_MS,
   });
 
-  const productsQuery = useQuery({
-    queryKey: ["products", { search: debouncedSearchQuery, category: selectedCategory, page }],
-    queryFn: ({ signal }) => {
+  const productsQuery = useInfiniteQuery({
+    queryKey: ["products", { search: debouncedSearchQuery, category: selectedCategory }],
+    queryFn: ({ pageParam, signal }) => {
       if (hasBothFilters) {
         return searchProducts(debouncedSearchQuery, FILTERED_RESULTS_LIMIT, 0, signal);
       }
       if (hasSearch) {
-        return searchProducts(debouncedSearchQuery, PAGE_SIZE, skip, signal);
+        return searchProducts(debouncedSearchQuery, PAGE_SIZE, pageParam, signal);
       }
       if (hasCategory) {
-        return fetchProductsByCategory(selectedCategory, PAGE_SIZE, skip, signal);
+        return fetchProductsByCategory(selectedCategory, PAGE_SIZE, pageParam, signal);
       }
-      return fetchProducts(PAGE_SIZE, skip, signal);
+      return fetchProducts(PAGE_SIZE, pageParam, signal);
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (hasBothFilters) return undefined;
+      const totalLoaded = allPages.reduce((sum, p) => sum + p.products.length, 0);
+      return totalLoaded < lastPage.total ? totalLoaded : undefined;
     },
     staleTime: PRODUCTS_STALE_TIME_MS,
   });
 
   const { products, total } = useMemo(() => {
-    const data = productsQuery.data;
-    if (!data) return { products: [] as Product[], total: 0 };
+    const pages = productsQuery.data?.pages;
+    if (!pages || pages.length === 0) return { products: [] as Product[], total: 0 };
 
     if (hasBothFilters) {
-      const filtered = data.products.filter(
+      const filtered = pages[0].products.filter(
         (product) => product.category === selectedCategory,
       );
-      return {
-        products: filtered.slice(skip, skip + PAGE_SIZE),
-        total: filtered.length,
-      };
+      return { products: filtered, total: filtered.length };
     }
 
-    return { products: data.products, total: data.total };
-  }, [productsQuery.data, hasBothFilters, selectedCategory, skip]);
-
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+    return {
+      products: pages.flatMap((page) => page.products),
+      total: pages[0].total,
+    };
+  }, [productsQuery.data, hasBothFilters, selectedCategory]);
 
   const updateSearchQuery = useCallback((value: string) => {
     setSearchQuery(value);
-    setPage(1);
   }, []);
 
   const updateSelectedCategory = useCallback((value: string) => {
     setSelectedCategory(value);
-    setPage(1);
   }, []);
-
-  const goToPage = useCallback(
-    (p: number) => {
-      if (p >= 1 && p <= totalPages) {
-        setPage(p);
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }
-    },
-    [totalPages],
-  );
 
   return {
     products,
     categories: categoriesQuery.data ?? [],
     total,
-    page,
-    totalPages,
     searchQuery,
     selectedCategory,
     loading: productsQuery.isLoading,
+    isFetchingNextPage: productsQuery.isFetchingNextPage,
+    hasNextPage: productsQuery.hasNextPage ?? false,
+    fetchNextPage: productsQuery.fetchNextPage,
     error: productsQuery.error
       ? productsQuery.error instanceof Error
         ? productsQuery.error.message
@@ -114,7 +105,6 @@ export function useProducts() {
       : null,
     setSearchQuery: updateSearchQuery,
     setSelectedCategory: updateSelectedCategory,
-    goToPage,
     retry: () => {
       productsQuery.refetch();
     },

@@ -1,13 +1,28 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useEffect, useCallback } from "react";
 import { useFeatureFlags } from "./context/FeatureFlagContext";
 import { useProducts } from "./hooks/useProducts";
 import { Header } from "./components/Header";
 import { ProductFilters } from "./components/ProductFilters";
 import { ProductCard } from "./components/ProductCard";
 import { ProductListItem } from "./components/ProductListItem";
-import { Pagination } from "./components/Pagination";
 import { ProductSkeletons } from "./components/ProductSkeleton";
 import { ErrorState } from "./components/ErrorState";
+
+function LoadingSpinner() {
+  return (
+    <div className="flex justify-center py-8">
+      <svg
+        className="h-8 w-8 animate-spin text-indigo-600"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      </svg>
+    </div>
+  );
+}
 
 export default function App() {
   const { viewMode } = useFeatureFlags();
@@ -15,17 +30,40 @@ export default function App() {
     products,
     categories,
     total,
-    page,
-    totalPages,
     searchQuery,
     selectedCategory,
     loading,
     error,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
     setSearchQuery,
     setSelectedCategory,
-    goToPage,
     retry,
   } = useProducts();
+
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const handleIntersect = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    },
+    [hasNextPage, isFetchingNextPage, fetchNextPage],
+  );
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(handleIntersect, {
+      rootMargin: "200px",
+    });
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [handleIntersect]);
 
   const hasProducts = products.length > 0;
   const productResults = useMemo(() => {
@@ -76,13 +114,9 @@ export default function App() {
           <>
             {productResults}
 
-            <div className="mt-10">
-              <Pagination
-                page={page}
-                totalPages={totalPages}
-                onPageChange={goToPage}
-              />
-            </div>
+            {isFetchingNextPage && <LoadingSpinner />}
+
+            <div ref={sentinelRef} aria-hidden="true" />
           </>
         )}
       </main>

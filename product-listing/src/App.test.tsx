@@ -132,28 +132,14 @@ describe("App", () => {
     expect(screen.getByText("All categories")).toBeInTheDocument();
   });
 
-  it("does not render pagination when totalPages <= 1", async () => {
+  it("renders scroll sentinel for infinite scroll", async () => {
     renderWithProviders(<App />);
 
     await waitFor(() => {
       expect(screen.getByText("iPhone 15")).toBeInTheDocument();
     });
 
-    expect(screen.queryByLabelText("Pagination")).not.toBeInTheDocument();
-  });
-
-  it("renders pagination when there are multiple pages", async () => {
-    mockFetchProducts.mockResolvedValueOnce({
-      products: sampleProducts,
-      total: 30,
-      skip: 0,
-      limit: 10,
-    });
-
-    renderWithProviders(<App />);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Pagination")).toBeInTheDocument();
-    });
+    const sentinel = document.querySelector("[aria-hidden='true']");
+    expect(sentinel).toBeInTheDocument();
   });
 });

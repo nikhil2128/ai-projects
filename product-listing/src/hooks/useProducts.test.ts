@@ -45,8 +45,7 @@ describe("useProducts", () => {
     expect(result.current.products).toHaveLength(2);
     expect(result.current.total).toBe(20);
     expect(result.current.categories).toHaveLength(2);
-    expect(result.current.page).toBe(1);
-    expect(result.current.totalPages).toBe(2);
+    expect(result.current.hasNextPage).toBe(true);
   });
 
   it("handles category fetch failure gracefully", async () => {
@@ -117,20 +116,6 @@ describe("useProducts", () => {
     });
   });
 
-  it("resets page when search query changes", async () => {
-    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    act(() => {
-      result.current.setSearchQuery("test");
-    });
-
-    expect(result.current.page).toBe(1);
-  });
-
   it("fetches by category when category is selected", async () => {
     mockFetchProductsByCategory.mockResolvedValueOnce({
       products: [createProduct({ id: 5, category: "clothing" })],
@@ -152,27 +137,6 @@ describe("useProducts", () => {
     await waitFor(() => {
       expect(mockFetchProductsByCategory).toHaveBeenCalledWith("clothing", 10, 0, expect.anything());
     });
-  });
-
-  it("resets page when category changes", async () => {
-    mockFetchProductsByCategory.mockResolvedValue({
-      products: [],
-      total: 0,
-      skip: 0,
-      limit: 10,
-    });
-
-    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    act(() => {
-      result.current.setSelectedCategory("clothing");
-    });
-
-    expect(result.current.page).toBe(1);
   });
 
   it("does client-side filtering when both search and category are set", async () => {
@@ -209,12 +173,39 @@ describe("useProducts", () => {
 
     expect(result.current.products).toHaveLength(2);
     expect(result.current.total).toBe(2);
+    expect(result.current.hasNextPage).toBe(false);
   });
 
-  it("navigates pages", async () => {
-    mockFetchProducts.mockResolvedValue({
-      products: Array.from({ length: 10 }, (_, i) => createProduct({ id: i })),
-      total: 30,
+  it("fetches next page when fetchNextPage is called", async () => {
+    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.products).toHaveLength(2);
+    expect(result.current.hasNextPage).toBe(true);
+
+    mockFetchProducts.mockResolvedValueOnce({
+      products: [createProduct({ id: 3 }), createProduct({ id: 4 })],
+      total: 20,
+      skip: 2,
+      limit: 10,
+    });
+
+    act(() => {
+      result.current.fetchNextPage();
+    });
+
+    await waitFor(() => {
+      expect(result.current.products).toHaveLength(4);
+    });
+  });
+
+  it("reports hasNextPage as false when all products are loaded", async () => {
+    mockFetchProducts.mockResolvedValueOnce({
+      products: [createProduct({ id: 1 }), createProduct({ id: 2 })],
+      total: 2,
       skip: 0,
       limit: 10,
     });
@@ -225,35 +216,7 @@ describe("useProducts", () => {
       expect(result.current.loading).toBe(false);
     });
 
-    act(() => {
-      result.current.goToPage(2);
-    });
-
-    await waitFor(() => {
-      expect(result.current.page).toBe(2);
-    });
-
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
-  });
-
-  it("ignores out-of-range page numbers", async () => {
-    const { result } = renderHook(() => useProducts(), { wrapper: createQueryWrapper() });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    act(() => {
-      result.current.goToPage(0);
-    });
-
-    expect(result.current.page).toBe(1);
-
-    act(() => {
-      result.current.goToPage(999);
-    });
-
-    expect(result.current.page).toBe(1);
+    expect(result.current.hasNextPage).toBe(false);
   });
 
   it("retries loading products", async () => {

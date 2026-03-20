@@ -26,3 +26,28 @@ export interface TopicItem {
   id: string;
   text: string;
 }
+
+export interface Questionnaire {
+  id: string;
+  title: string;
+  createdAt: string;
+  modules: {
+    topic: string;
+    questions: AssessmentQuestion[];
+  }[];
+}
+
+export interface QuestionnaireResponse {
+  id: string;
+  questionnaireId: string;
+  employeeEmail: string;
+  submittedAt: string;
+  answers: Record<string, number>;
+  score: number;
+  totalQuestions: number;
+}
+
+export interface ShareRequest {
+  emails: string[];
+  questionnaireId: string;
+}

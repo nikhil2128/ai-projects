@@ -1,0 +1,104 @@
+{
+  "questionnaires": [
+    {
+      "id": "1b9afc13-adcf-4136-aebf-2d10a732f5be",
+      "title": "AI in HR Knowledge Check",
+      "createdAt": "2026-03-20T08:03:25.689Z",
+      "modules": [
+        {
+          "topic": "AI in HR",
+          "overview": "This module explores the integration of Artificial Intelligence (AI) in Human Resources (HR) and its transformative impact on recruitment, employee engagement, and performance management. Understanding AI's role in HR is crucial for enhancing efficiency, improving decision-making, and fostering a data-driven culture within the organization.",
+          "learningObjectives": [
+            "Understand the fundamental concepts of AI and its applications in HR.",
+            "Apply AI tools to streamline recruitment processes and enhance candidate experience.",
+            "Demonstrate how AI can be utilized to improve employee engagement and performance management."
+          ],
+          "content": [
+            {
+              "title": "Introduction to AI in HR",
+              "body": "Artificial Intelligence (AI) refers to the simulation of human intelligence in machines that are programmed to think and learn. In HR, AI can automate repetitive tasks, analyze data for better decision-making, and enhance employee experiences. \n\n**Key Applications of AI in HR:**\n- **Recruitment:** AI can screen resumes, schedule interviews, and even conduct initial assessments.\n- **Employee Engagement:** Chatbots can provide 24/7 support for employee queries.\n- **Performance Management:** AI tools can analyze employee performance data to provide insights for development.\n\n*Example:* Companies like Unilever use AI to streamline their recruitment process, significantly reducing hiring time and improving candidate satisfaction."
+            },
+            {
+              "title": "AI Tools for Recruitment",
+              "body": "AI tools can revolutionize the recruitment process by making it more efficient and objective. Here are some key tools and practices:\n\n- **Resume Screening Software:** Automatically filters resumes based on job criteria, reducing bias and saving time.\n- **Chatbots:** Engage candidates in real-time, answering questions and guiding them through the application process.\n- **Predictive Analytics:** Use historical data to predict candidate success and cultural fit.\n\n*Best Practices:* \n1. Clearly define job requirements to ensure AI tools are accurately filtering candidates.\n2. Regularly review AI decisions to mitigate any potential biases.\n3. Combine AI insights with human judgment for optimal hiring outcomes."
+            },
+            {
+              "title": "Enhancing Employee Engagement with AI",
+              "body": "AI can play a significant role in fostering employee engagement by providing personalized experiences. Consider the following:\n\n- **Personalized Learning:** AI can recommend training programs based on individual performance and career goals.\n- **Feedback Mechanisms:** AI-driven surveys can analyze employee sentiment and provide actionable insights to management.\n- **Chatbots for HR Support:** Employees can interact with chatbots for quick answers to HR-related questions, improving satisfaction.\n\n*Example:* Companies like IBM use AI to tailor learning experiences for employees, leading to higher engagement and retention rates."
+            },
+            {
+              "title": "AI in Performance Management",
+              "body": "AI can enhance performance management by providing data-driven insights. Key areas include:\n\n- **Continuous Feedback:** AI tools can facilitate real-time feedback, helping employees improve continuously rather than waiting for annual reviews.\n- **Data Analysis:** AI can analyze performance data to identify trends and areas for development.\n- **Goal Setting:** AI can assist in setting realistic and achievable goals based on historical data.\n\n*Tip:* Ensure that the use of AI in performance management is transparent, and communicate openly with employees about how their data will be used."
+            }
+          ],
+          "keyTakeaways": [
+            "AI is transforming HR by automating processes and enhancing decision-making.",
+            "Effective implementation of AI tools can streamline recruitment and improve candidate experiences.",
+            "AI can personalize employee engagement strategies, leading to higher satisfaction and retention.",
+            "Data-driven insights from AI can significantly improve performance management practices.",
+            "Transparency and ethical considerations are crucial when integrating AI into HR processes."
+          ],
+          "assessmentQuestions": [
+            {
+              "question": "What is one key benefit of using AI in the recruitment process?",
+              "options": [
+                "Increased hiring costs",
+                "Reduced bias in candidate selection",
+                "Longer hiring times",
+                "Less candidate engagement"
+              ],
+              "correctAnswer": 1,
+              "explanation": "AI helps to reduce bias by standardizing the screening process based on defined criteria rather than subjective judgments."
+            },
+            {
+              "question": "How can AI enhance employee engagement?",
+              "options": [
+                "By eliminating HR roles",
+                "Through personalized learning recommendations",
+                "By increasing workload",
+                "By reducing communication"
+              ],
+              "correctAnswer": 1,
+              "explanation": "AI can analyze employee data to suggest tailored learning experiences, thereby enhancing engagement."
+            },
+            {
+              "question": "What is a potential risk of using AI in performance management?",
+              "options": [
+                "Increased transparency",
+                "Bias in data interpretation",
+                "More frequent feedback",
+                "Better goal setting"
+              ],
+              "correctAnswer": 1,
+              "explanation": "If not managed properly, AI can perpetuate existing biases in performance data, leading to unfair evaluations."
+            }
+          ],
+          "estimatedDuration": "90 minutes"
+        }
+      ],
+      "recipients": [
+        {
+          "id": "aa24acf7-92ea-42f4-9a54-aff245b07c75",
+          "email": "coolban@gmail.com"
+        }
+      ],
+      "submissions": [
+        {
+          "id": "2d590ae1-b5a9-43c2-ba79-c8c7980e4a1c",
+          "recipientId": "aa24acf7-92ea-42f4-9a54-aff245b07c75",
+          "employeeEmail": "coolban@gmail.com",
+          "answers": [
+            [
+              0,
+              1,
+              1
+            ]
+          ],
+          "score": 2,
+          "totalQuestions": 3,
+          "submittedAt": "2026-03-20T08:04:52.882Z"
+        }
+      ]
+    }
+  ]
+}

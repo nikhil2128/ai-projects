@@ -4,6 +4,13 @@ import multer from "multer";
 import { analyzeImage } from "./services/imageAnalyzer.js";
 import { generateTrainingContent } from "./services/contentGenerator.js";
 import { searchTopicImages } from "./services/imageSearch.js";
+import {
+  createQuestionnaire,
+  getQuestionnaire,
+  submitResponse,
+  getResponses,
+} from "./services/questionnaireStore.js";
+import { sendQuestionnaireEmails } from "./services/emailService.js";
 
 const app = express();
 
@@ -94,6 +101,106 @@ app.post("/api/topic-images", async (req, res) => {
     console.error("Image search error:", error);
     const message =
       error instanceof Error ? error.message : "Failed to fetch topic images";
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+// --- Questionnaire endpoints ---
+
+app.post("/api/questionnaires", (req, res) => {
+  try {
+    const { title, modules } = req.body as {
+      title: string;
+      modules: { topic: string; questions: { question: string; options: string[]; correctAnswer: number; explanation: string }[] }[];
+    };
+
+    if (!title || !modules || modules.length === 0) {
+      res.status(400).json({ error: "Title and modules are required" });
+      return;
+    }
+
+    const questionnaire = createQuestionnaire(title, modules);
+    res.json({ success: true, questionnaire });
+  } catch (error) {
+    console.error("Create questionnaire error:", error);
+    const message = error instanceof Error ? error.message : "Failed to create questionnaire";
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.get("/api/questionnaires/:id", (req, res) => {
+  try {
+    const questionnaire = getQuestionnaire(req.params.id!);
+    if (!questionnaire) {
+      res.status(404).json({ error: "Questionnaire not found" });
+      return;
+    }
+    res.json({ success: true, questionnaire });
+  } catch (error) {
+    console.error("Get questionnaire error:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch questionnaire" });
+  }
+});
+
+app.post("/api/questionnaires/:id/responses", (req, res) => {
+  try {
+    const { employeeEmail, answers } = req.body as {
+      employeeEmail: string;
+      answers: Record<string, number>;
+    };
+
+    if (!employeeEmail || !answers) {
+      res.status(400).json({ error: "Employee email and answers are required" });
+      return;
+    }
+
+    const response = submitResponse(req.params.id!, employeeEmail, answers);
+    res.json({ success: true, response });
+  } catch (error) {
+    console.error("Submit response error:", error);
+    const message = error instanceof Error ? error.message : "Failed to submit response";
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.get("/api/questionnaires/:id/responses", (req, res) => {
+  try {
+    const responses = getResponses(req.params.id!);
+    res.json({ success: true, responses });
+  } catch (error) {
+    console.error("Get responses error:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch responses" });
+  }
+});
+
+app.post("/api/questionnaires/:id/share", async (req, res) => {
+  try {
+    const { emails } = req.body as { emails: string[] };
+
+    if (!emails || emails.length === 0) {
+      res.status(400).json({ error: "At least one email is required" });
+      return;
+    }
+
+    const questionnaire = getQuestionnaire(req.params.id!);
+    if (!questionnaire) {
+      res.status(404).json({ error: "Questionnaire not found" });
+      return;
+    }
+
+    const appUrl = process.env["APP_URL"] ?? "http://localhost:5173";
+    const questionnaireUrl = `${appUrl}/questionnaire/${questionnaire.id}`;
+
+    const result = await sendQuestionnaireEmails(
+      emails,
+      questionnaire.title,
+      questionnaireUrl
+    );
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error("Share questionnaire error:", error);
+    const message = error instanceof Error ? error.message : "Failed to share questionnaire";
     res.status(500).json({ success: false, error: message });
   }
 });

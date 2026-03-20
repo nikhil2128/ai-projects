@@ -13,11 +13,13 @@ import {
   ChevronUp,
   Download,
   Loader2,
+  Share2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { TrainingModule, AssessmentQuestion } from "../types";
 import { exportToPPT } from "../utils/pptExport";
 import { fetchTopicImages } from "../api/client";
+import { ShareModal } from "./ShareModal";
 
 interface TrainingViewerProps {
   modules: TrainingModule[];
@@ -26,6 +28,7 @@ interface TrainingViewerProps {
 export function TrainingViewer({ modules }: TrainingViewerProps) {
   const [activeModule, setActiveModule] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const module = modules[activeModule]!;
 
   const handleDownloadPPT = async () => {
@@ -52,19 +55,32 @@ export function TrainingViewer({ modules }: TrainingViewerProps) {
             {modules.length} module{modules.length !== 1 ? "s" : ""} generated
           </p>
         </div>
-        <button
-          onClick={handleDownloadPPT}
-          disabled={isExporting}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 text-white font-medium text-sm hover:from-blue-500 hover:to-violet-500 transition-all shadow-lg shadow-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {isExporting ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Download className="w-4 h-4" />
-          )}
-          {isExporting ? "Generating..." : "Download PPT"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowShareModal(true)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-medium text-sm hover:from-emerald-500 hover:to-teal-500 transition-all shadow-lg shadow-emerald-500/20"
+          >
+            <Share2 className="w-4 h-4" />
+            Share Assessment
+          </button>
+          <button
+            onClick={handleDownloadPPT}
+            disabled={isExporting}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 text-white font-medium text-sm hover:from-blue-500 hover:to-violet-500 transition-all shadow-lg shadow-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isExporting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            {isExporting ? "Generating..." : "Download PPT"}
+          </button>
+        </div>
       </div>
+
+      {showShareModal && (
+        <ShareModal modules={modules} onClose={() => setShowShareModal(false)} />
+      )}
 
       {modules.length > 1 && (
         <ModuleNav

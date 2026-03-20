@@ -10,6 +10,12 @@ import {
   submitResponse,
   getResponses,
 } from "./services/questionnaireStore.js";
+import {
+  createSession,
+  getSession,
+  listSessions,
+  deleteSession,
+} from "./services/sessionStore.js";
 import { sendQuestionnaireEmails } from "./services/emailService.js";
 
 const app = express();
@@ -55,7 +61,7 @@ app.post("/api/extract-topics", upload.single("image"), async (req, res) => {
 
 app.post("/api/generate-content", async (req, res) => {
   try {
-    const { topics } = req.body as { topics: string[] };
+    const { topics, source } = req.body as { topics: string[]; source?: string };
 
     if (!topics || !Array.isArray(topics) || topics.length === 0) {
       res.status(400).json({ error: "Please provide an array of topics" });
@@ -70,7 +76,14 @@ app.post("/api/generate-content", async (req, res) => {
     }
 
     const content = await generateTrainingContent(topics);
-    res.json({ success: true, content });
+
+    const session = createSession(
+      topics,
+      content,
+      (source === "image" ? "image" : "manual") as "image" | "manual"
+    );
+
+    res.json({ success: true, content, sessionId: session.id });
   } catch (error) {
     console.error("Content generation error:", error);
     const message =
@@ -105,13 +118,54 @@ app.post("/api/topic-images", async (req, res) => {
   }
 });
 
+// --- Session / History endpoints ---
+
+app.get("/api/sessions", (_req, res) => {
+  try {
+    const sessions = listSessions();
+    res.json({ success: true, sessions });
+  } catch (error) {
+    console.error("List sessions error:", error);
+    res.status(500).json({ success: false, error: "Failed to list sessions" });
+  }
+});
+
+app.get("/api/sessions/:id", (req, res) => {
+  try {
+    const session = getSession(req.params.id!);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    res.json({ success: true, session });
+  } catch (error) {
+    console.error("Get session error:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch session" });
+  }
+});
+
+app.delete("/api/sessions/:id", (req, res) => {
+  try {
+    const deleted = deleteSession(req.params.id!);
+    if (!deleted) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Delete session error:", error);
+    res.status(500).json({ success: false, error: "Failed to delete session" });
+  }
+});
+
 // --- Questionnaire endpoints ---
 
 app.post("/api/questionnaires", (req, res) => {
   try {
-    const { title, modules } = req.body as {
+    const { title, modules, sessionId } = req.body as {
       title: string;
       modules: { topic: string; questions: { question: string; options: string[]; correctAnswer: number; explanation: string }[] }[];
+      sessionId?: string;
     };
 
     if (!title || !modules || modules.length === 0) {
@@ -119,7 +173,7 @@ app.post("/api/questionnaires", (req, res) => {
       return;
     }
 
-    const questionnaire = createQuestionnaire(title, modules);
+    const questionnaire = createQuestionnaire(title, modules, sessionId);
     res.json({ success: true, questionnaire });
   } catch (error) {
     console.error("Create questionnaire error:", error);

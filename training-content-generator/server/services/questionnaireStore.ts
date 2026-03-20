@@ -1,6 +1,5 @@
-import fs from "fs";
-import path from "path";
 import { v4 as uuidv4 } from "uuid";
+import { getDb } from "../db.js";
 
 interface AssessmentQuestion {
   question: string;
@@ -9,17 +8,18 @@ interface AssessmentQuestion {
   explanation: string;
 }
 
-interface StoredQuestionnaire {
+export interface StoredQuestionnaire {
   id: string;
   title: string;
   createdAt: string;
+  sessionId: string | null;
   modules: {
     topic: string;
     questions: AssessmentQuestion[];
   }[];
 }
 
-interface StoredResponse {
+export interface StoredResponse {
   id: string;
   questionnaireId: string;
   employeeEmail: string;
@@ -29,51 +29,81 @@ interface StoredResponse {
   totalQuestions: number;
 }
 
-const DATA_DIR = path.join(process.cwd(), ".data");
-const QUESTIONNAIRES_FILE = path.join(DATA_DIR, "questionnaires.json");
-const RESPONSES_FILE = path.join(DATA_DIR, "responses.json");
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
+interface QuestionnaireRow {
+  id: string;
+  session_id: string | null;
+  title: string;
+  modules: string;
+  created_at: string;
 }
 
-function readJSON<T>(filePath: string, fallback: T): T {
-  ensureDataDir();
-  if (!fs.existsSync(filePath)) return fallback;
-  const raw = fs.readFileSync(filePath, "utf-8");
-  return JSON.parse(raw) as T;
+interface ResponseRow {
+  id: string;
+  questionnaire_id: string;
+  employee_email: string;
+  answers: string;
+  score: number;
+  total_questions: number;
+  submitted_at: string;
 }
 
-function writeJSON<T>(filePath: string, data: T) {
-  ensureDataDir();
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+function rowToQuestionnaire(row: QuestionnaireRow): StoredQuestionnaire {
+  return {
+    id: row.id,
+    title: row.title,
+    createdAt: row.created_at,
+    sessionId: row.session_id,
+    modules: JSON.parse(row.modules),
+  };
+}
+
+function rowToResponse(row: ResponseRow): StoredResponse {
+  return {
+    id: row.id,
+    questionnaireId: row.questionnaire_id,
+    employeeEmail: row.employee_email,
+    submittedAt: row.submitted_at,
+    answers: JSON.parse(row.answers),
+    score: row.score,
+    totalQuestions: row.total_questions,
+  };
 }
 
 export function createQuestionnaire(
   title: string,
-  modules: { topic: string; questions: AssessmentQuestion[] }[]
+  modules: { topic: string; questions: AssessmentQuestion[] }[],
+  sessionId?: string
 ): StoredQuestionnaire {
-  const questionnaires = readJSON<StoredQuestionnaire[]>(QUESTIONNAIRES_FILE, []);
-  const questionnaire: StoredQuestionnaire = {
-    id: uuidv4(),
-    title,
-    createdAt: new Date().toISOString(),
-    modules,
-  };
-  questionnaires.push(questionnaire);
-  writeJSON(QUESTIONNAIRES_FILE, questionnaires);
-  return questionnaire;
+  const db = getDb();
+  const id = uuidv4();
+
+  db.prepare(
+    `INSERT INTO questionnaires (id, session_id, title, modules) VALUES (?, ?, ?, ?)`
+  ).run(id, sessionId ?? null, title, JSON.stringify(modules));
+
+  const row = db
+    .prepare(`SELECT * FROM questionnaires WHERE id = ?`)
+    .get(id) as QuestionnaireRow;
+
+  return rowToQuestionnaire(row);
 }
 
 export function getQuestionnaire(id: string): StoredQuestionnaire | null {
-  const questionnaires = readJSON<StoredQuestionnaire[]>(QUESTIONNAIRES_FILE, []);
-  return questionnaires.find((q) => q.id === id) ?? null;
+  const db = getDb();
+  const row = db
+    .prepare(`SELECT * FROM questionnaires WHERE id = ?`)
+    .get(id) as QuestionnaireRow | undefined;
+
+  return row ? rowToQuestionnaire(row) : null;
 }
 
 export function getAllQuestionnaires(): StoredQuestionnaire[] {
-  return readJSON<StoredQuestionnaire[]>(QUESTIONNAIRES_FILE, []);
+  const db = getDb();
+  const rows = db
+    .prepare(`SELECT * FROM questionnaires ORDER BY created_at DESC`)
+    .all() as QuestionnaireRow[];
+
+  return rows.map(rowToQuestionnaire);
 }
 
 export function submitResponse(
@@ -92,22 +122,27 @@ export function submitResponse(
     if (answers[String(i)] === q.correctAnswer) score++;
   });
 
-  const responses = readJSON<StoredResponse[]>(RESPONSES_FILE, []);
-  const response: StoredResponse = {
-    id: uuidv4(),
-    questionnaireId,
-    employeeEmail,
-    submittedAt: new Date().toISOString(),
-    answers,
-    score,
-    totalQuestions,
-  };
-  responses.push(response);
-  writeJSON(RESPONSES_FILE, responses);
-  return response;
+  const db = getDb();
+  const id = uuidv4();
+
+  db.prepare(
+    `INSERT INTO questionnaire_responses (id, questionnaire_id, employee_email, answers, score, total_questions) VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(id, questionnaireId, employeeEmail, JSON.stringify(answers), score, totalQuestions);
+
+  const row = db
+    .prepare(`SELECT * FROM questionnaire_responses WHERE id = ?`)
+    .get(id) as ResponseRow;
+
+  return rowToResponse(row);
 }
 
 export function getResponses(questionnaireId: string): StoredResponse[] {
-  const responses = readJSON<StoredResponse[]>(RESPONSES_FILE, []);
-  return responses.filter((r) => r.questionnaireId === questionnaireId);
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT * FROM questionnaire_responses WHERE questionnaire_id = ? ORDER BY submitted_at DESC`
+    )
+    .all(questionnaireId) as ResponseRow[];
+
+  return rows.map(rowToResponse);
 }

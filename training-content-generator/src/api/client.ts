@@ -1,4 +1,10 @@
-import type { TrainingModule, Questionnaire, QuestionnaireResponse } from "../types";
+import type {
+  TrainingModule,
+  Questionnaire,
+  QuestionnaireResponse,
+  TrainingSession,
+  TrainingSessionSummary,
+} from "../types";
 
 export async function fetchTopicImages(
   queries: string[]
@@ -42,12 +48,13 @@ export async function extractTopicsFromImage(
 }
 
 export async function generateContent(
-  topics: string[]
-): Promise<TrainingModule[]> {
+  topics: string[],
+  source: "image" | "manual" = "manual"
+): Promise<{ modules: TrainingModule[]; sessionId: string }> {
   const response = await fetch("/api/generate-content", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ topics }),
+    body: JSON.stringify({ topics, source }),
   });
 
   if (!response.ok) {
@@ -58,16 +65,19 @@ export async function generateContent(
   const data = (await response.json()) as {
     success: boolean;
     content: TrainingModule[];
+    sessionId: string;
   };
-  return data.content;
+  return { modules: data.content, sessionId: data.sessionId };
 }
 
 export async function createQuestionnaire(
   title: string,
-  modules: TrainingModule[]
+  modules: TrainingModule[],
+  sessionId?: string
 ): Promise<Questionnaire> {
   const payload = {
     title,
+    sessionId,
     modules: modules.map((m) => ({
       topic: m.topic,
       questions: m.assessmentQuestions,
@@ -146,4 +156,33 @@ export async function shareQuestionnaire(
 
   const data = (await response.json()) as { success: boolean; sent: string[]; failed: string[] };
   return { sent: data.sent, failed: data.failed };
+}
+
+// --- Session / History ---
+
+export async function fetchSessions(): Promise<TrainingSessionSummary[]> {
+  const response = await fetch("/api/sessions");
+  if (!response.ok) {
+    throw new Error("Failed to fetch sessions");
+  }
+  const data = (await response.json()) as { success: boolean; sessions: TrainingSessionSummary[] };
+  return data.sessions;
+}
+
+export async function fetchSession(id: string): Promise<TrainingSession> {
+  const response = await fetch(`/api/sessions/${id}`);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error ?? "Session not found");
+  }
+  const data = (await response.json()) as { success: boolean; session: TrainingSession };
+  return data.session;
+}
+
+export async function deleteSessionApi(id: string): Promise<void> {
+  const response = await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error ?? "Failed to delete session");
+  }
 }

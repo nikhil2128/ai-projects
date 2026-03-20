@@ -15,12 +15,14 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<"image" | "manual">("manual");
 
   const handleTopicsExtracted = (extracted: string[], preview: string) => {
     setTopics(
       extracted.map((text) => ({ id: crypto.randomUUID(), text }))
     );
     setImagePreview(preview);
+    setSource("image");
     setView("topics");
     setError(null);
   };
@@ -31,8 +33,8 @@ export default function App() {
 
     try {
       const topicTexts = topics.map((t) => t.text);
-      const content = await generateContent(topicTexts);
-      setModules(content);
+      const result = await generateContent(topicTexts, source);
+      setModules(result.modules);
       setView("content");
     } catch (err) {
       setError(
@@ -50,6 +52,7 @@ export default function App() {
       setView("home");
       setTopics([]);
       setImagePreview(null);
+      setSource("manual");
     }
     setError(null);
   };
@@ -57,6 +60,7 @@ export default function App() {
   const startManualEntry = () => {
     setView("topics");
     setImagePreview(null);
+    setSource("manual");
     setError(null);
   };
 

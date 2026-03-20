@@ -51,3 +51,21 @@ export interface ShareRequest {
   emails: string[];
   questionnaireId: string;
 }
+
+export interface TrainingSession {
+  id: string;
+  title: string;
+  topics: string[];
+  modules: TrainingModule[];
+  source: "image" | "manual";
+  createdAt: string;
+}
+
+export interface TrainingSessionSummary {
+  id: string;
+  title: string;
+  topics: string[];
+  topicCount: number;
+  source: "image" | "manual";
+  createdAt: string;
+}

@@ -78,10 +78,13 @@ describe("api client", () => {
   it("returns generated content when the request succeeds", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ success: true, content: sampleModules }),
+      json: async () => ({ success: true, content: sampleModules, sessionId: "session-1" }),
     } as Response);
 
-    await expect(generateContent(["topic"])).resolves.toEqual(sampleModules);
+    await expect(generateContent(["topic"])).resolves.toEqual({
+      modules: sampleModules,
+      sessionId: "session-1",
+    });
   });
 
   it("uses the default generation error message when the payload has no message", async () => {
@@ -112,6 +115,7 @@ describe("api client", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: "Assessment",
+          sessionId: undefined,
           modules: sampleModules.map((module) => ({
             topic: module.topic,
             questions: module.assessmentQuestions,

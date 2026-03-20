@@ -256,7 +256,8 @@ function buildModuleTitle(
   idx: number,
   total: number,
   ac: { fill: string; bg: string },
-  artImage: string
+  artImage: string,
+  isPhoto = false
 ) {
   const slide = pres.addSlide();
   slide.background = { color: ac.bg };
@@ -267,7 +268,7 @@ function buildModuleTitle(
     y: 0,
     w: 5.5,
     h: 7.5,
-    transparency: 30,
+    transparency: isPhoto ? 10 : 30,
   });
 
   decoCircle(slide, 9, -2.5, 7, ac.fill, 85);
@@ -336,12 +337,23 @@ function buildModuleTitle(
 function buildObjectives(
   pres: PptxGenJS,
   mod: TrainingModule,
-  _ac: { fill: string; bg: string }
+  _ac: { fill: string; bg: string },
+  topicImage?: string
 ) {
   const slide = pres.addSlide();
   slide.background = { color: C.bgDark };
 
   accentBar(slide, 0, 0, 13.33, 0.06, C.emerald);
+  if (topicImage) {
+    slide.addImage({
+      data: topicImage,
+      x: 9,
+      y: 4.2,
+      w: 4,
+      h: 2.8,
+      transparency: 20,
+    });
+  }
   decoCircle(slide, 11, 4.5, 4, C.emerald, 93);
 
   slide.addText("LEARNING OBJECTIVES", {
@@ -395,7 +407,8 @@ function buildContentSlides(
   mod: TrainingModule,
   section: { title: string; body: string },
   sIdx: number,
-  ac: { fill: string; bg: string }
+  ac: { fill: string; bg: string },
+  sectionImage?: string
 ) {
   const clean = stripMd(section.body);
   const MAX_CHARS = 1100;
@@ -422,7 +435,18 @@ function buildContentSlides(
     slide.background = { color: C.bgDark };
 
     accentBar(slide, 0, 0, 0.05, 7.5, ac.fill);
-    decoCircle(slide, 12, 0, 1.2, ac.fill, 92);
+    if (sectionImage) {
+      slide.addImage({
+        data: sectionImage,
+        x: 10.2,
+        y: 0.15,
+        w: 2.8,
+        h: 1.15,
+        transparency: 5,
+      });
+    } else {
+      decoCircle(slide, 12, 0, 1.2, ac.fill, 92);
+    }
 
     slide.addShape("roundRect", {
       x: 0.5,
@@ -446,10 +470,11 @@ function buildContentSlides(
     });
 
     const pageSuffix = chunks.length > 1 ? `  (${ci + 1}/${chunks.length})` : "";
+    const headerW = sectionImage ? 8.5 : 10;
     slide.addText(section.title + pageSuffix, {
       x: 1.2,
       y: 0.35,
-      w: 10,
+      w: headerW,
       h: 0.6,
       fontSize: 22,
       fontFace: FONT,
@@ -460,7 +485,7 @@ function buildContentSlides(
     slide.addText(mod.topic, {
       x: 1.2,
       y: 0.95,
-      w: 10,
+      w: headerW,
       h: 0.35,
       fontSize: 11,
       fontFace: FONT,
@@ -529,12 +554,23 @@ function buildContentSlides(
 function buildTakeaways(
   pres: PptxGenJS,
   mod: TrainingModule,
-  _ac: { fill: string; bg: string }
+  _ac: { fill: string; bg: string },
+  topicImage?: string
 ) {
   const slide = pres.addSlide();
   slide.background = { color: C.bgDark };
 
   accentBar(slide, 0, 0, 0.07, 7.5, C.amber);
+  if (topicImage) {
+    slide.addImage({
+      data: topicImage,
+      x: 9,
+      y: 4.2,
+      w: 4,
+      h: 2.8,
+      transparency: 20,
+    });
+  }
   decoCircle(slide, 10.5, -1.5, 5, C.amber, 93);
 
   slide.addText("KEY TAKEAWAYS", {
@@ -722,7 +758,10 @@ function buildClosing(pres: PptxGenJS) {
 
 // ─── Main Export ─────────────────────────────────────────────
 
-export async function exportToPPT(modules: TrainingModule[]): Promise<void> {
+export async function exportToPPT(
+  modules: TrainingModule[],
+  topicImages?: Record<string, string>
+): Promise<void> {
   const pres = new PptxGenJS();
   pres.layout = "LAYOUT_WIDE";
   pres.author = "Training Content Generator";
@@ -733,16 +772,18 @@ export async function exportToPPT(modules: TrainingModule[]): Promise<void> {
 
   modules.forEach((mod, idx) => {
     const ac = accent(idx);
-    const art = generateAbstractArt(mod.topic, ac.fill);
+    const topicImg = topicImages?.[mod.topic];
+    const art = topicImg ?? generateAbstractArt(mod.topic, ac.fill);
 
-    buildModuleTitle(pres, mod, idx, modules.length, ac, art);
-    buildObjectives(pres, mod, ac);
+    buildModuleTitle(pres, mod, idx, modules.length, ac, art, !!topicImg);
+    buildObjectives(pres, mod, ac, topicImg);
 
     mod.content.forEach((section, sIdx) => {
-      buildContentSlides(pres, mod, section, sIdx, ac);
+      const sectionImg = topicImages?.[section.title] ?? topicImg;
+      buildContentSlides(pres, mod, section, sIdx, ac, sectionImg);
     });
 
-    buildTakeaways(pres, mod, ac);
+    buildTakeaways(pres, mod, ac, topicImg);
 
     if (mod.assessmentQuestions.length > 0) {
       buildQuizSlides(pres, mod, ac);

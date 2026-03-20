@@ -1,5 +1,26 @@
 import type { TrainingModule } from "../types";
 
+export async function fetchTopicImages(
+  queries: string[]
+): Promise<Record<string, string>> {
+  const response = await fetch("/api/topic-images", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ queries }),
+  });
+
+  if (!response.ok) {
+    console.warn("Topic image fetch failed, will use fallback art");
+    return {};
+  }
+
+  const data = (await response.json()) as {
+    success: boolean;
+    images: Record<string, string>;
+  };
+  return data.images;
+}
+
 export async function extractTopicsFromImage(
   file: File
 ): Promise<string[]> {

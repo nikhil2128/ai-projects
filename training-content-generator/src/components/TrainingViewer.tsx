@@ -17,6 +17,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import type { TrainingModule, AssessmentQuestion } from "../types";
 import { exportToPPT } from "../utils/pptExport";
+import { fetchTopicImages } from "../api/client";
 
 interface TrainingViewerProps {
   modules: TrainingModule[];
@@ -30,7 +31,9 @@ export function TrainingViewer({ modules }: TrainingViewerProps) {
   const handleDownloadPPT = async () => {
     setIsExporting(true);
     try {
-      await exportToPPT(modules);
+      const uniqueQueries = [...new Set(modules.map((mod) => mod.topic))];
+      const topicImages = await fetchTopicImages(uniqueQueries);
+      await exportToPPT(modules, topicImages);
     } catch (err) {
       console.error("PPT export failed:", err);
     } finally {

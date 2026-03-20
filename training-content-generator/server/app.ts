@@ -3,6 +3,7 @@ import cors from "cors";
 import multer from "multer";
 import { analyzeImage } from "./services/imageAnalyzer.js";
 import { generateTrainingContent } from "./services/contentGenerator.js";
+import { searchTopicImages } from "./services/imageSearch.js";
 
 const app = express();
 
@@ -69,6 +70,30 @@ app.post("/api/generate-content", async (req, res) => {
       error instanceof Error
         ? error.message
         : "Failed to generate training content";
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.post("/api/topic-images", async (req, res) => {
+  try {
+    const { queries } = req.body as { queries: string[] };
+
+    if (!queries || !Array.isArray(queries) || queries.length === 0) {
+      res.status(400).json({ error: "Please provide an array of search queries" });
+      return;
+    }
+
+    if (queries.length > 30) {
+      res.status(400).json({ error: "Maximum 30 image queries per request" });
+      return;
+    }
+
+    const images = await searchTopicImages(queries);
+    res.json({ success: true, images });
+  } catch (error) {
+    console.error("Image search error:", error);
+    const message =
+      error instanceof Error ? error.message : "Failed to fetch topic images";
     res.status(500).json({ success: false, error: message });
   }
 });

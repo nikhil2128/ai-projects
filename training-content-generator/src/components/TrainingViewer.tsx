@@ -11,9 +11,12 @@ import {
   XCircle,
   ChevronDown,
   ChevronUp,
+  Download,
+  Loader2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { TrainingModule, AssessmentQuestion } from "../types";
+import { exportToPPT } from "../utils/pptExport";
 
 interface TrainingViewerProps {
   modules: TrainingModule[];
@@ -21,10 +24,45 @@ interface TrainingViewerProps {
 
 export function TrainingViewer({ modules }: TrainingViewerProps) {
   const [activeModule, setActiveModule] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
   const module = modules[activeModule]!;
+
+  const handleDownloadPPT = async () => {
+    setIsExporting(true);
+    try {
+      await exportToPPT(modules);
+    } catch (err) {
+      console.error("PPT export failed:", err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-slate-200">
+            Training Materials
+          </h2>
+          <p className="text-sm text-slate-400 mt-0.5">
+            {modules.length} module{modules.length !== 1 ? "s" : ""} generated
+          </p>
+        </div>
+        <button
+          onClick={handleDownloadPPT}
+          disabled={isExporting}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 text-white font-medium text-sm hover:from-blue-500 hover:to-violet-500 transition-all shadow-lg shadow-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {isExporting ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Download className="w-4 h-4" />
+          )}
+          {isExporting ? "Generating..." : "Download PPT"}
+        </button>
+      </div>
+
       {modules.length > 1 && (
         <ModuleNav
           modules={modules}

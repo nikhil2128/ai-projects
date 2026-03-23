@@ -2,14 +2,11 @@ import path from 'path';
 import { rm, mkdir } from 'fs/promises';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config';
-import { MergeJob, MergeRequest, VideoChunk } from '../types';
+import { ChunkInfo, MergeJob, MergeRequest, VideoChunk, VideoProperties } from '../types';
+import { pMap } from '../utils';
 import { listChunkKeys, downloadFile, uploadFile } from './s3.service';
 import { sortChunksByTimestamp, buildTimeline } from './chunk.service';
-import {
-  probeDuration,
-  probeVideoProperties,
-  mergeSegments,
-} from './video.service';
+import { probeChunkInfo, mergeSegments } from './video.service';
 
 /** In-memory store for merge job status */
 const jobs = new Map<string, MergeJob>();
@@ -89,61 +86,82 @@ async function processMergeJob(
       );
     }
 
-    // Step 2: Sort by timestamp
     const sorted = sortChunksByTimestamp(keys);
 
     updateJob(jobId, {
       progress: 10,
-      message: `Found ${sorted.length} chunks. Downloading...`,
+      message: `Found ${sorted.length} chunks. Downloading and analyzing...`,
     });
 
-    // Step 3: Download all chunks
-    const chunks: VideoChunk[] = [];
-    for (let i = 0; i < sorted.length; i++) {
-      const { key, timestampMs } = sorted[i];
-      const ext = path.extname(key) || '.mp4';
-      const localPath = path.join(
-        chunksDir,
-        `${String(i).padStart(4, '0')}${ext}`
-      );
+    // Step 2: Download + probe each chunk in parallel.
+    // Each worker downloads a chunk then immediately probes it, overlapping
+    // network I/O with ffprobe across workers.
+    const chunks: VideoChunk[] = new Array(sorted.length);
+    const chunkInfos: ChunkInfo[] = new Array(sorted.length);
+    let completedCount = 0;
 
-      await downloadFile(request.bucket, key, localPath);
+    await pMap(
+      sorted,
+      async ({ key, timestampMs }, i) => {
+        const ext = path.extname(key) || '.mp4';
+        const localPath = path.join(
+          chunksDir,
+          `${String(i).padStart(4, '0')}${ext}`
+        );
 
-      chunks.push({
-        key,
-        timestampMs,
-        durationSec: 0, // filled in next step
-        localPath,
-      });
+        await downloadFile(request.bucket, key, localPath);
+        const info = await probeChunkInfo(localPath);
 
-      const downloadProgress = 10 + Math.round((i / sorted.length) * 30);
-      updateJob(jobId, {
-        progress: downloadProgress,
-        message: `Downloaded ${i + 1}/${sorted.length} chunks`,
-      });
-    }
+        chunks[i] = { key, timestampMs, durationSec: info.durationSec, localPath };
+        chunkInfos[i] = info;
 
-    // Step 4: Probe duration of each chunk
-    updateJob(jobId, {
-      status: 'analyzing',
-      progress: 40,
-      message: 'Analyzing video chunks...',
-    });
+        completedCount++;
+        updateJob(jobId, {
+          progress: 10 + Math.round((completedCount / sorted.length) * 40),
+          message: `Processed ${completedCount}/${sorted.length} chunks`,
+        });
+      },
+      config.processing.downloadConcurrency
+    );
+
+    // Step 3: Build video properties from the first chunk
+    const ref = chunkInfos[0];
+    const videoProps: VideoProperties = {
+      width: ref.width,
+      height: ref.height,
+      frameRate: ref.frameRate,
+      videoCodec: ref.videoCodec,
+      audioCodec: ref.audioCodec,
+      audioBitrate: null,
+      audioSampleRate: ref.audioSampleRate,
+      audioChannels: ref.audioChannels,
+    };
+
+    // Step 4: Identify chunks that already match the target codec params.
+    // When all chunks come from the same recording session they are almost
+    // always identical, letting us skip the expensive re-encode entirely.
+    const compatiblePaths = new Set<string>();
 
     for (let i = 0; i < chunks.length; i++) {
-      chunks[i].durationSec = await probeDuration(chunks[i].localPath);
-
-      const analyzeProgress = 40 + Math.round((i / chunks.length) * 15);
-      updateJob(jobId, {
-        progress: analyzeProgress,
-        message: `Analyzed ${i + 1}/${chunks.length} chunks`,
-      });
+      const info = chunkInfos[i];
+      if (
+        info.videoCodec === ref.videoCodec &&
+        info.pixFmt === ref.pixFmt &&
+        info.width === ref.width &&
+        info.height === ref.height &&
+        Math.abs(info.frameRate - ref.frameRate) < 0.1 &&
+        info.audioCodec === ref.audioCodec &&
+        info.audioSampleRate === ref.audioSampleRate &&
+        info.audioChannels === ref.audioChannels
+      ) {
+        compatiblePaths.add(chunks[i].localPath);
+      }
     }
 
-    // Step 5: Get video properties from the first chunk (for gap generation)
-    const videoProps = await probeVideoProperties(chunks[0].localPath);
+    const incompatibleCount = chunks.length - compatiblePaths.size;
+    const skipNormalization = incompatibleCount === 0;
 
-    // Step 6: Build timeline with gap detection
+    // Step 5: Build timeline with gap detection
     updateJob(jobId, {
       status: 'merging',
       progress: 55,
@@ -159,20 +177,26 @@ async function processMergeJob(
 
     updateJob(jobId, {
       progress: 60,
-      message: `Timeline built: ${chunks.length} chunks, ${gapCount} gaps (${Math.round(totalGapDuration)}s total gap)`,
+      message:
+        `Timeline: ${chunks.length} chunks, ${gapCount} gaps (${Math.round(totalGapDuration)}s). ` +
+        (skipNormalization
+          ? 'All chunks compatible — skipping re-encode.'
+          : `${incompatibleCount} chunks need normalization.`),
     });
 
-    // Step 7: Merge all segments
+    // Step 6: Merge all segments
     const outputPath = path.join(jobDir, 'merged_output.mp4');
 
     updateJob(jobId, {
       progress: 65,
-      message: 'Normalizing and merging segments (this may take a while)...',
+      message: skipNormalization
+        ? 'Merging segments (fast — no re-encoding needed)...'
+        : `Normalizing ${incompatibleCount} chunks and merging...`,
     });
 
-    await mergeSegments(timeline, videoProps, jobDir, outputPath);
+    await mergeSegments(timeline, videoProps, jobDir, outputPath, compatiblePaths);
 
-    // Step 8: Upload to S3
+    // Step 7: Upload to S3
     updateJob(jobId, {
       status: 'uploading',
       progress: 90,
@@ -191,7 +215,6 @@ async function processMergeJob(
       message: `Merge complete. Uploaded to ${s3Uri}`,
     });
   } finally {
-    // Clean up temp directory
     await rm(jobDir, { recursive: true, force: true }).catch(() => {
       console.warn(`Failed to clean up temp dir: ${jobDir}`);
     });

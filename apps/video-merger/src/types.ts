@@ -21,6 +21,19 @@ export interface TimelineSegment {
   durationSec: number;
 }
 
+/** Combined probe result for a single video chunk (single ffprobe call) */
+export interface ChunkInfo {
+  durationSec: number;
+  width: number;
+  height: number;
+  frameRate: number;
+  videoCodec: string;
+  pixFmt: string;
+  audioCodec: string | null;
+  audioSampleRate: number | null;
+  audioChannels: number | null;
+}
+
 /** Video properties extracted from the first chunk (used for generating matching black segments) */
 export interface VideoProperties {
   width: number;

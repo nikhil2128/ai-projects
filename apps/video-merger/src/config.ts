@@ -18,5 +18,8 @@ export const config = {
   processing: {
     maxDurationMinutes: parseInt(process.env.MAX_VIDEO_DURATION_MINUTES || '60', 10),
     tempDir: process.env.TEMP_DIR || path.join('/tmp', 'video-merger'),
+    downloadConcurrency: parseInt(process.env.DOWNLOAD_CONCURRENCY || '10', 10),
+    ffprobeConcurrency: parseInt(process.env.FFPROBE_CONCURRENCY || '8', 10),
+    normalizeConcurrency: parseInt(process.env.NORMALIZE_CONCURRENCY || '4', 10),
   },
 } as const;

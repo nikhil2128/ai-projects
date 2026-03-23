@@ -3,7 +3,7 @@
 # ============================================================
 #
 # Usage:
-#   make lint p=csv-merger/backend       # Run lint for one project path
+#   make lint p=apps/csv-merger/backend       # Run lint for one project path
 #   make lint p=csv-merger-backend       # Run lint for one project name
 #   make test-all                        # Test all projects
 #   make affected-build                  # Build only changed projects

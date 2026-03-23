@@ -16,7 +16,13 @@
       "!{projectRoot}/**/*.test.*",
       "!{projectRoot}/**/*.md"
     ],
-    "sharedGlobals": []
+    "sharedGlobals": [
+      "{workspaceRoot}/package.json",
+      "{workspaceRoot}/package-lock.json",
+      "{workspaceRoot}/nx.json",
+      "{workspaceRoot}/tsconfig.base.json",
+      "{workspaceRoot}/tsconfig.json"
+    ]
   },
   "targetDefaults": {
     "build": {
@@ -58,6 +64,11 @@
       "linter": "eslint",
       "unitTestRunner": "vitest",
       "bundler": "tsc"
+    }
+  },
+  "pluginsConfig": {
+    "@nx/js": {
+      "projectsAffectedByDependencyUpdates": "auto"
     }
   }
 }

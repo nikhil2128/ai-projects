@@ -1,9 +1,11 @@
 {
   "name": "ai-projects",
   "private": true,
+  "packageManager": "npm@11.7.0",
   "workspaces": [
-    "*",
-    "*/*"
+    "apps/*",
+    "apps/*/*",
+    "libs/shared/*"
   ],
   "scripts": {
     "nx": "nx",
@@ -18,12 +20,14 @@
     "affected:test": "nx affected -t test",
     "affected:build": "nx affected -t build",
     "affected:typecheck": "nx affected -t typecheck",
+    "ci:affected": "nx affected -t lint typecheck test build",
+    "ci:all": "nx run-many -t lint typecheck test build --all",
     "format:check": "nx format:check",
     "format:write": "nx format:write"
   },
   "devDependencies": {
-    "@nx/js": "latest",
-    "@nx/workspace": "latest",
-    "nx": "latest"
+    "@nx/js": "22.5.4",
+    "@nx/workspace": "22.5.4",
+    "nx": "22.5.4"
   }
 }

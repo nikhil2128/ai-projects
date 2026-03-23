@@ -12,14 +12,15 @@ This monorepo is now orchestrated by [Nx](https://nx.dev/) so multiple independe
 
 ## Workspace Layout
 
-```
+```text
 ai-projects/
 ├── Makefile                # Convenience commands mapped to Nx
 ├── nx.json                 # Nx workspace config + target defaults
 ├── package.json            # Root workspace + Nx scripts
+├── apps/                   # Product apps and services
 ├── tsconfig.base.json      # Shared TS base config / shared lib alias
 ├── libs/                   # Cross-project shared libraries
-└── <projects...>           # Existing independent apps/services
+└── .github/                # Monorepo CI/CD workflows
 ```
 
 ## Quick Start
@@ -38,7 +39,7 @@ make build-all
 make typecheck-all
 
 # Run task for one project (path or project name)
-make lint p=csv-merger/backend
+make lint p=apps/csv-merger/backend
 make test p=smart-task-backend
 
 # Run only changed projects
@@ -74,11 +75,12 @@ The workspace includes a default alias pattern in `tsconfig.base.json`:
 ## Adding a New Project
 
 1. Create a new package with `package.json` and scripts (`dev`, `build`, `lint`, `test`, `typecheck`).
-2. Place it at root (`new-project/`) or one level nested (`domain/new-project/`) to match workspace globs.
-3. Run `make install-all`.
-4. Verify discovery with `make projects`.
-5. Add/adjust CI workflows to use Nx (`nx affected` where possible).
+2. Place applications under `apps/<project>` and nested packages under `apps/<project>/<package>`.
+3. Place shared libraries under `libs/<scope>/<lib-name>`.
+4. Run `make install-all`.
+5. Verify discovery with `make projects`.
+6. Prefer the root GitHub Actions workflow for validation and keep deploy workflows project-specific.
 
 ## Deployment Strategy
 
-For CI/CD, prefer `nx affected` for selective builds/tests and keep per-project deploy jobs. This gives fast validation while preserving independent deployment pipelines.
+For CI/CD, use the root Nx workflow for affected-only validation and keep project-specific deploy jobs for environment-specific release steps. This gives fast validation while preserving independent deployment pipelines.

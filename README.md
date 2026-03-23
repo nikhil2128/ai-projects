@@ -65,21 +65,21 @@ npm run nx -- affected -t test
 Create shared code in `libs/` and consume it from apps/services.
 
 ```bash
-npx nx g @nx/js:library libs/shared/<lib-name>
+npx nx g @nx/js:library libs/<lib-name>
 ```
 
 The workspace includes a default alias pattern in `tsconfig.base.json`:
 
-- `@shared/*` -> `libs/shared/*/src/index.ts`
+- `@libs/*` -> `libs/*/src/index.ts`
 
 ## Adding a New Project
 
 1. Create a new package with `package.json` and scripts (`dev`, `build`, `lint`, `test`, `typecheck`).
 2. Place applications under `apps/<project>` and nested packages under `apps/<project>/<package>`.
-3. Place shared libraries under `libs/<scope>/<lib-name>`.
+3. Place shared libraries directly under `libs/<lib-name>`.
 4. Run `make install-all`.
 5. Verify discovery with `make projects`.
-6. Prefer the root GitHub Actions workflow for validation and keep deploy workflows project-specific.
+6. Prefer the root GitHub Actions workflow in `.github/workflows/ci.yml` for validation and keep deploy workflows project-specific.
 
 ## Deployment Strategy
 

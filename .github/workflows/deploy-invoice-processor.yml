@@ -16,7 +16,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "invoice-processor/**"
+      - "apps/invoice-processor/**"
       - ".github/workflows/deploy-invoice-processor.yml"
     tags:
       - "invoice-processor-v*"
@@ -54,7 +54,9 @@ jobs:
 
   ci:
     name: "CI Checks"
-    uses: ./.github/workflows/ci-invoice-processor.yml
+    uses: ./.github/workflows/ci.yml
+    with:
+      projects: "invoice-processor,invoice-processor-ui"
 
   deploy-backend:
     name: "Deploy Backend — ${{ needs.resolve-env.outputs.environment }}"
@@ -72,7 +74,7 @@ jobs:
       - name: Build backend Docker image
         uses: docker/build-push-action@v6
         with:
-          context: invoice-processor
+          context: apps/invoice-processor
           push: false
           load: true
           cache-from: type=gha
@@ -99,18 +101,16 @@ jobs:
         with:
           node-version: 20
           cache: "npm"
-          cache-dependency-path: invoice-processor/ui/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: invoice-processor/ui
         run: npm ci
 
       - name: Build UI
-        working-directory: invoice-processor/ui
-        run: npm run build
+        run: npm run build --workspace=invoice-processor-ui
 
       # TODO: Deploy static files to S3/CloudFront, GCS, Netlify, Vercel, etc.
       - name: Deploy UI placeholder
         run: |
           echo "🚀 Deploy UI to ${{ env.ENV }}"
-          echo "   Build output: invoice-processor/ui/dist/"
+          echo "   Build output: apps/invoice-processor/ui/dist/"

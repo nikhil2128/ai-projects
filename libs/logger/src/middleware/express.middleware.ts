@@ -39,7 +39,7 @@ export interface RequestLoggerOptions {
  * 3. Logs the response with duration on finish
  *
  * ```ts
- * import { requestLogger } from '@shared/logger';
+ * import { requestLogger } from '@libs/logger';
  * app.use(requestLogger());
  * ```
  */

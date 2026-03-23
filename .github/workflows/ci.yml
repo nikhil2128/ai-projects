@@ -1,0 +1,140 @@
+name: "CI"
+
+on:
+  workflow_call:
+    inputs:
+      projects:
+        description: "Comma-separated Nx project names to validate"
+        required: false
+        type: string
+        default: ""
+      bootstrap-command:
+        description: "Optional root-level setup command to run before Nx tasks"
+        required: false
+        type: string
+        default: ""
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "apps/**"
+      - "libs/**"
+      - "package.json"
+      - "package-lock.json"
+      - "nx.json"
+      - "tsconfig.json"
+      - "tsconfig.base.json"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/deploy-*.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/**"
+      - "libs/**"
+      - "package.json"
+      - "package-lock.json"
+      - "nx.json"
+      - "tsconfig.json"
+      - "tsconfig.base.json"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/deploy-*.yml"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: "Nx Validation"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate --workspace=image-annotator-backend
+
+      - name: Run extra bootstrap command
+        if: ${{ github.event_name == 'workflow_call' && inputs.bootstrap-command != '' }}
+        run: ${{ inputs.bootstrap-command }}
+
+      - name: Validate selected projects
+        if: ${{ github.event_name == 'workflow_call' && inputs.projects != '' }}
+        run: npm run nx -- run-many -t lint typecheck test build --projects="${{ inputs.projects }}"
+
+      - name: Validate all projects
+        if: ${{ github.event_name == 'workflow_call' && inputs.projects == '' }}
+        run: npm run ci:all
+
+      - name: Validate affected projects
+        if: ${{ github.event_name != 'workflow_call' }}
+        env:
+          NX_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          NX_HEAD: ${{ github.sha }}
+        run: |
+          if [ -z "$NX_BASE" ] || [ "$NX_BASE" = "0000000000000000000000000000000000000000" ]; then
+            npm run ci:all
+          else
+            npm run ci:affected -- --base="$NX_BASE" --head="$NX_HEAD"
+          fi
+
+  docker-verification:
+    name: "Docker Verification"
+    runs-on: ubuntu-latest
+    needs: [validate]
+    if: ${{ github.event_name != 'workflow_call' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect docker-relevant changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            shared:
+              - "package.json"
+              - "package-lock.json"
+              - "nx.json"
+              - "tsconfig.json"
+              - "tsconfig.base.json"
+              - ".github/workflows/ci.yml"
+            image_annotator:
+              - "apps/image-annotator/**"
+            invoice_processor:
+              - "apps/invoice-processor/**"
+
+      - name: Set up Docker Buildx
+        if: ${{ steps.changes.outputs.shared == 'true' || steps.changes.outputs.image_annotator == 'true' || steps.changes.outputs.invoice_processor == 'true' }}
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image-annotator backend image
+        if: ${{ steps.changes.outputs.shared == 'true' || steps.changes.outputs.image_annotator == 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/image-annotator/backend
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: image-annotator-backend:ci
+
+      - name: Build invoice-processor image
+        if: ${{ steps.changes.outputs.shared == 'true' || steps.changes.outputs.invoice_processor == 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/invoice-processor
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: invoice-processor:ci

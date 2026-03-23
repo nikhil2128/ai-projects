@@ -18,7 +18,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "image-annotator/**"
+      - "apps/image-annotator/**"
       - ".github/workflows/deploy-image-annotator.yml"
     tags:
       - "image-annotator-v*"
@@ -62,7 +62,9 @@ jobs:
   # ── Run CI checks before deploying ─────────────────────────
   ci:
     name: "CI Checks"
-    uses: ./.github/workflows/ci-image-annotator.yml
+    uses: ./.github/workflows/ci.yml
+    with:
+      projects: "image-annotator-backend,image-annotator-frontend"
 
   # ── Deploy Backend (Docker → ECR → ECS) ────────────────────
   deploy-backend:
@@ -91,7 +93,7 @@ jobs:
       - name: Build & push backend image
         uses: docker/build-push-action@v6
         with:
-          context: image-annotator/backend
+          context: apps/image-annotator/backend
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -144,28 +146,26 @@ jobs:
         with:
           node-version: 20
           cache: "npm"
-          cache-dependency-path: image-annotator/frontend/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: image-annotator/frontend
         run: npm ci
 
       - name: Build frontend
-        working-directory: image-annotator/frontend
-        run: npm run build
+        run: npm run build --workspace=image-annotator-frontend
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
 
       - name: Sync to S3
         run: |
-          aws s3 sync image-annotator/frontend/dist/ \
+          aws s3 sync apps/image-annotator/frontend/dist/ \
             s3://image-annotator-${{ env.ENV }}-frontend \
             --delete \
             --cache-control "public, max-age=31536000, immutable" \
             --exclude "index.html" \
             --exclude "*.json"
 
-          aws s3 cp image-annotator/frontend/dist/index.html \
+          aws s3 cp apps/image-annotator/frontend/dist/index.html \
             s3://image-annotator-${{ env.ENV }}-frontend/index.html \
             --cache-control "no-cache, no-store, must-revalidate"
 
@@ -183,12 +183,12 @@ jobs:
     environment: ${{ needs.resolve-env.outputs.environment }}
     if: >
       github.event_name == 'workflow_dispatch' ||
-      contains(github.event.head_commit.modified, 'image-annotator/infra/')
+      contains(github.event.head_commit.modified, 'apps/image-annotator/infra/')
     env:
       ENV: ${{ needs.resolve-env.outputs.environment }}
     defaults:
       run:
-        working-directory: image-annotator/infra
+        working-directory: apps/image-annotator/infra
     steps:
       - uses: actions/checkout@v4
 

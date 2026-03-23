@@ -1,4 +1,4 @@
-# @shared/logger
+# @libs/logger
 
 A provider-agnostic logging library for the **ai-projects** monorepo. The core
 `Logger` writes structured `LogEntry` objects to one or more **transports**.
@@ -9,7 +9,7 @@ changes required.
 ## Quick start
 
 ```ts
-import { LogManager, ConsoleTransport, LogLevel } from '@shared/logger';
+import { LogManager, ConsoleTransport, LogLevel } from '@libs/logger';
 
 // 1. Initialize once at app startup
 LogManager.initialize({
@@ -100,7 +100,7 @@ new FileTransport({
 Implement the `LogTransport` interface:
 
 ```ts
-import type { LogTransport, LogEntry } from '@shared/logger';
+import type { LogTransport, LogEntry } from '@libs/logger';
 
 export class DatadogTransport implements LogTransport {
   readonly name = 'datadog';
@@ -122,7 +122,7 @@ export class DatadogTransport implements LogTransport {
 ## Swapping providers at runtime
 
 ```ts
-import { LogManager, HttpTransport } from '@shared/logger';
+import { LogManager, HttpTransport } from '@libs/logger';
 
 // App starts with console only
 LogManager.initialize({
@@ -152,7 +152,7 @@ LogManager.replaceTransports([
 
 ```ts
 import { NestFactory } from '@nestjs/core';
-import { NestLoggerAdapter, LogManager, ConsoleTransport } from '@shared/logger';
+import { NestLoggerAdapter, LogManager, ConsoleTransport } from '@libs/logger';
 
 LogManager.initialize({ transports: [new ConsoleTransport()] });
 
@@ -167,7 +167,7 @@ const app = await NestFactory.create(AppModule, {
 
 ```ts
 import express from 'express';
-import { requestLogger, LogManager, ConsoleTransport } from '@shared/logger';
+import { requestLogger, LogManager, ConsoleTransport } from '@libs/logger';
 
 LogManager.initialize({ transports: [new ConsoleTransport()] });
 

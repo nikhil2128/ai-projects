@@ -5,7 +5,7 @@
   "workspaces": [
     "apps/*",
     "apps/*/*",
-    "libs/shared/*"
+    "libs/*"
   ],
   "scripts": {
     "nx": "nx",

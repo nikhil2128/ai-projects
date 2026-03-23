@@ -15,8 +15,8 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@shared/*": [
-        "libs/shared/*/src/index.ts"
+      "@libs/*": [
+        "libs/*/src/index.ts"
       ]
     }
   },

@@ -16,7 +16,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "video-merger/**"
+      - "apps/video-merger/**"
       - ".github/workflows/deploy-video-merger.yml"
     tags:
       - "video-merger-v*"
@@ -56,7 +56,9 @@ jobs:
   # ── Run CI checks before deploying ─────────────────────────
   ci:
     name: "CI Checks"
-    uses: ./.github/workflows/ci-video-merger.yml
+    uses: ./.github/workflows/ci.yml
+    with:
+      projects: "video-merger"
 
   # ── Deploy to Render ───────────────────────────────────────
   deploy:

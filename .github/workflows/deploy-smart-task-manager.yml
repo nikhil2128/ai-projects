@@ -16,7 +16,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "smart-task-manager/**"
+      - "apps/smart-task-manager/**"
       - ".github/workflows/deploy-smart-task-manager.yml"
     tags:
       - "smart-task-manager-v*"
@@ -54,7 +54,9 @@ jobs:
 
   ci:
     name: "CI Checks"
-    uses: ./.github/workflows/ci-smart-task-manager.yml
+    uses: ./.github/workflows/ci.yml
+    with:
+      projects: "smart-task-backend,smart-task-frontend"
 
   deploy-backend:
     name: "Deploy Backend — ${{ needs.resolve-env.outputs.environment }}"
@@ -72,7 +74,7 @@ jobs:
       - name: Build backend Docker image
         uses: docker/build-push-action@v6
         with:
-          context: smart-task-manager/backend
+          context: apps/smart-task-manager/backend
           push: false
           load: true
           cache-from: type=gha
@@ -101,7 +103,7 @@ jobs:
       - name: Build frontend Docker image
         uses: docker/build-push-action@v6
         with:
-          context: smart-task-manager/frontend
+          context: apps/smart-task-manager/frontend
           push: false
           load: true
           cache-from: type=gha

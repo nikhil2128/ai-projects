@@ -14,7 +14,7 @@
 #
 # Render service setup:
 #   - Create a Web Service on render.com pointing to this repo
-#   - Root directory: csv-merger/backend
+#   - Root directory: apps/csv-merger/backend
 #   - Build command: (uses Dockerfile)
 #   - Environment variables: PORT=3001 (Render sets PORT automatically)
 #   - Copy the deploy hook URL into the GitHub Environment secret
@@ -30,7 +30,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "csv-merger/**"
+      - "apps/csv-merger/**"
       - ".github/workflows/deploy-csv-merger.yml"
     tags:
       - "csv-merger-v*"
@@ -70,7 +70,9 @@ jobs:
   # ── Run CI checks before deploying ─────────────────────────
   ci:
     name: "CI Checks"
-    uses: ./.github/workflows/ci-csv-merger.yml
+    uses: ./.github/workflows/ci.yml
+    with:
+      projects: "csv-merger-backend,csv-merger-frontend"
 
   # ── Deploy Backend to Render ───────────────────────────────
   deploy-backend:
@@ -102,15 +104,13 @@ jobs:
         with:
           node-version: 20
           cache: "npm"
-          cache-dependency-path: csv-merger/frontend/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: csv-merger/frontend
         run: npm ci
 
       - name: Build frontend
-        working-directory: csv-merger/frontend
-        run: npm run build
+        run: npm run build --workspace=csv-merger-frontend
         env:
           VITE_API_BASE: ${{ vars.CSV_MERGER_API_BASE }}
 
@@ -118,12 +118,11 @@ jobs:
         run: npm install -g netlify-cli
 
       - name: Deploy to Netlify
-        working-directory: csv-merger/frontend
         run: |
           if [ "${{ env.ENV }}" = "prod" ]; then
-            netlify deploy --dir=dist --prod --message "Deploy ${{ github.sha }}"
+            netlify deploy --dir=apps/csv-merger/frontend/dist --prod --message "Deploy ${{ github.sha }}"
           else
-            netlify deploy --dir=dist --message "Preview deploy ${{ github.sha }}"
+            netlify deploy --dir=apps/csv-merger/frontend/dist --message "Preview deploy ${{ github.sha }}"
           fi
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}

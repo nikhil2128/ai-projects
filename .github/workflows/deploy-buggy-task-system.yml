@@ -17,7 +17,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "buggy-task-system/**"
+      - "apps/buggy-task-system/**"
       - ".github/workflows/deploy-buggy-task-system.yml"
     tags:
       - "buggy-task-system-v*"
@@ -55,7 +55,9 @@ jobs:
 
   ci:
     name: "CI Checks"
-    uses: ./.github/workflows/ci-buggy-task-system.yml
+    uses: ./.github/workflows/ci.yml
+    with:
+      projects: "buggy-task-system"
 
   deploy:
     name: "Deploy — ${{ needs.resolve-env.outputs.environment }}"
@@ -73,7 +75,7 @@ jobs:
       - name: Build Docker image
         uses: docker/build-push-action@v6
         with:
-          context: buggy-task-system
+          context: apps/buggy-task-system
           push: false
           load: true
           cache-from: type=gha

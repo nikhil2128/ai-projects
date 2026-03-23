@@ -8,7 +8,7 @@ import type { LoggerConfig } from '../types.js';
  *
  * Usage in a NestJS app:
  * ```ts
- * import { NestLoggerAdapter } from '@shared/logger';
+ * import { NestLoggerAdapter } from '@libs/logger';
  *
  * const app = await NestFactory.create(AppModule, {
  *   logger: new NestLoggerAdapter(),

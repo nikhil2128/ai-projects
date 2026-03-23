@@ -7,6 +7,8 @@ import {
   Cart,
   ProductServiceClient,
   CartServiceClient,
+  OrderEventPublisher,
+  OrderPlacedEvent,
 } from "../../../shared/types";
 import { getTestPool, cleanTables, closeTestPool } from "../../../shared/test-db";
 
@@ -58,6 +60,13 @@ class MockCartClient implements CartServiceClient {
   }
 }
 
+class MockEventPublisher implements OrderEventPublisher {
+  events: OrderPlacedEvent[] = [];
+  async publishOrderPlaced(event: OrderPlacedEvent): Promise<void> {
+    this.events.push(event);
+  }
+}
+
 describe("OrderService", () => {
   let orderService: OrderService;
   let productClient: MockProductClient;
@@ -103,7 +112,7 @@ describe("OrderService", () => {
       createdAt: new Date(),
     });
 
-    orderService = new OrderService(store, cartClient, productClient);
+    orderService = new OrderService(store, cartClient, productClient, new MockEventPublisher());
   });
 
   function setupCart(items: { productId: string; name: string; price: number; qty: number }[]) {

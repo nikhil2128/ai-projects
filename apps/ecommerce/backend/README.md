@@ -22,8 +22,9 @@ apps/ecommerce/
 │   │   ├── product/src/            Product Service (:3002)
 │   │   ├── cart/src/               Cart Service (:3003)
 │   │   ├── order/src/              Order Service (:3004)
-│   │   └── payment/src/            Payment Service (:3005)
-│   ├── shared/                   Shared types & inter-service HTTP clients
+│   │   ├── payment/src/            Payment Service (:3005)
+│   │   └── notification/src/       Order Notification Service (SQS-triggered)
+│   ├── shared/                   Shared types, inter-service HTTP clients & event publishers
 │   ├── tests/                    Integration tests
 │   ├── scripts/                  Utility scripts (seed data)
 │   ├── package.json
@@ -76,6 +77,22 @@ apps/ecommerce/
                                                 │
                                            calls Order
                                            calls Product
+
+       ┌──────────────────────────────────────────────────────┐
+       │               Event-Driven Pipeline                  │
+       │                                                      │
+       │  Order Service ──▶ SNS (OrderEvents) ──▶ SQS Queue  │
+       │                         │                    │       │
+       │                         │              ┌─────▼─────┐ │
+       │                         │              │Notification│ │
+       │                         │              │  Lambda    │ │
+       │                         │              │ (SES mail) │ │
+       │                         │              └───────────┘ │
+       │                         │                            │
+       │                    (future subscribers)              │
+       │                    ── Analytics Lambda                │
+       │                    ── Audit Lambda                    │
+       └──────────────────────────────────────────────────────┘
 ```
 
 ## Quick Start

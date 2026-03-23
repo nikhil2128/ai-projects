@@ -27,6 +27,11 @@ Parameters:
     Type: String
     Default: "*"
 
+  SesFromEmail:
+    Type: String
+    Default: "noreply@example.com"
+    Description: Verified SES sender email address
+
 # ────────────────────────────────────────────────────────────────────
 # Globals
 # ────────────────────────────────────────────────────────────────────
@@ -204,6 +209,18 @@ Resources:
       SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
       PrivateDnsEnabled: true
 
+  SNSVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sns"
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+      SecurityGroupIds: [!Ref VPCEndpointSecurityGroup]
+      PrivateDnsEnabled: true
+
   VPCEndpointSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -287,6 +304,52 @@ Resources:
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt CsvDLQ.Arn
         maxReceiveCount: 3
+
+  # ── SNS Topics ─────────────────────────────────────────────────
+  OrderEventsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${AWS::StackName}-order-events"
+
+  # ── Order Notification Queue (SNS → SQS fan-out) ──────────────
+  OrderNotificationDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-order-notification-dlq"
+      MessageRetentionPeriod: 1209600
+
+  OrderNotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-order-notifications"
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 86400
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt OrderNotificationDLQ.Arn
+        maxReceiveCount: 3
+
+  OrderNotificationQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref OrderNotificationQueue]
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt OrderNotificationQueue.Arn
+            Condition:
+              ArnEquals:
+                "aws:SourceArn": !Ref OrderEventsTopic
+
+  OrderNotificationSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: sqs
+      TopicArn: !Ref OrderEventsTopic
+      Endpoint: !GetAtt OrderNotificationQueue.Arn
+      RawMessageDelivery: false
 
   # ── S3 Buckets ──────────────────────────────────────────────────
   CsvUploadBucket:
@@ -584,6 +647,10 @@ Resources:
         Variables:
           CART_SERVICE_URL: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/api/cart"
           PRODUCT_SERVICE_URL: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/api/products"
+          ORDER_EVENTS_TOPIC_ARN: !Ref OrderEventsTopic
+      Policies:
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt OrderEventsTopic.TopicName
       Events:
         OrderProxy:
           Type: HttpApi
@@ -746,6 +813,43 @@ Resources:
         EntryPoints: [handlers/dlq-processor.ts]
         External: [pg-native]
 
+  # ── Order Notification Lambda (SQS trigger via SNS) ─────────────
+  OrderNotificationFunction:
+    Type: AWS::Serverless::Function
+    DependsOn: RunMigrations
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-order-notification"
+      Handler: handlers/order-notification.lambdaHandler
+      CodeUri: backend/
+      Timeout: 30
+      MemorySize: 256
+      ReservedConcurrentExecutions: 10
+      Environment:
+        Variables:
+          SES_FROM_EMAIL: !Ref SesFromEmail
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+                - ses:SendRawEmail
+              Resource: "*"
+      Events:
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt OrderNotificationQueue.Arn
+            BatchSize: 5
+            MaximumBatchingWindowInSeconds: 10
+            FunctionResponseTypes: [ReportBatchItemFailures]
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2020
+        EntryPoints: [handlers/order-notification.ts]
+        External: [pg-native]
+
 # ────────────────────────────────────────────────────────────────────
 # Outputs
 # ────────────────────────────────────────────────────────────────────
@@ -777,3 +881,11 @@ Outputs:
   CsvDlqUrl:
     Description: SQS dead-letter queue URL
     Value: !Ref CsvDLQ
+
+  OrderEventsTopicArn:
+    Description: SNS topic ARN for order events (subscribe to extend)
+    Value: !Ref OrderEventsTopic
+
+  OrderNotificationQueueUrl:
+    Description: SQS queue URL for order notifications
+    Value: !Ref OrderNotificationQueue

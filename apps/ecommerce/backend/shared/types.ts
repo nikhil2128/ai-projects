@@ -219,6 +219,21 @@ export interface SellerDashboardStats {
   topProducts: { productId: string; productName: string; totalSold: number; revenue: number }[];
 }
 
+// ── Order event types (SNS fan-out) ───────────────────────────────────
+
+export interface OrderPlacedEvent {
+  orderId: string;
+  userId: string;
+  items: OrderItem[];
+  totalAmount: number;
+  shippingAddress: string;
+  createdAt: string;
+}
+
+export interface OrderEventPublisher {
+  publishOrderPlaced(event: OrderPlacedEvent): Promise<void>;
+}
+
 // ── SQS message types for CSV processing pipeline ────────────────────
 
 export interface CsvFileUploadedMessage {

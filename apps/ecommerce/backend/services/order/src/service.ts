@@ -6,6 +6,7 @@ import {
   ServiceResult,
   CartServiceClient,
   ProductServiceClient,
+  OrderEventPublisher,
 } from "../../../shared/types";
 import { OrderStore } from "./store";
 
@@ -13,7 +14,8 @@ export class OrderService {
   constructor(
     private store: OrderStore,
     private cartClient: CartServiceClient,
-    private productClient: ProductServiceClient
+    private productClient: ProductServiceClient,
+    private eventPublisher: OrderEventPublisher
   ) {}
 
   async createOrder(input: OrderCreateInput): Promise<ServiceResult<Order>> {
@@ -73,6 +75,19 @@ export class OrderService {
 
     await this.store.addOrder(order);
     await this.cartClient.clearCart(input.userId);
+
+    try {
+      await this.eventPublisher.publishOrderPlaced({
+        orderId: order.id,
+        userId: order.userId,
+        items: order.items,
+        totalAmount: order.totalAmount,
+        shippingAddress: order.shippingAddress,
+        createdAt: order.createdAt.toISOString(),
+      });
+    } catch (err) {
+      console.error("Failed to publish OrderPlaced event:", err);
+    }
 
     return { success: true, data: order };
   }

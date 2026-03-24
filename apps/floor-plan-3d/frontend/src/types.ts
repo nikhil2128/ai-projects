@@ -37,6 +37,13 @@ export const ROOM_COLORS: Record<RoomType, string> = {
   other: '#94a3b8',
 };
 
+export interface HistoryEntry {
+  id: string;
+  imageDataUrl: string;
+  floorPlan: FloorPlan;
+  createdAt: string;
+}
+
 export const ROOM_TYPE_LABELS: Record<RoomType, string> = {
   bedroom: 'Bedroom',
   living_room: 'Living Room',

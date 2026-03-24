@@ -1,11 +1,13 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { api } from '../api';
-import type { User, Profile } from '../types';
+import type { User, Profile, FamilyProfile } from '../types';
 
 interface AuthState {
   user: User | null;
   profile: Profile | null;
+  familyProfile: FamilyProfile | null;
   hasProfile: boolean;
+  hasFamilyProfile: boolean;
   loading: boolean;
   token: string | null;
 }
@@ -23,7 +25,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
     profile: null,
+    familyProfile: null,
     hasProfile: false,
+    hasFamilyProfile: false,
     loading: true,
     token: localStorage.getItem('token'),
   });
@@ -31,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchUser = useCallback(async () => {
     const token = localStorage.getItem('token');
     if (!token) {
-      setState({ user: null, profile: null, hasProfile: false, loading: false, token: null });
+      setState({ user: null, profile: null, familyProfile: null, hasProfile: false, hasFamilyProfile: false, loading: false, token: null });
       return;
     }
 
@@ -40,13 +44,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState({
         user: data.user,
         profile: data.profile,
+        familyProfile: data.familyProfile,
         hasProfile: data.hasProfile,
+        hasFamilyProfile: data.hasFamilyProfile,
         loading: false,
         token,
       });
     } catch {
       localStorage.removeItem('token');
-      setState({ user: null, profile: null, hasProfile: false, loading: false, token: null });
+      setState({ user: null, profile: null, familyProfile: null, hasProfile: false, hasFamilyProfile: false, loading: false, token: null });
     }
   }, []);
 
@@ -70,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem('token');
-    setState({ user: null, profile: null, hasProfile: false, loading: false, token: null });
+    setState({ user: null, profile: null, familyProfile: null, hasProfile: false, hasFamilyProfile: false, loading: false, token: null });
   };
 
   const refreshProfile = async () => {

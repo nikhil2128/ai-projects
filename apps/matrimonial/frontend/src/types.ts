@@ -43,6 +43,38 @@ export interface Interest {
   profile?: Profile;
 }
 
+export interface FamilyProfile {
+  userId: string;
+  fatherName: string;
+  fatherOccupation: string;
+  motherName: string;
+  motherOccupation: string;
+  siblings: string;
+  familyIncome: string;
+  familyValues: string;
+  aboutFamily: string;
+  contactPerson: string;
+  contactPhone: string;
+  familyLocation: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SharedProfile {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  sharedProfileUserId: string;
+  message: string;
+  status: 'pending' | 'viewed' | 'interested' | 'declined';
+  createdAt: string;
+  fromProfile?: Profile;
+  fromFamily?: FamilyProfile;
+  toProfile?: Profile;
+  toFamily?: FamilyProfile;
+  sharedProfile?: Profile;
+}
+
 export interface AuthResponse {
   token: string;
   user: User;
@@ -91,6 +123,13 @@ export const PROFESSIONS = [
 export const MOTHER_TONGUES = [
   'Hindi', 'English', 'Bengali', 'Telugu', 'Marathi', 'Tamil', 'Urdu',
   'Gujarati', 'Malayalam', 'Kannada', 'Punjabi', 'Odia', 'Other',
+];
+
+export const FAMILY_VALUES_LIST = ['Traditional', 'Moderate', 'Liberal'];
+
+export const FAMILY_INCOME_RANGES = [
+  '5-10 LPA', '10-20 LPA', '20-30 LPA', '25-40 LPA', '30-50 LPA',
+  '40-60 LPA', '50-80 LPA', '80+ LPA', '1 Cr+',
 ];
 
 export const INTERESTS_LIST = [

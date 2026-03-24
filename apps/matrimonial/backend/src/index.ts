@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth.js';
 import profileRoutes from './routes/profiles.js';
+import familyRoutes from './routes/family.js';
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -11,6 +12,7 @@ app.use(express.json());
 
 app.use('/api/auth', authRoutes);
 app.use('/api/profiles', profileRoutes);
+app.use('/api/family', familyRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

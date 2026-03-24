@@ -1,12 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import {
   MapPin, GraduationCap, Briefcase, IndianRupee, Heart, Edit,
-  Calendar, Ruler, Users, UtensilsCrossed, Cigarette, Wine,
+  Calendar, Ruler, Users, UtensilsCrossed, Cigarette, Wine, Phone, ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function MyProfile() {
-  const { profile, user } = useAuth();
+  const { profile, familyProfile, user } = useAuth();
   const navigate = useNavigate();
 
   if (!profile?.firstName) {
@@ -109,6 +109,73 @@ export default function MyProfile() {
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-6 card overflow-hidden">
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-8 py-5 flex items-center justify-between">
+          <div className="flex items-center gap-3 text-white">
+            <Users className="w-6 h-6" />
+            <h2 className="text-xl font-bold">Family Profile</h2>
+          </div>
+          <button
+            onClick={() => navigate('/family-profile')}
+            className="bg-white/20 backdrop-blur-sm text-white px-4 py-2 rounded-xl
+                       flex items-center gap-2 hover:bg-white/30 transition-all text-sm font-medium"
+          >
+            {familyProfile?.fatherName || familyProfile?.motherName ? (
+              <><Edit className="w-4 h-4" /> Edit</>
+            ) : (
+              <>Add <ChevronRight className="w-4 h-4" /></>
+            )}
+          </button>
+        </div>
+        <div className="px-8 py-6">
+          {familyProfile?.fatherName || familyProfile?.motherName ? (
+            <div>
+              <div className="grid sm:grid-cols-2 gap-4">
+                {familyProfile.fatherName && (
+                  <div className="bg-amber-50 rounded-xl p-4">
+                    <div className="text-xs text-amber-600 uppercase tracking-wide font-medium mb-1">Father</div>
+                    <div className="font-semibold text-gray-800">{familyProfile.fatherName}</div>
+                    {familyProfile.fatherOccupation && (
+                      <div className="text-sm text-gray-500 mt-0.5">{familyProfile.fatherOccupation}</div>
+                    )}
+                  </div>
+                )}
+                {familyProfile.motherName && (
+                  <div className="bg-amber-50 rounded-xl p-4">
+                    <div className="text-xs text-amber-600 uppercase tracking-wide font-medium mb-1">Mother</div>
+                    <div className="font-semibold text-gray-800">{familyProfile.motherName}</div>
+                    {familyProfile.motherOccupation && (
+                      <div className="text-sm text-gray-500 mt-0.5">{familyProfile.motherOccupation}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3 mt-4">
+                {familyProfile.siblings && <Detail label="Siblings" value={familyProfile.siblings} />}
+                {familyProfile.familyLocation && <Detail icon={<MapPin className="w-4 h-4" />} label="Location" value={familyProfile.familyLocation} />}
+                {familyProfile.familyValues && <Detail label="Values" value={familyProfile.familyValues} />}
+                {familyProfile.contactPerson && (
+                  <Detail icon={<Phone className="w-4 h-4" />} label="Contact" value={
+                    `${familyProfile.contactPerson}${familyProfile.contactPhone ? ` (${familyProfile.contactPhone})` : ''}`
+                  } />
+                )}
+              </div>
+              {familyProfile.aboutFamily && (
+                <p className="mt-4 text-sm text-gray-600 leading-relaxed bg-amber-50 rounded-xl p-4 border border-amber-100">
+                  {familyProfile.aboutFamily}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-6">
+              <Users className="w-10 h-10 text-amber-300 mx-auto mb-3" />
+              <p className="text-gray-500">No family profile added yet</p>
+              <p className="text-sm text-gray-400 mt-1">Adding family details helps other families learn about yours</p>
             </div>
           )}
         </div>

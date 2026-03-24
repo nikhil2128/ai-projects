@@ -1,4 +1,4 @@
-import type { AuthResponse, Profile, BrowseFilters, Interest } from './types';
+import type { AuthResponse, Profile, BrowseFilters, Interest, FamilyProfile, SharedProfile } from './types';
 
 const BASE = '/api';
 
@@ -31,7 +31,7 @@ export const api = {
     login(data: { email: string; password: string }): Promise<AuthResponse> {
       return request('/auth/login', { method: 'POST', body: JSON.stringify(data) });
     },
-    me(): Promise<{ user: { id: string; email: string }; profile: Profile | null; hasProfile: boolean }> {
+    me(): Promise<{ user: { id: string; email: string }; profile: Profile | null; familyProfile: FamilyProfile | null; hasProfile: boolean; hasFamilyProfile: boolean }> {
       return request('/auth/me');
     },
   },
@@ -60,6 +60,29 @@ export const api = {
     },
     updateInterest(interestId: string, status: 'accepted' | 'declined'): Promise<Interest> {
       return request(`/profiles/interests/${interestId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+    },
+  },
+  family: {
+    getMyFamilyProfile(): Promise<FamilyProfile> {
+      return request('/family/me');
+    },
+    updateMyFamilyProfile(data: Partial<FamilyProfile>): Promise<FamilyProfile> {
+      return request('/family/me', { method: 'PUT', body: JSON.stringify(data) });
+    },
+    getFamilyProfile(userId: string): Promise<FamilyProfile> {
+      return request(`/family/user/${userId}`);
+    },
+    shareProfile(data: { toUserId: string; sharedProfileUserId: string; message?: string }): Promise<SharedProfile> {
+      return request('/family/share', { method: 'POST', body: JSON.stringify(data) });
+    },
+    getSharedProfiles(): Promise<{ sent: SharedProfile[]; received: SharedProfile[] }> {
+      return request('/family/shared');
+    },
+    updateSharedProfileStatus(id: string, status: 'viewed' | 'interested' | 'declined'): Promise<SharedProfile> {
+      return request(`/family/shared/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ status }),
       });

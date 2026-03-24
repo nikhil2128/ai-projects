@@ -46,9 +46,38 @@ export interface Interest {
   createdAt: string;
 }
 
+export interface FamilyProfile {
+  userId: string;
+  fatherName: string;
+  fatherOccupation: string;
+  motherName: string;
+  motherOccupation: string;
+  siblings: string;
+  familyIncome: string;
+  familyValues: string;
+  aboutFamily: string;
+  contactPerson: string;
+  contactPhone: string;
+  familyLocation: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SharedProfile {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  sharedProfileUserId: string;
+  message: string;
+  status: 'pending' | 'viewed' | 'interested' | 'declined';
+  createdAt: string;
+}
+
 const users: Map<string, User> = new Map();
 const profiles: Map<string, Profile> = new Map();
 const interests: Map<string, Interest> = new Map();
+const familyProfiles: Map<string, FamilyProfile> = new Map();
+const sharedProfiles: Map<string, SharedProfile> = new Map();
 
 function computeAge(dob: string): number {
   const birth = new Date(dob);
@@ -73,8 +102,23 @@ function seedData() {
     { email: 'aditya@example.com', password: 'password123', firstName: 'Aditya', lastName: 'Joshi', gender: 'male' as const, dob: '1995-08-25', religion: 'Hindu', motherTongue: 'Marathi', height: 176, education: 'B.Tech', profession: 'Startup Founder', company: 'Self-employed', salaryRange: '50+ LPA', location: 'Bangalore', state: 'Karnataka', country: 'India', bio: 'Building my second startup in the EdTech space. Believe in making education accessible. Weekend trekker and amateur photographer.', interests: ['Startups', 'Trekking', 'Photography', 'EdTech'], photoUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=400', maritalStatus: 'Never Married', familyType: 'Nuclear', diet: 'Vegetarian', smoking: 'No', drinking: 'Socially', lookingFor: 'A driven and compassionate partner to share the journey' },
   ];
 
+  const sampleFamilies = [
+    { fatherName: 'Rajesh Sharma', fatherOccupation: 'Retired Bank Manager', motherName: 'Sunita Sharma', motherOccupation: 'Homemaker', siblings: '1 elder brother (married)', familyIncome: '20-30 LPA', familyValues: 'Moderate', aboutFamily: 'Close-knit family with strong values. Father retired from SBI. Brother works in IT in Pune.', contactPerson: 'Father', contactPhone: '+91 98765 43210', familyLocation: 'Jaipur, Rajasthan' },
+    { fatherName: 'Suresh Mehta', fatherOccupation: 'Business Owner', motherName: 'Kavita Mehta', motherOccupation: 'School Principal', siblings: '1 younger sister', familyIncome: '40-60 LPA', familyValues: 'Moderate', aboutFamily: 'Business family from Ahmedabad. Father runs a textile business. Mother is a school principal. Very education-oriented family.', contactPerson: 'Mother', contactPhone: '+91 99887 76655', familyLocation: 'Ahmedabad, Gujarat' },
+    { fatherName: 'Venkat Reddy', fatherOccupation: 'Doctor (Cardiologist)', motherName: 'Lakshmi Reddy', motherOccupation: 'Homemaker', siblings: '1 younger brother (studying MBBS)', familyIncome: '30-50 LPA', familyValues: 'Traditional', aboutFamily: 'Medical family. Father is a well-known cardiologist. Younger brother following in father\'s footsteps.', contactPerson: 'Father', contactPhone: '+91 98765 11111', familyLocation: 'Hyderabad, Telangana' },
+    { fatherName: 'Harbinder Singh', fatherOccupation: 'Retired Army Colonel', motherName: 'Jaspreet Kaur', motherOccupation: 'Homemaker', siblings: '2 elder sisters (both married)', familyIncome: '25-40 LPA', familyValues: 'Traditional', aboutFamily: 'Army background family. Father served 30 years in Indian Army. Strong discipline and values.', contactPerson: 'Father', contactPhone: '+91 98888 22222', familyLocation: 'Chandigarh, Punjab' },
+    { fatherName: 'Nilesh Patel', fatherOccupation: 'Chartered Accountant', motherName: 'Hema Patel', motherOccupation: 'CA (Practicing)', siblings: 'Only child', familyIncome: '50-80 LPA', familyValues: 'Moderate', aboutFamily: 'Both parents are CAs running their own practice in Pune. Very supportive of daughter\'s career choices.', contactPerson: 'Mother', contactPhone: '+91 97777 33333', familyLocation: 'Pune, Maharashtra' },
+    { fatherName: 'Ramesh Iyer', fatherOccupation: 'IAS Officer (Retd)', motherName: 'Padma Iyer', motherOccupation: 'Professor', siblings: '1 younger sister (studying abroad)', familyIncome: '35-50 LPA', familyValues: 'Liberal', aboutFamily: 'Civil services family. Father was an IAS officer. Mother teaches Tamil literature at university. Very progressive outlook.', contactPerson: 'Self', contactPhone: '+91 96666 44444', familyLocation: 'Chennai, Tamil Nadu' },
+    { fatherName: 'Gopal Krishnan', fatherOccupation: 'Advocate (High Court)', motherName: 'Radha Krishnan', motherOccupation: 'Homemaker', siblings: '1 elder brother (advocate)', familyIncome: '30-45 LPA', familyValues: 'Moderate', aboutFamily: 'Legal family from Kerala. Father and brother are both practicing advocates. Family values education and justice.', contactPerson: 'Father', contactPhone: '+91 95555 55555', familyLocation: 'Kochi, Kerala' },
+    { fatherName: 'Unnikrishnan Nair', fatherOccupation: 'Professor (IIT)', motherName: 'Devika Nair', motherOccupation: 'Bank Manager', siblings: '1 younger sister', familyIncome: '30-45 LPA', familyValues: 'Liberal', aboutFamily: 'Academic family. Father is a professor at IIT Madras. Mother works at Federal Bank. Encourage intellectual pursuits.', contactPerson: 'Mother', contactPhone: '+91 94444 66666', familyLocation: 'Trivandrum, Kerala' },
+    { fatherName: 'Irfan Khan', fatherOccupation: 'Film Producer', motherName: 'Nasreen Khan', motherOccupation: 'Interior Designer', siblings: '1 elder brother (director)', familyIncome: '80+ LPA', familyValues: 'Liberal', aboutFamily: 'Creative family from Mumbai film industry. Father produces independent films. Very open-minded and artistic household.', contactPerson: 'Mother', contactPhone: '+91 93333 77777', familyLocation: 'Mumbai, Maharashtra' },
+    { fatherName: 'Mohan Joshi', fatherOccupation: 'Startup Investor', motherName: 'Anita Joshi', motherOccupation: 'HR Director', siblings: '1 elder sister (married, lives in US)', familyIncome: '1 Cr+', familyValues: 'Moderate', aboutFamily: 'Entrepreneurial family. Father is an angel investor. Mother is an HR director at an MNC. Very supportive of son\'s ventures.', contactPerson: 'Self', contactPhone: '+91 92222 88888', familyLocation: 'Bangalore, Karnataka' },
+  ];
+
+  const userIds: string[] = [];
   for (const u of sampleUsers) {
     const id = uuid();
+    userIds.push(id);
     const hashedPassword = bcrypt.hashSync(u.password, 10);
     users.set(id, { id, email: u.email, password: hashedPassword, createdAt: new Date().toISOString() });
     const age = computeAge(u.dob);
@@ -106,6 +150,27 @@ function seedData() {
       lookingFor: u.lookingFor,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+    });
+  }
+
+  const now = new Date().toISOString();
+  for (let i = 0; i < userIds.length; i++) {
+    const f = sampleFamilies[i];
+    familyProfiles.set(userIds[i], {
+      userId: userIds[i],
+      fatherName: f.fatherName,
+      fatherOccupation: f.fatherOccupation,
+      motherName: f.motherName,
+      motherOccupation: f.motherOccupation,
+      siblings: f.siblings,
+      familyIncome: f.familyIncome,
+      familyValues: f.familyValues,
+      aboutFamily: f.aboutFamily,
+      contactPerson: f.contactPerson,
+      contactPhone: f.contactPhone,
+      familyLocation: f.familyLocation,
+      createdAt: now,
+      updatedAt: now,
     });
   }
 }
@@ -213,6 +278,74 @@ export const store = {
     if (interest) {
       interest.status = status;
       return interest;
+    }
+    return undefined;
+  },
+
+  getFamilyProfile(userId: string): FamilyProfile | undefined {
+    return familyProfiles.get(userId);
+  },
+
+  upsertFamilyProfile(userId: string, data: Partial<Omit<FamilyProfile, 'userId' | 'createdAt' | 'updatedAt'>>): FamilyProfile {
+    const existing = familyProfiles.get(userId);
+    const now = new Date().toISOString();
+
+    const fp: FamilyProfile = {
+      userId,
+      fatherName: data.fatherName ?? existing?.fatherName ?? '',
+      fatherOccupation: data.fatherOccupation ?? existing?.fatherOccupation ?? '',
+      motherName: data.motherName ?? existing?.motherName ?? '',
+      motherOccupation: data.motherOccupation ?? existing?.motherOccupation ?? '',
+      siblings: data.siblings ?? existing?.siblings ?? '',
+      familyIncome: data.familyIncome ?? existing?.familyIncome ?? '',
+      familyValues: data.familyValues ?? existing?.familyValues ?? '',
+      aboutFamily: data.aboutFamily ?? existing?.aboutFamily ?? '',
+      contactPerson: data.contactPerson ?? existing?.contactPerson ?? '',
+      contactPhone: data.contactPhone ?? existing?.contactPhone ?? '',
+      familyLocation: data.familyLocation ?? existing?.familyLocation ?? '',
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    familyProfiles.set(userId, fp);
+    return fp;
+  },
+
+  shareProfile(fromUserId: string, toUserId: string, sharedProfileUserId: string, message: string): SharedProfile {
+    for (const sp of sharedProfiles.values()) {
+      if (sp.fromUserId === fromUserId && sp.toUserId === toUserId && sp.sharedProfileUserId === sharedProfileUserId) {
+        return sp;
+      }
+    }
+    const id = uuid();
+    const sp: SharedProfile = {
+      id,
+      fromUserId,
+      toUserId,
+      sharedProfileUserId,
+      message: message || '',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+    sharedProfiles.set(id, sp);
+    return sp;
+  },
+
+  getSharedProfiles(userId: string): { sent: SharedProfile[]; received: SharedProfile[] } {
+    const sent: SharedProfile[] = [];
+    const received: SharedProfile[] = [];
+    for (const sp of sharedProfiles.values()) {
+      if (sp.fromUserId === userId) sent.push(sp);
+      if (sp.toUserId === userId) received.push(sp);
+    }
+    return { sent, received };
+  },
+
+  updateSharedProfileStatus(id: string, status: SharedProfile['status']): SharedProfile | undefined {
+    const sp = sharedProfiles.get(id);
+    if (sp) {
+      sp.status = status;
+      return sp;
     }
     return undefined;
   },

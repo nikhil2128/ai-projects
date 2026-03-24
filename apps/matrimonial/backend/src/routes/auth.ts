@@ -62,11 +62,14 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
   const userId = (req as any).userId;
   const user = store.getUser(userId);
   const profile = store.getProfile(userId);
+  const familyProfile = store.getFamilyProfile(userId);
 
   res.json({
     user: { id: user!.id, email: user!.email },
     profile: profile ?? null,
+    familyProfile: familyProfile ?? null,
     hasProfile: !!profile?.firstName,
+    hasFamilyProfile: !!familyProfile?.fatherName || !!familyProfile?.motherName,
   });
 });
 

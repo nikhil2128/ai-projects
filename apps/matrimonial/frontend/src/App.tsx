@@ -8,6 +8,8 @@ import BuildProfile from './pages/BuildProfile';
 import Browse from './pages/Browse';
 import MyProfile from './pages/MyProfile';
 import ProfileDetail from './pages/ProfileDetail';
+import FamilyProfile from './pages/FamilyProfile';
+import SharedProfiles from './pages/SharedProfiles';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -34,6 +36,18 @@ function AppRoutes() {
       <Route path="/my-profile" element={
         <ProtectedRoute>
           <Layout><MyProfile /></Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/family-profile" element={
+        <ProtectedRoute>
+          <Layout><FamilyProfile /></Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/shared-profiles" element={
+        <ProtectedRoute>
+          <Layout><SharedProfiles /></Layout>
         </ProtectedRoute>
       } />
 

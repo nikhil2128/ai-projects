@@ -1,0 +1,17 @@
+{
+  "name": "matrimonial",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Matrimonial app to find your soulmate with advanced filters",
+  "scripts": {
+    "dev": "concurrently --names backend,frontend -c cyan,magenta \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
+    "typecheck": "npm run typecheck --prefix backend && npm run typecheck --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

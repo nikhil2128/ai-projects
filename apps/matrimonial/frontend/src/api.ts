@@ -1,4 +1,4 @@
-import type { AuthResponse, Profile, BrowseFilters, Interest, FamilyProfile, SharedProfile } from './types';
+import type { AuthResponse, Profile, BrowseFilters, Interest, FamilyProfile, SharedProfile, Shortlist } from './types';
 
 const BASE = '/api';
 
@@ -86,6 +86,20 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify({ status }),
       });
+    },
+  },
+  shortlist: {
+    getAll(): Promise<{ shortlist: Shortlist[] }> {
+      return request('/shortlist');
+    },
+    getIds(): Promise<{ shortlistedUserIds: string[] }> {
+      return request('/shortlist/ids');
+    },
+    add(userId: string, note?: string): Promise<Shortlist> {
+      return request(`/shortlist/${userId}`, { method: 'POST', body: JSON.stringify({ note: note || '' }) });
+    },
+    remove(userId: string): Promise<{ success: boolean }> {
+      return request(`/shortlist/${userId}`, { method: 'DELETE' });
     },
   },
 };

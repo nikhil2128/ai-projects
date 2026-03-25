@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Heart, Search, User, LogOut, Sparkles, Menu, X, Users, Share2 } from 'lucide-react';
+import { Heart, Search, User, LogOut, Sparkles, Menu, X, Users, Share2, Bookmark } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
@@ -18,6 +18,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const navLinks = [
     { path: '/browse', label: 'Browse', icon: <Search className="w-5 h-5" /> },
+    { path: '/shortlist', label: 'Shortlist', icon: <Bookmark className="w-5 h-5" /> },
     { path: '/my-profile', label: 'My Profile', icon: <User className="w-5 h-5" /> },
     { path: '/family-profile', label: 'Family', icon: <Users className="w-5 h-5" /> },
     { path: '/shared-profiles', label: 'Shared', icon: <Share2 className="w-5 h-5" /> },

@@ -10,6 +10,7 @@ import MyProfile from './pages/MyProfile';
 import ProfileDetail from './pages/ProfileDetail';
 import FamilyProfile from './pages/FamilyProfile';
 import SharedProfiles from './pages/SharedProfiles';
+import ShortlistPage from './pages/Shortlist';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -42,6 +43,12 @@ function AppRoutes() {
       <Route path="/family-profile" element={
         <ProtectedRoute>
           <Layout><FamilyProfile /></Layout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/shortlist" element={
+        <ProtectedRoute>
+          <Layout><ShortlistPage /></Layout>
         </ProtectedRoute>
       } />
 

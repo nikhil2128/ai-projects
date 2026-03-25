@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Heart, ArrowLeft, Users, Send, Loader2, Share2,
+  Heart, ArrowLeft, Users, Send, Loader2, Share2, Bookmark,
 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -29,6 +29,7 @@ export default function ProfileDetail() {
   const [interestSent, setInterestSent] = useState(false);
   const [sending, setSending] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [shortlisted, setShortlisted] = useState(false);
 
   useEffect(() => {
     if (!userId) {
@@ -43,9 +44,10 @@ export default function ProfileDetail() {
     const loadProfile = async () => {
       setLoading(true);
 
-      const [profileResponse, familyResponse] = await Promise.all([
+      const [profileResponse, familyResponse, shortlistData] = await Promise.all([
         api.profiles.getProfile(userId).catch(() => null),
         api.family.getFamilyProfile(userId).catch(() => null),
+        api.shortlist.getIds().catch(() => ({ shortlistedUserIds: [] })),
       ]);
 
       if (!isActive) {
@@ -54,6 +56,7 @@ export default function ProfileDetail() {
 
       setProfile(profileResponse);
       setFamilyProfile(familyResponse);
+      setShortlisted(shortlistData.shortlistedUserIds.includes(userId));
       setLoading(false);
     };
 
@@ -63,6 +66,18 @@ export default function ProfileDetail() {
       isActive = false;
     };
   }, [userId]);
+
+  const toggleShortlist = async () => {
+    if (!userId) return;
+    const was = shortlisted;
+    setShortlisted(!was);
+    try {
+      if (was) await api.shortlist.remove(userId);
+      else await api.shortlist.add(userId);
+    } catch {
+      setShortlisted(was);
+    }
+  };
 
   const sendInterest = async () => {
     if (!userId) return;
@@ -129,6 +144,16 @@ export default function ProfileDetail() {
                 </div>
                 {!isOwnProfile && (
                   <div className="flex flex-wrap justify-center gap-2 sm:justify-end">
+                    <button
+                      onClick={toggleShortlist}
+                      className={`flex items-center gap-2 whitespace-nowrap ${
+                        shortlisted ? 'btn-primary' : 'btn-secondary'
+                      }`}
+                      title={shortlisted ? 'Remove from shortlist' : 'Add to shortlist'}
+                    >
+                      <Bookmark className="w-4 h-4" fill={shortlisted ? 'currentColor' : 'none'} />
+                      {shortlisted ? 'Shortlisted' : 'Shortlist'}
+                    </button>
                     <button
                       onClick={sendInterest}
                       disabled={interestSent || sending}

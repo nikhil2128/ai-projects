@@ -1,12 +1,14 @@
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Briefcase, GraduationCap, Heart } from 'lucide-react';
+import { MapPin, Briefcase, GraduationCap, Heart, Bookmark } from 'lucide-react';
 import type { Profile } from '../types';
 
 interface Props {
   profile: Profile;
+  isShortlisted?: boolean;
+  onToggleShortlist?: (userId: string) => void;
 }
 
-export default function ProfileCard({ profile }: Props) {
+export default function ProfileCard({ profile, isShortlisted, onToggleShortlist }: Props) {
   const navigate = useNavigate();
 
   const heightFt = profile.height
@@ -32,6 +34,20 @@ export default function ProfileCard({ profile }: Props) {
         )}
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+        {onToggleShortlist && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleShortlist(profile.userId); }}
+            className={`absolute top-3 left-3 p-2 rounded-full backdrop-blur-sm transition-all ${
+              isShortlisted
+                ? 'bg-amber-500/90 text-white shadow-lg'
+                : 'bg-black/30 text-white/80 hover:bg-black/50 hover:text-white'
+            }`}
+            title={isShortlisted ? 'Remove from shortlist' : 'Add to shortlist'}
+          >
+            <Bookmark className="w-4 h-4" fill={isShortlisted ? 'currentColor' : 'none'} />
+          </button>
+        )}
 
         {profile.matchPercentage != null && (
           <div className="absolute top-3 right-3">

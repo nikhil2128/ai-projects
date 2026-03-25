@@ -73,11 +73,20 @@ export interface SharedProfile {
   createdAt: string;
 }
 
+export interface Shortlist {
+  id: string;
+  userId: string;
+  shortlistedUserId: string;
+  note: string;
+  createdAt: string;
+}
+
 const users: Map<string, User> = new Map();
 const profiles: Map<string, Profile> = new Map();
 const interests: Map<string, Interest> = new Map();
 const familyProfiles: Map<string, FamilyProfile> = new Map();
 const sharedProfiles: Map<string, SharedProfile> = new Map();
+const shortlists: Map<string, Shortlist> = new Map();
 
 function computeAge(dob: string): number {
   const birth = new Date(dob);
@@ -348,5 +357,52 @@ export const store = {
       return sp;
     }
     return undefined;
+  },
+
+  addShortlist(userId: string, shortlistedUserId: string, note: string): Shortlist {
+    for (const s of shortlists.values()) {
+      if (s.userId === userId && s.shortlistedUserId === shortlistedUserId) {
+        s.note = note;
+        return s;
+      }
+    }
+    const id = uuid();
+    const entry: Shortlist = { id, userId, shortlistedUserId, note: note || '', createdAt: new Date().toISOString() };
+    shortlists.set(id, entry);
+    return entry;
+  },
+
+  removeShortlist(userId: string, shortlistedUserId: string): boolean {
+    for (const [id, s] of shortlists.entries()) {
+      if (s.userId === userId && s.shortlistedUserId === shortlistedUserId) {
+        shortlists.delete(id);
+        return true;
+      }
+    }
+    return false;
+  },
+
+  getShortlist(userId: string): Shortlist[] {
+    const result: Shortlist[] = [];
+    for (const s of shortlists.values()) {
+      if (s.userId === userId) result.push(s);
+    }
+    result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return result;
+  },
+
+  isShortlisted(userId: string, shortlistedUserId: string): boolean {
+    for (const s of shortlists.values()) {
+      if (s.userId === userId && s.shortlistedUserId === shortlistedUserId) return true;
+    }
+    return false;
+  },
+
+  getShortlistedUserIds(userId: string): Set<string> {
+    const ids = new Set<string>();
+    for (const s of shortlists.values()) {
+      if (s.userId === userId) ids.add(s.shortlistedUserId);
+    }
+    return ids;
   },
 };

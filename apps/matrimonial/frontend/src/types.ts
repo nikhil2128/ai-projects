@@ -75,6 +75,15 @@ export interface SharedProfile {
   sharedProfile?: Profile;
 }
 
+export interface Shortlist {
+  id: string;
+  userId: string;
+  shortlistedUserId: string;
+  note: string;
+  createdAt: string;
+  profile?: Profile;
+}
+
 export interface AuthResponse {
   token: string;
   user: User;

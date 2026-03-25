@@ -18,6 +18,34 @@ export default function Browse() {
   const [filters, setFilters] = useState<BrowseFilters>(defaultFilters);
   const [showFilters, setShowFilters] = useState(false);
   const [total, setTotal] = useState(0);
+  const [shortlistedIds, setShortlistedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    api.shortlist.getIds()
+      .then(data => setShortlistedIds(new Set(data.shortlistedUserIds)))
+      .catch(() => {});
+  }, []);
+
+  const toggleShortlist = useCallback(async (userId: string) => {
+    const isCurrently = shortlistedIds.has(userId);
+    setShortlistedIds(prev => {
+      const next = new Set(prev);
+      if (isCurrently) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+    try {
+      if (isCurrently) await api.shortlist.remove(userId);
+      else await api.shortlist.add(userId);
+    } catch {
+      setShortlistedIds(prev => {
+        const next = new Set(prev);
+        if (isCurrently) next.add(userId);
+        else next.delete(userId);
+        return next;
+      });
+    }
+  }, [shortlistedIds]);
 
   const fetchProfiles = useCallback(async () => {
     setLoading(true);
@@ -212,7 +240,12 @@ export default function Browse() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {profiles.map(profile => (
-            <ProfileCard key={profile.userId} profile={profile} />
+            <ProfileCard
+              key={profile.userId}
+              profile={profile}
+              isShortlisted={shortlistedIds.has(profile.userId)}
+              onToggleShortlist={toggleShortlist}
+            />
           ))}
         </div>
       )}

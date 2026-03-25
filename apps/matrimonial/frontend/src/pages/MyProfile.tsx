@@ -24,37 +24,45 @@ export default function MyProfile() {
 
   const age = profile.age || '—';
   const heightFt = profile.height ? `${Math.floor(profile.height / 30.48)}'${Math.round((profile.height % 30.48) / 2.54)}"` : '—';
+  const subtitle = profile.profession && profile.company
+    ? `${profile.profession} at ${profile.company}`
+    : profile.profession || profile.company || user?.email || '—';
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-8">
       <div className="card overflow-hidden">
-        <div className="bg-gradient-to-r from-primary-500 to-accent-500 h-40 relative">
-          <button
-            onClick={() => navigate('/build-profile')}
-            className="absolute top-4 right-4 bg-white/20 backdrop-blur-sm text-white px-4 py-2 rounded-xl
-                       flex items-center gap-2 hover:bg-white/30 transition-all"
-          >
-            <Edit className="w-4 h-4" /> Edit Profile
-          </button>
-        </div>
+        <div className="bg-gradient-to-r from-primary-500 to-accent-500 h-32 sm:h-40" />
 
-        <div className="px-8 pb-8">
-          <div className="flex flex-col sm:flex-row gap-6 -mt-16">
-            <div className="w-32 h-32 rounded-2xl border-4 border-white shadow-xl overflow-hidden bg-gray-200 flex-shrink-0">
+        <div className="px-4 pb-6 sm:px-8 sm:pb-8">
+          <div className="flex flex-col gap-6 -mt-16 sm:flex-row sm:items-end">
+            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl border-4 border-white shadow-xl overflow-hidden bg-gray-200 flex-shrink-0 mx-auto sm:mx-0">
               {profile.photoUrl ? (
                 <img src={profile.photoUrl} alt={profile.firstName} className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary-400 to-accent-400 text-white text-3xl font-bold">
-                  {profile.firstName[0]}{profile.lastName[0]}
+                  {profile.firstName[0]}{profile.lastName?.[0]}
                 </div>
               )}
             </div>
 
-            <div className="pt-2 sm:pt-16">
-              <h1 className="text-3xl font-bold text-gray-900">
-                {profile.firstName} {profile.lastName}
-              </h1>
-              <p className="text-gray-500 mt-1">{user?.email}</p>
+            <div className="flex-1 pt-2 sm:pt-0">
+              <div className="flex flex-col gap-4 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left">
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900">
+                    {profile.firstName} {profile.lastName}
+                  </h1>
+                  <p className="text-gray-500 mt-1">{subtitle}</p>
+                </div>
+
+                <div className="flex justify-center sm:justify-end">
+                  <button
+                    onClick={() => navigate('/build-profile')}
+                    className="btn-primary flex items-center gap-2 whitespace-nowrap"
+                  >
+                    <Edit className="w-4 h-4" /> Edit Profile
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -115,7 +123,7 @@ export default function MyProfile() {
       </div>
 
       <div className="mt-6 card overflow-hidden">
-        <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-8 py-5 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-5 sm:px-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3 text-white">
             <Users className="w-6 h-6" />
             <h2 className="text-xl font-bold">Family Profile</h2>
@@ -123,7 +131,7 @@ export default function MyProfile() {
           <button
             onClick={() => navigate('/family-profile')}
             className="bg-white/20 backdrop-blur-sm text-white px-4 py-2 rounded-xl
-                       flex items-center gap-2 hover:bg-white/30 transition-all text-sm font-medium"
+                       flex items-center justify-center gap-2 hover:bg-white/30 transition-all text-sm font-medium self-start sm:self-auto"
           >
             {familyProfile?.fatherName || familyProfile?.motherName ? (
               <><Edit className="w-4 h-4" /> Edit</>
@@ -132,7 +140,7 @@ export default function MyProfile() {
             )}
           </button>
         </div>
-        <div className="px-8 py-6">
+        <div className="px-4 py-6 sm:px-8">
           {familyProfile?.fatherName || familyProfile?.motherName ? (
             <div>
               <div className="grid sm:grid-cols-2 gap-4">
@@ -206,10 +214,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Detail({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string }) {
   if (!value) return null;
   return (
-    <div className="flex items-center gap-3 text-sm">
-      {icon && <span className="text-gray-400">{icon}</span>}
-      <span className="text-gray-500 min-w-[100px]">{label}:</span>
-      <span className="text-gray-800 font-medium">{value}</span>
+    <div className="flex items-start gap-3 text-sm">
+      <span className="w-4 shrink-0 text-gray-400 mt-0.5">{icon}</span>
+      <span className="text-gray-500 min-w-[100px] shrink-0">{label}:</span>
+      <span className="text-gray-800 font-medium min-w-0">{value}</span>
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   getProfileSubtitle,
   hasFamilyProfileContent,
 } from '../components/profile/ProfileSections';
+import { EmptyState } from '../components/shared';
 
 export default function MyProfile() {
   const { profile, familyProfile, user } = useAuth();
@@ -20,14 +21,17 @@ export default function MyProfile() {
 
   if (!profile?.firstName) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8">
-        <Heart className="w-16 h-16 text-primary-300 mb-4" />
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">Profile Not Set Up</h2>
-        <p className="text-gray-500 mb-6">Complete your profile to start finding matches</p>
-        <button onClick={() => navigate('/build-profile')} className="btn-primary">
-          Build Profile
-        </button>
-      </div>
+      <EmptyState
+        icon={<Heart className="w-16 h-16 text-primary-300" />}
+        title="Profile Not Set Up"
+        subtitle="Complete your profile to start finding matches"
+        action={
+          <button onClick={() => navigate('/build-profile')} className="btn-primary">
+            Build Profile
+          </button>
+        }
+        className="min-h-[60vh] flex flex-col items-center justify-center p-8"
+      />
     );
   }
 
@@ -94,11 +98,12 @@ export default function MyProfile() {
           {familyProfile && hasFamilyContent ? (
             <FamilyProfileContent familyProfile={familyProfile} />
           ) : (
-            <div className="text-center py-6">
-              <Users className="w-10 h-10 text-amber-300 mx-auto mb-3" />
-              <p className="text-gray-500">No family profile added yet</p>
-              <p className="text-sm text-gray-400 mt-1">Adding family details helps other families learn about yours</p>
-            </div>
+            <EmptyState
+              icon={<Users className="w-10 h-10 text-amber-300" />}
+              title="No family profile added yet"
+              subtitle="Adding family details helps other families learn about yours"
+              className="py-6"
+            />
           )}
         </div>
       </div>

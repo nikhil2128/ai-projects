@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import {
   Briefcase,
   Calendar,
@@ -12,19 +11,16 @@ import {
   Users,
   UtensilsCrossed,
   Wine,
-  type LucideIcon,
 } from 'lucide-react';
 import type { FamilyProfile, Profile } from '../../types';
+import { InfoCard } from '../shared/InfoCard';
+import { Section } from '../shared/Section';
+import { DetailRow } from '../shared/DetailRow';
 
 const EMPTY_VALUE = '—';
 
 type ProfileIdentity = Pick<Profile, 'firstName' | 'lastName' | 'profession' | 'company'>;
 type ProfileLocation = Pick<Profile, 'location' | 'state'>;
-type DetailConfig = {
-  label: string;
-  value?: string | null;
-  icon?: LucideIcon;
-};
 
 interface ProfileAvatarProps {
   profile: Pick<Profile, 'firstName' | 'lastName' | 'photoUrl'>;
@@ -149,7 +145,7 @@ export function ProfileAttributeSections({ profile }: { profile: Profile }) {
       {sections.map(section => (
         <Section key={section.title} title={section.title}>
           {section.items.map(item => (
-            <Detail key={item.label} {...item} />
+            <DetailRow key={item.label} {...item} />
           ))}
         </Section>
       ))}
@@ -225,7 +221,7 @@ export function FamilyProfileContent({
     },
   ].filter(member => member.name);
 
-  const details: DetailConfig[] = [
+  const details = [
     { label: 'Siblings', value: familyProfile.siblings },
     { label: locationLabel, value: familyProfile.familyLocation, icon: MapPin },
     ...(showIncome
@@ -259,58 +255,13 @@ export function FamilyProfileContent({
 
       <div className={detailGridClassName}>
         {details.map(detail => (
-          <Detail key={detail.label} {...detail} />
+          <DetailRow key={detail.label} {...detail} />
         ))}
       </div>
 
       {familyProfile.aboutFamily ? (
         <p className={aboutFamilyClassName}>{familyProfile.aboutFamily}</p>
       ) : null}
-    </div>
-  );
-}
-
-function InfoCard({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-xl bg-gray-50 p-4 text-center">
-      <div className="mb-2 flex justify-center text-primary-500">
-        <Icon className="h-5 w-5" />
-      </div>
-      <div className="text-xs uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-gray-800">{value || EMPTY_VALUE}</div>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div>
-      <h3 className="mb-4 text-lg font-semibold text-gray-800">{title}</h3>
-      <div className="space-y-3">{children}</div>
-    </div>
-  );
-}
-
-function Detail({ icon: Icon, label, value }: DetailConfig) {
-  if (!value) {
-    return null;
-  }
-
-  return (
-    <div className="flex items-start gap-3 text-sm">
-      <span className="mt-0.5 w-4 shrink-0 text-gray-400">
-        {Icon ? <Icon className="h-4 w-4" /> : null}
-      </span>
-      <span className="min-w-[100px] shrink-0 text-gray-500">{label}:</span>
-      <span className="min-w-0 font-medium text-gray-800">{value}</span>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Heart, ArrowLeft, Users, Send, Loader2, Share2, X,
+  Heart, ArrowLeft, Users, Send, Loader2, Share2,
 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -17,6 +17,7 @@ import {
   getProfileSubtitle,
   hasFamilyProfileContent,
 } from '../components/profile/ProfileSections';
+import { LoadingSpinner, EmptyState, Modal } from '../components/shared';
 
 export default function ProfileDetail() {
   const { userId } = useParams<{ userId: string }>();
@@ -77,19 +78,17 @@ export default function ProfileDetail() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   if (!profile) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center">
-        <h2 className="text-xl font-bold text-gray-800">Profile not found</h2>
-        <button onClick={() => navigate('/browse')} className="btn-primary mt-4">Back to Browse</button>
-      </div>
+      <EmptyState
+        icon={<Heart className="w-16 h-16 text-gray-300" />}
+        title="Profile not found"
+        action={<button onClick={() => navigate('/browse')} className="btn-primary">Back to Browse</button>}
+        className="min-h-[60vh] flex flex-col items-center justify-center"
+      />
     );
   }
 
@@ -178,8 +177,9 @@ export default function ProfileDetail() {
         </div>
       </div>
 
-      {showShareModal && userId && (
+      {userId && (
         <ShareModal
+          open={showShareModal}
           sharedProfileUserId={userId}
           sharedProfileName={getProfileFullName(profile)}
           onClose={() => setShowShareModal(false)}
@@ -190,10 +190,12 @@ export default function ProfileDetail() {
 }
 
 function ShareModal({
+  open,
   sharedProfileUserId,
   sharedProfileName,
   onClose,
 }: {
+  open: boolean;
   sharedProfileUserId: string;
   sharedProfileName: string;
   onClose: () => void;
@@ -206,12 +208,13 @@ function ShareModal({
   const { user } = useAuth();
 
   useEffect(() => {
+    if (!open) return;
     api.profiles.browse({ search: searchQuery || undefined })
       .then(data => {
         setResults(data.profiles.filter(p => p.userId !== sharedProfileUserId && p.userId !== user?.id));
       })
       .catch(() => {});
-  }, [searchQuery, sharedProfileUserId, user?.id]);
+  }, [searchQuery, sharedProfileUserId, user?.id, open]);
 
   const handleShare = async (toUserId: string) => {
     setSharing(true);
@@ -223,78 +226,68 @@ function ShareModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col">
-        <div className="p-6 border-b border-gray-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                <Share2 className="w-5 h-5 text-primary-500" /> Share Profile
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Share <span className="font-medium text-gray-700">{sharedProfileName}'s</span> profile with another family
-              </p>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+    <Modal open={open} onClose={onClose}>
+      <Modal.Header onClose={onClose}>
+        <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+          <Share2 className="w-5 h-5 text-primary-500" /> Share Profile
+        </h2>
+        <p className="text-sm text-gray-500 mt-1">
+          Share <span className="font-medium text-gray-700">{sharedProfileName}'s</span> profile with another family
+        </p>
 
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search families by name, profession, or location..."
+          className="input-field mt-4"
+        />
+
+        <div className="mt-3">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Message (optional)</label>
           <input
             type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search families by name, profession, or location..."
-            className="input-field mt-4"
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            placeholder="e.g. I think this match could be great for your family!"
+            className="input-field text-sm"
+            maxLength={200}
           />
-
-          <div className="mt-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Message (optional)</label>
-            <input
-              type="text"
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-              placeholder="e.g. I think this match could be great for your family!"
-              className="input-field text-sm"
-              maxLength={200}
-            />
-          </div>
         </div>
+      </Modal.Header>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {results.length === 0 ? (
-            <p className="text-center text-gray-400 py-8">No families found</p>
-          ) : (
-            results.map(p => (
-              <div key={p.userId} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
-                {p.photoUrl ? (
-                  <img src={p.photoUrl} alt={p.firstName} className="w-10 h-10 rounded-lg object-cover" />
-                ) : (
-                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-400 to-accent-400 flex items-center justify-center text-white text-sm font-bold">
-                    {getProfileInitials(p)}
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-800 text-sm">{getProfileFullName(p)}</div>
-                  <div className="text-xs text-gray-400">{p.profession} &middot; {p.location}</div>
+      <Modal.Body className="space-y-2">
+        {results.length === 0 ? (
+          <p className="text-center text-gray-400 py-8">No families found</p>
+        ) : (
+          results.map(p => (
+            <div key={p.userId} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
+              {p.photoUrl ? (
+                <img src={p.photoUrl} alt={p.firstName} className="w-10 h-10 rounded-lg object-cover" />
+              ) : (
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-400 to-accent-400 flex items-center justify-center text-white text-sm font-bold">
+                  {getProfileInitials(p)}
                 </div>
-                {shared.has(p.userId) ? (
-                  <span className="text-xs text-green-600 font-medium px-3 py-1.5 bg-green-50 rounded-lg">Shared</span>
-                ) : (
-                  <button
-                    onClick={() => handleShare(p.userId)}
-                    disabled={sharing}
-                    className="text-xs font-medium px-3 py-1.5 bg-primary-50 text-primary-600 hover:bg-primary-100 rounded-lg transition-colors"
-                  >
-                    Share
-                  </button>
-                )}
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-gray-800 text-sm">{getProfileFullName(p)}</div>
+                <div className="text-xs text-gray-400">{p.profession} &middot; {p.location}</div>
               </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
+              {shared.has(p.userId) ? (
+                <span className="text-xs text-green-600 font-medium px-3 py-1.5 bg-green-50 rounded-lg">Shared</span>
+              ) : (
+                <button
+                  onClick={() => handleShare(p.userId)}
+                  disabled={sharing}
+                  className="text-xs font-medium px-3 py-1.5 bg-primary-50 text-primary-600 hover:bg-primary-100 rounded-lg transition-colors"
+                >
+                  Share
+                </button>
+              )}
+            </div>
+          ))
+        )}
+      </Modal.Body>
+    </Modal>
   );
 }

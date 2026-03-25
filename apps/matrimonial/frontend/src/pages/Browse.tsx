@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, SlidersHorizontal, X, Loader2, Heart } from 'lucide-react';
+import { Search, SlidersHorizontal, X, Heart } from 'lucide-react';
 import { api } from '../api';
 import ProfileCard from '../components/ProfileCard';
 import type { Profile, BrowseFilters } from '../types';
 import { RELIGIONS, EDUCATION_LEVELS, PROFESSIONS, SALARY_RANGES, MOTHER_TONGUES } from '../types';
+import { LoadingSpinner, EmptyState } from '../components/shared';
 
 const defaultFilters: BrowseFilters = {
   gender: 'all', minAge: '', maxAge: '', religion: 'all', profession: 'all',
@@ -59,7 +60,6 @@ export default function Browse() {
         <p className="text-gray-500 mt-1">Browse profiles and find your soulmate</p>
       </div>
 
-      {/* Search & Filter Bar */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -85,7 +85,6 @@ export default function Browse() {
         </button>
       </div>
 
-      {/* Filter Panel */}
       {showFilters && (
         <div className="card p-6 mb-6 animate-in slide-in-from-top-2">
           <div className="flex items-center justify-between mb-4">
@@ -194,7 +193,6 @@ export default function Browse() {
         </div>
       )}
 
-      {/* Results */}
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-gray-500">
           {loading ? 'Searching...' : `${total} profile${total !== 1 ? 's' : ''} found`}
@@ -202,18 +200,15 @@ export default function Browse() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
-        </div>
+        <LoadingSpinner />
       ) : profiles.length === 0 ? (
-        <div className="text-center py-20">
-          <Heart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">No profiles found</h3>
-          <p className="text-gray-500">Try adjusting your filters to see more results</p>
-          {activeFilterCount > 0 && (
-            <button onClick={resetFilters} className="btn-secondary mt-4">Clear Filters</button>
-          )}
-        </div>
+        <EmptyState
+          icon={<Heart className="w-16 h-16 text-gray-300" />}
+          title="No profiles found"
+          subtitle="Try adjusting your filters to see more results"
+          action={activeFilterCount > 0 ? <button onClick={resetFilters} className="btn-secondary">Clear Filters</button> : undefined}
+          className="py-20"
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {profiles.map(profile => (

@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Share2, Inbox, Send, Eye, ThumbsUp, ThumbsDown,
-  Loader2, Users, MapPin, Briefcase, Clock, ChevronDown, ChevronUp,
+  Users, MapPin, Briefcase, Clock, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { api } from '../api';
 import type { SharedProfile } from '../types';
+import { LoadingSpinner, EmptyState } from '../components/shared';
 
 export default function SharedProfiles() {
   const [tab, setTab] = useState<'received' | 'sent'>('received');
@@ -32,11 +33,7 @@ export default function SharedProfiles() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   return (
@@ -281,16 +278,6 @@ function SharedProfileCard({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function EmptyState({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
-  return (
-    <div className="text-center py-16">
-      <div className="flex justify-center mb-4">{icon}</div>
-      <h3 className="text-lg font-semibold text-gray-700">{title}</h3>
-      <p className="text-sm text-gray-400 mt-1">{subtitle}</p>
     </div>
   );
 }

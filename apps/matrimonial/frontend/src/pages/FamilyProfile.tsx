@@ -8,6 +8,8 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import { FAMILY_VALUES_LIST, FAMILY_INCOME_RANGES } from '../types';
 import type { FamilyProfile as FamilyProfileType } from '../types';
+import { ErrorAlert, StepIndicator, SelectionGroup } from '../components/shared';
+import { DetailRow } from '../components/shared';
 
 const STEPS = ['Parents', 'Family Details'];
 
@@ -149,22 +151,13 @@ export default function FamilyProfile() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Family Values</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {FAMILY_VALUES_LIST.map(v => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setForm(prev => ({ ...prev, familyValues: v }))}
-                      className={`py-2.5 rounded-xl border-2 font-medium text-sm transition-all ${
-                        form.familyValues === v
-                          ? 'border-primary-500 bg-primary-50 text-primary-700'
-                          : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                      }`}
-                    >
-                      {v}
-                    </button>
-                  ))}
-                </div>
+                <SelectionGroup
+                  options={FAMILY_VALUES_LIST as unknown as readonly string[]}
+                  value={form.familyValues}
+                  onChange={v => setForm(prev => ({ ...prev, familyValues: v }))}
+                  columns={3}
+                  className="py-2.5"
+                />
               </div>
             </div>
 
@@ -231,32 +224,11 @@ export default function FamilyProfile() {
           <p className="text-gray-500">Share your family details to help other families connect with yours</p>
         </div>
 
-        <div className="flex items-center justify-center gap-2 mb-8">
-          {STEPS.map((s, i) => (
-            <div key={s} className="flex items-center gap-2">
-              <button
-                onClick={() => setStep(i)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                  i === step
-                    ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/30'
-                    : i < step
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'bg-gray-100 text-gray-500'
-                }`}
-              >
-                {i < step ? <Check className="w-4 h-4" /> : <span>{i + 1}</span>}
-                <span className="hidden sm:inline">{s}</span>
-              </button>
-              {i < STEPS.length - 1 && <div className={`w-8 h-0.5 ${i < step ? 'bg-primary-400' : 'bg-gray-200'}`} />}
-            </div>
-          ))}
+        <div className="mb-8">
+          <StepIndicator steps={STEPS} currentStep={step} onStepClick={setStep} />
         </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-            {error}
-          </div>
-        )}
+        <ErrorAlert message={error} />
 
         <div className="card p-8">
           <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
@@ -354,7 +326,7 @@ function FamilyProfileView({ familyProfile, onEdit }: { familyProfile: FamilyPro
                   </div>
                 )}
                 {familyProfile.siblings && (
-                  <Detail label="Siblings" value={familyProfile.siblings} />
+                  <DetailRow label="Siblings" value={familyProfile.siblings} />
                 )}
               </div>
             </div>
@@ -364,10 +336,10 @@ function FamilyProfileView({ familyProfile, onEdit }: { familyProfile: FamilyPro
                 <Heart className="w-5 h-5 text-amber-500" /> Details
               </h3>
               <div className="space-y-3">
-                <Detail icon={<MapPin className="w-4 h-4" />} label="Family Location" value={familyProfile.familyLocation} />
-                <Detail icon={<IndianRupee className="w-4 h-4" />} label="Family Income" value={familyProfile.familyIncome} />
-                <Detail label="Values" value={familyProfile.familyValues} />
-                <Detail icon={<Phone className="w-4 h-4" />} label="Contact" value={
+                <DetailRow icon={MapPin} label="Family Location" value={familyProfile.familyLocation} />
+                <DetailRow icon={IndianRupee} label="Family Income" value={familyProfile.familyIncome} />
+                <DetailRow label="Values" value={familyProfile.familyValues} />
+                <DetailRow icon={Phone} label="Contact" value={
                   familyProfile.contactPerson
                     ? `${familyProfile.contactPerson}${familyProfile.contactPhone ? ` (${familyProfile.contactPhone})` : ''}`
                     : familyProfile.contactPhone
@@ -386,17 +358,6 @@ function FamilyProfileView({ familyProfile, onEdit }: { familyProfile: FamilyPro
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function Detail({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string }) {
-  if (!value) return null;
-  return (
-    <div className="flex items-center gap-3 text-sm">
-      {icon && <span className="text-gray-400">{icon}</span>}
-      <span className="text-gray-500 min-w-[120px]">{label}:</span>
-      <span className="text-gray-800 font-medium">{value}</span>
     </div>
   );
 }

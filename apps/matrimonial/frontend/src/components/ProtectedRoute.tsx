@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { LoadingSpinner } from './shared';
 
 interface Props {
   children: React.ReactNode;
@@ -11,11 +11,7 @@ export default function ProtectedRoute({ children, requireProfile = false }: Pro
   const { user, hasProfile, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 via-white to-orange-50">
-        <Loader2 className="w-10 h-10 text-primary-500 animate-spin" />
-      </div>
-    );
+    return <LoadingSpinner size="lg" fullScreen />;
   }
 
   if (!user) {

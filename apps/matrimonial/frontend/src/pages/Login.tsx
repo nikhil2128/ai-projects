@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Heart, Mail, Lock, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { ErrorAlert } from '../components/shared';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -70,11 +71,7 @@ export default function Login() {
             <p className="text-gray-500">Sign in to continue your journey</p>
           </div>
 
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-              {error}
-            </div>
-          )}
+          <ErrorAlert message={error} />
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>

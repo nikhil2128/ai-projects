@@ -11,6 +11,7 @@ import {
   MOTHER_TONGUES, INTERESTS_LIST,
 } from '../types';
 import type { Profile } from '../types';
+import { ErrorAlert, StepIndicator, SelectionGroup } from '../components/shared';
 
 const STEPS = ['Basic Info', 'Education & Career', 'Lifestyle', 'Interests & Bio'];
 
@@ -113,22 +114,12 @@ export default function BuildProfile() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Gender</label>
-              <div className="grid grid-cols-3 gap-3">
-                {(['male', 'female', 'other'] as const).map(g => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setForm(prev => ({ ...prev, gender: g }))}
-                    className={`py-3 rounded-xl border-2 font-medium capitalize transition-all ${
-                      form.gender === g
-                        ? 'border-primary-500 bg-primary-50 text-primary-700'
-                        : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
+              <SelectionGroup
+                options={['male', 'female', 'other'] as const}
+                value={form.gender}
+                onChange={g => setForm(prev => ({ ...prev, gender: g }))}
+                columns={3}
+              />
             </div>
 
             <div>
@@ -245,82 +236,42 @@ export default function BuildProfile() {
           <div className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Family Type</label>
-              <div className="grid grid-cols-2 gap-3">
-                {['Nuclear', 'Joint'].map(t => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setForm(prev => ({ ...prev, familyType: t }))}
-                    className={`py-3 rounded-xl border-2 font-medium transition-all ${
-                      form.familyType === t
-                        ? 'border-primary-500 bg-primary-50 text-primary-700'
-                        : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
+              <SelectionGroup
+                options={['Nuclear', 'Joint'] as const}
+                value={form.familyType as 'Nuclear' | 'Joint' | ''}
+                onChange={t => setForm(prev => ({ ...prev, familyType: t }))}
+                columns={2}
+              />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Diet</label>
-              <div className="grid grid-cols-3 gap-3">
-                {['Vegetarian', 'Non-Vegetarian', 'Vegan'].map(d => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => setForm(prev => ({ ...prev, diet: d }))}
-                    className={`py-3 rounded-xl border-2 font-medium text-sm transition-all ${
-                      form.diet === d
-                        ? 'border-primary-500 bg-primary-50 text-primary-700'
-                        : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                    }`}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
+              <SelectionGroup
+                options={['Vegetarian', 'Non-Vegetarian', 'Vegan'] as const}
+                value={form.diet as 'Vegetarian' | 'Non-Vegetarian' | 'Vegan' | ''}
+                onChange={d => setForm(prev => ({ ...prev, diet: d }))}
+                columns={3}
+              />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Smoking</label>
-              <div className="grid grid-cols-3 gap-3">
-                {['No', 'Occasionally', 'Yes'].map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setForm(prev => ({ ...prev, smoking: s }))}
-                    className={`py-3 rounded-xl border-2 font-medium transition-all ${
-                      form.smoking === s
-                        ? 'border-primary-500 bg-primary-50 text-primary-700'
-                        : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
+              <SelectionGroup
+                options={['No', 'Occasionally', 'Yes'] as const}
+                value={form.smoking as 'No' | 'Occasionally' | 'Yes' | ''}
+                onChange={s => setForm(prev => ({ ...prev, smoking: s }))}
+                columns={3}
+              />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Drinking</label>
-              <div className="grid grid-cols-4 gap-3">
-                {['No', 'Occasionally', 'Socially', 'Yes'].map(d => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => setForm(prev => ({ ...prev, drinking: d }))}
-                    className={`py-2.5 rounded-xl border-2 font-medium text-sm transition-all ${
-                      form.drinking === d
-                        ? 'border-primary-500 bg-primary-50 text-primary-700'
-                        : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                    }`}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
+              <SelectionGroup
+                options={['No', 'Occasionally', 'Socially', 'Yes'] as const}
+                value={form.drinking as 'No' | 'Occasionally' | 'Socially' | 'Yes' | ''}
+                onChange={d => setForm(prev => ({ ...prev, drinking: d }))}
+                columns={4}
+              />
             </div>
           </div>
         );
@@ -392,33 +343,11 @@ export default function BuildProfile() {
           <p className="text-gray-500">Complete your profile to start finding matches</p>
         </div>
 
-        {/* Progress Steps */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          {STEPS.map((s, i) => (
-            <div key={s} className="flex items-center gap-2">
-              <button
-                onClick={() => setStep(i)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                  i === step
-                    ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/30'
-                    : i < step
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'bg-gray-100 text-gray-500'
-                }`}
-              >
-                {i < step ? <Check className="w-4 h-4" /> : <span>{i + 1}</span>}
-                <span className="hidden sm:inline">{s}</span>
-              </button>
-              {i < STEPS.length - 1 && <div className={`w-8 h-0.5 ${i < step ? 'bg-primary-400' : 'bg-gray-200'}`} />}
-            </div>
-          ))}
+        <div className="mb-8">
+          <StepIndicator steps={STEPS} currentStep={step} onStepClick={setStep} />
         </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-            {error}
-          </div>
-        )}
+        <ErrorAlert message={error} />
 
         <div className="card p-8">
           <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">

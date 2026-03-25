@@ -107,7 +107,7 @@ export default function ProfileDetail() {
       </button>
 
       <div className="card overflow-hidden">
-        <div className="bg-gradient-to-r from-primary-500 to-accent-500 h-40 relative">
+        <div className="relative h-32 bg-gradient-to-r from-primary-500 to-accent-500 sm:h-40">
           {profile.matchPercentage && (
             <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-sm text-white px-4 py-2 rounded-xl font-bold">
               {profile.matchPercentage}% Match
@@ -115,22 +115,25 @@ export default function ProfileDetail() {
           )}
         </div>
 
-        <div className="px-8 pb-8">
-          <div className="flex flex-col sm:flex-row gap-6 -mt-16">
-            <ProfileAvatar profile={profile} />
+        <div className="px-4 pb-6 sm:px-8 sm:pb-8">
+          <div className="relative z-10 -mt-16 flex flex-col gap-6 sm:flex-row sm:items-end">
+            <ProfileAvatar
+              profile={profile}
+              className="mx-auto h-28 w-28 flex-shrink-0 overflow-hidden rounded-2xl border-4 border-white bg-gray-200 shadow-xl sm:mx-0 sm:h-32 sm:w-32"
+            />
 
-            <div className="flex-1 pt-2 sm:pt-16">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex-1 pt-2 sm:pt-0">
+              <div className="flex flex-col gap-4 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left">
                 <div>
                   <h1 className="text-3xl font-bold text-gray-900">{getProfileFullName(profile)}</h1>
                   <p className="text-gray-500 mt-1">{subtitle}</p>
                 </div>
                 {!isOwnProfile && (
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap justify-center gap-2 sm:justify-end">
                     <button
                       onClick={sendInterest}
                       disabled={interestSent || sending}
-                      className={interestSent ? 'btn-secondary flex items-center gap-2' : 'btn-primary flex items-center gap-2'}
+                      className={interestSent ? 'btn-secondary flex items-center gap-2 whitespace-nowrap' : 'btn-primary flex items-center gap-2 whitespace-nowrap'}
                     >
                       {sending ? (
                         <><Loader2 className="w-4 h-4 animate-spin" /> Sending...</>
@@ -142,7 +145,7 @@ export default function ProfileDetail() {
                     </button>
                     <button
                       onClick={() => setShowShareModal(true)}
-                      className="btn-secondary flex items-center gap-2"
+                      className="btn-secondary flex items-center gap-2 whitespace-nowrap"
                       title="Share this profile with another family"
                     >
                       <Share2 className="w-4 h-4" /> Share

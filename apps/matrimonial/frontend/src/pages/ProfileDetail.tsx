@@ -1,13 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  MapPin, GraduationCap, Briefcase, IndianRupee, Heart, ArrowLeft,
-  Calendar, Ruler, Users, UtensilsCrossed, Cigarette, Wine, Send, Loader2,
-  Share2, Phone, X,
+  Heart, ArrowLeft, Users, Send, Loader2, Share2, X,
 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import type { Profile, FamilyProfile } from '../types';
+import {
+  FamilyProfileContent,
+  ProfileAttributeSections,
+  ProfileAvatar,
+  ProfileHighlights,
+  ProfileNarrativeSections,
+  getProfileFullName,
+  getProfileInitials,
+  getProfileSubtitle,
+  hasFamilyProfileContent,
+} from '../components/profile/ProfileSections';
 
 export default function ProfileDetail() {
   const { userId } = useParams<{ userId: string }>();
@@ -21,15 +30,37 @@ export default function ProfileDetail() {
   const [showShareModal, setShowShareModal] = useState(false);
 
   useEffect(() => {
-    if (!userId) return;
-    Promise.all([
-      api.profiles.getProfile(userId).catch(() => null),
-      api.family.getFamilyProfile(userId).catch(() => null),
-    ]).then(([p, fp]) => {
-      setProfile(p);
-      setFamilyProfile(fp);
+    if (!userId) {
+      setProfile(null);
+      setFamilyProfile(null);
       setLoading(false);
-    });
+      return;
+    }
+
+    let isActive = true;
+
+    const loadProfile = async () => {
+      setLoading(true);
+
+      const [profileResponse, familyResponse] = await Promise.all([
+        api.profiles.getProfile(userId).catch(() => null),
+        api.family.getFamilyProfile(userId).catch(() => null),
+      ]);
+
+      if (!isActive) {
+        return;
+      }
+
+      setProfile(profileResponse);
+      setFamilyProfile(familyResponse);
+      setLoading(false);
+    };
+
+    void loadProfile();
+
+    return () => {
+      isActive = false;
+    };
   }, [userId]);
 
   const sendInterest = async () => {
@@ -62,12 +93,9 @@ export default function ProfileDetail() {
     );
   }
 
-  const age = profile.age || '—';
-  const heightFt = profile.height
-    ? `${Math.floor(profile.height / 30.48)}'${Math.round((profile.height % 30.48) / 2.54)}"`
-    : '—';
-
   const isOwnProfile = user?.id === userId;
+  const subtitle = getProfileSubtitle(profile);
+  const hasFamilyContent = hasFamilyProfileContent(familyProfile);
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-8">
@@ -89,23 +117,13 @@ export default function ProfileDetail() {
 
         <div className="px-8 pb-8">
           <div className="flex flex-col sm:flex-row gap-6 -mt-16">
-            <div className="w-32 h-32 rounded-2xl border-4 border-white shadow-xl overflow-hidden bg-gray-200 flex-shrink-0">
-              {profile.photoUrl ? (
-                <img src={profile.photoUrl} alt={profile.firstName} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary-400 to-accent-400 text-white text-3xl font-bold">
-                  {profile.firstName[0]}{profile.lastName?.[0]}
-                </div>
-              )}
-            </div>
+            <ProfileAvatar profile={profile} />
 
             <div className="flex-1 pt-2 sm:pt-16">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900">
-                    {profile.firstName} {profile.lastName}
-                  </h1>
-                  <p className="text-gray-500 mt-1">{profile.profession} at {profile.company}</p>
+                  <h1 className="text-3xl font-bold text-gray-900">{getProfileFullName(profile)}</h1>
+                  <p className="text-gray-500 mt-1">{subtitle}</p>
                 </div>
                 {!isOwnProfile && (
                   <div className="flex gap-2">
@@ -135,113 +153,23 @@ export default function ProfileDetail() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8">
-            <InfoCard icon={<Calendar className="w-5 h-5" />} label="Age" value={`${age} years`} />
-            <InfoCard icon={<Ruler className="w-5 h-5" />} label="Height" value={heightFt} />
-            <InfoCard icon={<MapPin className="w-5 h-5" />} label="Location" value={`${profile.location}, ${profile.state}`} />
-            <InfoCard icon={<Heart className="w-5 h-5" />} label="Status" value={profile.maritalStatus} />
-          </div>
+          <ProfileHighlights profile={profile} />
 
-          <div className="grid sm:grid-cols-2 gap-8 mt-8">
-            <Section title="Education & Career">
-              <Detail icon={<GraduationCap className="w-4 h-4" />} label="Education" value={profile.education} />
-              <Detail icon={<Briefcase className="w-4 h-4" />} label="Profession" value={profile.profession} />
-              <Detail label="Company" value={profile.company} />
-              <Detail icon={<IndianRupee className="w-4 h-4" />} label="Salary" value={profile.salaryRange} />
-            </Section>
+          <ProfileAttributeSections profile={profile} />
+          <ProfileNarrativeSections profile={profile} aboutTitle="About" />
 
-            <Section title="Personal Details">
-              <Detail label="Religion" value={profile.religion} />
-              <Detail label="Mother Tongue" value={profile.motherTongue} />
-              <Detail icon={<Users className="w-4 h-4" />} label="Family Type" value={profile.familyType} />
-              <Detail icon={<UtensilsCrossed className="w-4 h-4" />} label="Diet" value={profile.diet} />
-              <Detail icon={<Cigarette className="w-4 h-4" />} label="Smoking" value={profile.smoking} />
-              <Detail icon={<Wine className="w-4 h-4" />} label="Drinking" value={profile.drinking} />
-            </Section>
-          </div>
-
-          {profile.bio && (
-            <div className="mt-8">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">About</h3>
-              <p className="text-gray-600 leading-relaxed bg-gray-50 rounded-xl p-4">{profile.bio}</p>
-            </div>
-          )}
-
-          {profile.lookingFor && (
-            <div className="mt-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Looking For</h3>
-              <p className="text-gray-600 leading-relaxed bg-primary-50 rounded-xl p-4 border border-primary-100">
-                {profile.lookingFor}
-              </p>
-            </div>
-          )}
-
-          {profile.interests?.length > 0 && (
-            <div className="mt-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Interests</h3>
-              <div className="flex flex-wrap gap-2">
-                {profile.interests.map(interest => (
-                  <span key={interest} className="px-3 py-1.5 bg-primary-100 text-primary-700 rounded-full text-sm font-medium">
-                    {interest}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {familyProfile && (familyProfile.fatherName || familyProfile.motherName) && (
+          {familyProfile && hasFamilyContent && (
             <div className="mt-8 pt-8 border-t border-gray-100">
               <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                 <Users className="w-5 h-5 text-amber-500" /> Family Details
               </h3>
-              <div className="grid sm:grid-cols-2 gap-4">
-                {familyProfile.fatherName && (
-                  <div className="bg-amber-50 rounded-xl p-4">
-                    <div className="text-xs text-amber-600 uppercase tracking-wide font-medium mb-1">Father</div>
-                    <div className="font-semibold text-gray-800">{familyProfile.fatherName}</div>
-                    {familyProfile.fatherOccupation && (
-                      <div className="text-sm text-gray-500 mt-0.5">{familyProfile.fatherOccupation}</div>
-                    )}
-                  </div>
-                )}
-                {familyProfile.motherName && (
-                  <div className="bg-amber-50 rounded-xl p-4">
-                    <div className="text-xs text-amber-600 uppercase tracking-wide font-medium mb-1">Mother</div>
-                    <div className="font-semibold text-gray-800">{familyProfile.motherName}</div>
-                    {familyProfile.motherOccupation && (
-                      <div className="text-sm text-gray-500 mt-0.5">{familyProfile.motherOccupation}</div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="grid sm:grid-cols-2 gap-4 mt-4">
-                {familyProfile.siblings && (
-                  <Detail label="Siblings" value={familyProfile.siblings} />
-                )}
-                {familyProfile.familyLocation && (
-                  <Detail icon={<MapPin className="w-4 h-4" />} label="Family Location" value={familyProfile.familyLocation} />
-                )}
-                {familyProfile.familyIncome && (
-                  <Detail icon={<IndianRupee className="w-4 h-4" />} label="Family Income" value={familyProfile.familyIncome} />
-                )}
-                {familyProfile.familyValues && (
-                  <Detail label="Family Values" value={familyProfile.familyValues} />
-                )}
-                {familyProfile.contactPerson && (
-                  <Detail icon={<Phone className="w-4 h-4" />} label="Contact" value={
-                    `${familyProfile.contactPerson}${familyProfile.contactPhone ? ` (${familyProfile.contactPhone})` : ''}`
-                  } />
-                )}
-              </div>
-
-              {familyProfile.aboutFamily && (
-                <div className="mt-4">
-                  <p className="text-gray-600 leading-relaxed bg-amber-50 rounded-xl p-4 border border-amber-100 text-sm">
-                    {familyProfile.aboutFamily}
-                  </p>
-                </div>
-              )}
+              <FamilyProfileContent
+                familyProfile={familyProfile}
+                showIncome
+                locationLabel="Family Location"
+                valuesLabel="Family Values"
+                detailGridClassName="grid gap-4 mt-4 sm:grid-cols-2"
+              />
             </div>
           )}
         </div>
@@ -250,7 +178,7 @@ export default function ProfileDetail() {
       {showShareModal && userId && (
         <ShareModal
           sharedProfileUserId={userId}
-          sharedProfileName={`${profile.firstName} ${profile.lastName}`}
+          sharedProfileName={getProfileFullName(profile)}
           onClose={() => setShowShareModal(false)}
         />
       )}
@@ -341,11 +269,11 @@ function ShareModal({
                   <img src={p.photoUrl} alt={p.firstName} className="w-10 h-10 rounded-lg object-cover" />
                 ) : (
                   <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-400 to-accent-400 flex items-center justify-center text-white text-sm font-bold">
-                    {p.firstName[0]}{p.lastName?.[0]}
+                    {getProfileInitials(p)}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-800 text-sm">{p.firstName} {p.lastName}</div>
+                  <div className="font-medium text-gray-800 text-sm">{getProfileFullName(p)}</div>
                   <div className="text-xs text-gray-400">{p.profession} &middot; {p.location}</div>
                 </div>
                 {shared.has(p.userId) ? (
@@ -364,36 +292,6 @@ function ShareModal({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function InfoCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="bg-gray-50 rounded-xl p-4 text-center">
-      <div className="flex justify-center text-primary-500 mb-2">{icon}</div>
-      <div className="text-xs text-gray-500 uppercase tracking-wide">{label}</div>
-      <div className="text-sm font-semibold text-gray-800 mt-1">{value || '—'}</div>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h3 className="text-lg font-semibold text-gray-800 mb-4">{title}</h3>
-      <div className="space-y-3">{children}</div>
-    </div>
-  );
-}
-
-function Detail({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string }) {
-  if (!value) return null;
-  return (
-    <div className="flex items-center gap-3 text-sm">
-      {icon && <span className="text-gray-400">{icon}</span>}
-      <span className="text-gray-500 min-w-[100px]">{label}:</span>
-      <span className="text-gray-800 font-medium">{value}</span>
     </div>
   );
 }

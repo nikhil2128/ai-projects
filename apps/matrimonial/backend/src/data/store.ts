@@ -231,7 +231,7 @@ type RecommendationBatchRow = QueryResultRow & {
 const DEFAULT_DATABASE_URL = 'postgres://postgres:postgres@localhost:5432/matrimonial';
 const DEFAULT_BROWSE_PAGE_SIZE = 24;
 const MAX_BROWSE_PAGE_SIZE = 48;
-const SEARCH_VECTOR_SQL = `to_tsvector('simple', concat_ws(' ', p.first_name, p.last_name, p.profession, p.location, p.bio))`;
+const SEARCH_VECTOR_SQL = `profile_search_vector(p.first_name, p.last_name, p.profession, p.location, p.bio)`;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
@@ -285,7 +285,12 @@ CREATE INDEX IF NOT EXISTS idx_profiles_marital_status ON profiles (marital_stat
 CREATE INDEX IF NOT EXISTS idx_profiles_diet ON profiles (diet);
 CREATE INDEX IF NOT EXISTS idx_profiles_updated_at ON profiles (updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_profiles_interests_gin ON profiles USING GIN (interests);
-CREATE INDEX IF NOT EXISTS idx_profiles_search_vector ON profiles USING GIN (to_tsvector('simple', concat_ws(' ', first_name, last_name, profession, location, bio)));
+
+CREATE OR REPLACE FUNCTION profile_search_vector(fname text, lname text, prof text, loc text, bio_text text)
+RETURNS tsvector LANGUAGE sql IMMUTABLE PARALLEL SAFE AS
+$$SELECT to_tsvector('simple', coalesce(fname,'') || ' ' || coalesce(lname,'') || ' ' || coalesce(prof,'') || ' ' || coalesce(loc,'') || ' ' || coalesce(bio_text,''))$$;
+
+CREATE INDEX IF NOT EXISTS idx_profiles_search_vector ON profiles USING GIN (profile_search_vector(first_name, last_name, profession, location, bio));
 
 CREATE TABLE IF NOT EXISTS family_profiles (
   user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

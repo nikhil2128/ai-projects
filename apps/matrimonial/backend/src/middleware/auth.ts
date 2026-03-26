@@ -5,7 +5,7 @@ import { store } from '../data/store.js';
  * Simple token-based auth using base64-encoded user ID.
  * In production, replace with JWT.
  */
-export function authenticateToken(req: Request, res: Response, next: NextFunction): void {
+export async function authenticateToken(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Authentication required' });
@@ -15,12 +15,12 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
   const token = authHeader.slice(7);
   try {
     const userId = Buffer.from(token, 'base64').toString('utf-8');
-    const user = store.getUser(userId);
+    const user = await store.getUser(userId);
     if (!user) {
       res.status(401).json({ error: 'Invalid token' });
       return;
     }
-    store.markUserActive(userId);
+    await store.markUserActive(userId);
     (req as any).userId = userId;
     (req as any).user = user;
     next();

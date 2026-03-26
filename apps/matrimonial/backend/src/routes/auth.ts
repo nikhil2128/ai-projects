@@ -2,10 +2,11 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { store } from '../data/store.js';
 import { generateToken, authenticateToken } from '../middleware/auth.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 const router = Router();
 
-router.post('/register', (req: Request, res: Response) => {
+router.post('/register', asyncHandler(async (req: Request, res: Response) => {
   const { email, password, firstName, lastName } = req.body;
 
   if (!email || !password) {
@@ -18,26 +19,26 @@ router.post('/register', (req: Request, res: Response) => {
     return;
   }
 
-  const existing = store.findUserByEmail(email);
+  const existing = await store.findUserByEmail(email);
   if (existing) {
     res.status(409).json({ error: 'Email already registered' });
     return;
   }
 
-  const user = store.createUser(email, password);
+  const user = await store.createUser(email, password);
   const token = generateToken(user.id);
 
   if (firstName || lastName) {
-    store.upsertProfile(user.id, { firstName: firstName ?? '', lastName: lastName ?? '' });
+    await store.upsertProfile(user.id, { firstName: firstName ?? '', lastName: lastName ?? '' });
   }
 
   res.status(201).json({
     token,
     user: { id: user.id, email: user.email },
   });
-});
+}));
 
-router.post('/login', (req: Request, res: Response) => {
+router.post('/login', asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -45,25 +46,27 @@ router.post('/login', (req: Request, res: Response) => {
     return;
   }
 
-  const user = store.findUserByEmail(email);
+  const user = await store.findUserByEmail(email);
   if (!user || !bcrypt.compareSync(password, user.password)) {
     res.status(401).json({ error: 'Invalid email or password' });
     return;
   }
 
-  store.markUserActive(user.id);
+  await store.markUserActive(user.id);
   const token = generateToken(user.id);
   res.json({
     token,
     user: { id: user.id, email: user.email },
   });
-});
+}));
 
-router.get('/me', authenticateToken, (req: Request, res: Response) => {
+router.get('/me', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
   const userId = (req as any).userId;
-  const user = store.getUser(userId);
-  const profile = store.getProfile(userId);
-  const familyProfile = store.getFamilyProfile(userId);
+  const [user, profile, familyProfile] = await Promise.all([
+    store.getUser(userId),
+    store.getProfile(userId),
+    store.getFamilyProfile(userId),
+  ]);
 
   res.json({
     user: { id: user!.id, email: user!.email },
@@ -72,6 +75,6 @@ router.get('/me', authenticateToken, (req: Request, res: Response) => {
     hasProfile: !!profile?.firstName,
     hasFamilyProfile: !!familyProfile?.fatherName || !!familyProfile?.motherName,
   });
-});
+}));
 
 export default router;

@@ -47,7 +47,7 @@ export default function ProfileDetail() {
       const [profileResponse, familyResponse, shortlistData] = await Promise.all([
         api.profiles.getProfile(userId).catch(() => null),
         api.family.getFamilyProfile(userId).catch(() => null),
-        api.shortlist.getIds().catch(() => ({ shortlistedUserIds: [] })),
+        api.shortlist.getIds().catch(() => ({ shortlistedUserIds: [] as string[] })),
       ]);
 
       if (!isActive) {

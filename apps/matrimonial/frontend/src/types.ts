@@ -100,6 +100,13 @@ export interface RecommendationResponse {
   recommendations: Profile[];
 }
 
+export interface BrowseResponse {
+  profiles: Profile[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface BrowseFilters {
   gender: string;
   minAge: string;

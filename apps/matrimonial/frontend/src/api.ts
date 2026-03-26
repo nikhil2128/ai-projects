@@ -7,6 +7,7 @@ import type {
   SharedProfile,
   Shortlist,
   RecommendationResponse,
+  BrowseResponse,
 } from './types';
 
 const BASE = '/api';
@@ -51,11 +52,13 @@ export const api = {
     updateMyProfile(data: Partial<Profile>): Promise<Profile> {
       return request('/profiles/me', { method: 'PUT', body: JSON.stringify(data) });
     },
-    browse(filters: Partial<BrowseFilters>): Promise<{ profiles: Profile[]; total: number }> {
+    browse(filters: Partial<BrowseFilters>, page = 1, pageSize = 24): Promise<BrowseResponse> {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => {
         if (value) params.set(key, value);
       });
+      params.set('page', String(page));
+      params.set('pageSize', String(pageSize));
       return request(`/profiles/browse?${params.toString()}`);
     },
     getRecommendations(): Promise<RecommendationResponse> {

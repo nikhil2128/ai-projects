@@ -12,6 +12,8 @@ const defaultFilters: BrowseFilters = {
   diet: 'all', motherTongue: 'all', search: '',
 };
 
+const PAGE_SIZE = 24;
+
 export default function Browse() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [recommendationFeed, setRecommendationFeed] = useState<RecommendationResponse | null>(null);
@@ -21,6 +23,7 @@ export default function Browse() {
   const [showFilters, setShowFilters] = useState(false);
   const [total, setTotal] = useState(0);
   const [shortlistedIds, setShortlistedIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     api.shortlist.getIds()
@@ -74,15 +77,16 @@ export default function Browse() {
           (cleanFilters as any)[key] = value;
         }
       });
-      const data = await api.profiles.browse(cleanFilters);
+      const data = await api.profiles.browse(cleanFilters, page, PAGE_SIZE);
       setProfiles(data.profiles);
       setTotal(data.total);
     } catch {
       setProfiles([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, page]);
 
   useEffect(() => {
     const debounce = setTimeout(fetchProfiles, 300);
@@ -91,13 +95,20 @@ export default function Browse() {
 
   const updateFilter = (field: keyof BrowseFilters) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => setFilters(prev => ({ ...prev, [field]: e.target.value }));
+  ) => {
+    setPage(1);
+    setFilters(prev => ({ ...prev, [field]: e.target.value }));
+  };
 
-  const resetFilters = () => setFilters(defaultFilters);
+  const resetFilters = () => {
+    setPage(1);
+    setFilters(defaultFilters);
+  };
 
   const activeFilterCount = Object.entries(filters).filter(
     ([key, val]) => val && val !== 'all' && key !== 'search'
   ).length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6">
@@ -239,7 +250,10 @@ export default function Browse() {
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Location</label>
               <input type="text" value={filters.location === 'all' ? '' : filters.location}
-                onChange={e => setFilters(prev => ({ ...prev, location: e.target.value || 'all' }))}
+                onChange={e => {
+                  setPage(1);
+                  setFilters(prev => ({ ...prev, location: e.target.value || 'all' }));
+                }}
                 className="input-field text-sm py-2.5" placeholder="City name" />
             </div>
           </div>
@@ -250,6 +264,11 @@ export default function Browse() {
         <p className="text-sm text-gray-500">
           {loading ? 'Searching...' : `${total} profile${total !== 1 ? 's' : ''} found`}
         </p>
+        {!loading && total > PAGE_SIZE ? (
+          <p className="text-sm text-gray-500">
+            Page {page} of {totalPages}
+          </p>
+        ) : null}
       </div>
 
       {loading ? (
@@ -263,16 +282,40 @@ export default function Browse() {
           className="py-20"
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {profiles.map(profile => (
-            <ProfileCard
-              key={profile.userId}
-              profile={profile}
-              isShortlisted={shortlistedIds.has(profile.userId)}
-              onToggleShortlist={toggleShortlist}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {profiles.map(profile => (
+              <ProfileCard
+                key={profile.userId}
+                profile={profile}
+                isShortlisted={shortlistedIds.has(profile.userId)}
+                onToggleShortlist={toggleShortlist}
+              />
+            ))}
+          </div>
+
+          {total > PAGE_SIZE ? (
+            <div className="mt-8 flex items-center justify-center gap-3">
+              <button
+                onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                disabled={page === 1}
+                className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-gray-500">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={page >= totalPages}
+                className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );

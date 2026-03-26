@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import type { NextFunction, Request, Response } from 'express';
 import authRoutes from './routes/auth.js';
 import profileRoutes from './routes/profiles.js';
 import familyRoutes from './routes/family.js';
@@ -16,13 +17,19 @@ function msUntilNextRefresh(now: Date = new Date()): number {
 }
 
 function scheduleRecommendationRefresh() {
-  const run = () => {
-    store.refreshRecommendationsForActiveUsers();
-    setTimeout(run, msUntilNextRefresh());
+  const run = async () => {
+    try {
+      await store.refreshRecommendationsForActiveUsers();
+    } catch (error) {
+      console.error('Failed to refresh recommendations', error);
+    } finally {
+      setTimeout(() => {
+        void run();
+      }, msUntilNextRefresh());
+    }
   };
 
-  store.refreshRecommendationsForActiveUsers();
-  setTimeout(run, msUntilNextRefresh());
+  void run();
 }
 
 app.use(cors());
@@ -37,8 +44,21 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-scheduleRecommendationRefresh();
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  console.error(err);
+  res.status(500).json({ error: 'Internal server error' });
+});
 
-app.listen(PORT, () => {
-  console.log(`Matrimonial API server running on http://localhost:${PORT}`);
+async function bootstrap() {
+  await store.initialize();
+  scheduleRecommendationRefresh();
+
+  app.listen(PORT, () => {
+    console.log(`Matrimonial API server running on http://localhost:${PORT}`);
+  });
+}
+
+bootstrap().catch((error) => {
+  console.error('Failed to start Matrimonial API server', error);
+  process.exit(1);
 });

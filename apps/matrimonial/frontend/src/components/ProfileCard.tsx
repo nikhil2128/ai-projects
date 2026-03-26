@@ -111,6 +111,19 @@ export default function ProfileCard({ profile, isShortlisted, onToggleShortlist 
             )}
           </div>
         )}
+
+        {profile.recommendationReasons?.length ? (
+          <div className="pt-2 border-t border-primary-100">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">Why recommended</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {profile.recommendationReasons.map(reason => (
+                <span key={reason} className="rounded-full bg-primary-100 px-2 py-1 text-[11px] font-medium text-primary-700">
+                  {reason}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

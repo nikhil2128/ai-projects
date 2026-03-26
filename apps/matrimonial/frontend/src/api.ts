@@ -1,4 +1,13 @@
-import type { AuthResponse, Profile, BrowseFilters, Interest, FamilyProfile, SharedProfile, Shortlist } from './types';
+import type {
+  AuthResponse,
+  Profile,
+  BrowseFilters,
+  Interest,
+  FamilyProfile,
+  SharedProfile,
+  Shortlist,
+  RecommendationResponse,
+} from './types';
 
 const BASE = '/api';
 
@@ -48,6 +57,9 @@ export const api = {
         if (value) params.set(key, value);
       });
       return request(`/profiles/browse?${params.toString()}`);
+    },
+    getRecommendations(): Promise<RecommendationResponse> {
+      return request('/profiles/recommendations/daily');
     },
     getProfile(userId: string): Promise<Profile> {
       return request(`/profiles/${userId}`);

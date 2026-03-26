@@ -51,6 +51,7 @@ router.post('/login', (req: Request, res: Response) => {
     return;
   }
 
+  store.markUserActive(user.id);
   const token = generateToken(user.id);
   res.json({
     token,

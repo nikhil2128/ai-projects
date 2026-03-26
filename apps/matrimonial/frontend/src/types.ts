@@ -32,6 +32,9 @@ export interface Profile {
   createdAt: string;
   updatedAt: string;
   matchPercentage?: number;
+  recommendationScore?: number;
+  recommendationReasons?: string[];
+  recommendationGeneratedAt?: string;
 }
 
 export interface Interest {
@@ -87,6 +90,14 @@ export interface Shortlist {
 export interface AuthResponse {
   token: string;
   user: User;
+}
+
+export interface RecommendationResponse {
+  generatedAt: string;
+  basedOnHistory: boolean;
+  shortlistedSignals: number;
+  interestSignals: number;
+  recommendations: Profile[];
 }
 
 export interface BrowseFilters {

@@ -20,6 +20,7 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
       res.status(401).json({ error: 'Invalid token' });
       return;
     }
+    store.markUserActive(userId);
     (req as any).userId = userId;
     (req as any).user = user;
     next();

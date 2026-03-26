@@ -117,6 +117,31 @@ router.get('/browse', (req: Request, res: Response) => {
   res.json({ profiles: enriched, total: enriched.length });
 });
 
+router.get('/recommendations/daily', (req: Request, res: Response) => {
+  const userId = (req as any).userId;
+  const batch = store.getRecommendationsForUser(userId);
+  const recommendations = batch.recommendations.flatMap(recommendation => {
+    const profile = store.getProfile(recommendation.recommendedUserId);
+    if (!profile) return [];
+
+    return [{
+      ...profile,
+      matchPercentage: recommendation.matchPercentage,
+      recommendationScore: recommendation.score,
+      recommendationReasons: recommendation.reasons,
+      recommendationGeneratedAt: recommendation.generatedAt,
+    }];
+  });
+
+  res.json({
+    generatedAt: batch.generatedAt,
+    basedOnHistory: batch.basedOnHistory,
+    shortlistedSignals: batch.shortlistedSignals,
+    interestSignals: batch.interestSignals,
+    recommendations,
+  });
+});
+
 router.get('/:userId', (req: Request, res: Response) => {
   const profile = store.getProfile(req.params.userId);
   if (!profile) {

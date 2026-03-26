@@ -6,6 +6,7 @@ export interface User {
   email: string;
   password: string;
   createdAt: string;
+  lastActiveAt: string;
 }
 
 export interface Profile {
@@ -81,12 +82,29 @@ export interface Shortlist {
   createdAt: string;
 }
 
+export interface Recommendation {
+  recommendedUserId: string;
+  score: number;
+  matchPercentage: number;
+  reasons: string[];
+  generatedAt: string;
+}
+
+export interface RecommendationBatch {
+  generatedAt: string;
+  basedOnHistory: boolean;
+  shortlistedSignals: number;
+  interestSignals: number;
+  recommendations: Recommendation[];
+}
+
 const users: Map<string, User> = new Map();
 const profiles: Map<string, Profile> = new Map();
 const interests: Map<string, Interest> = new Map();
 const familyProfiles: Map<string, FamilyProfile> = new Map();
 const sharedProfiles: Map<string, SharedProfile> = new Map();
 const shortlists: Map<string, Shortlist> = new Map();
+const recommendationBatches: Map<string, RecommendationBatch> = new Map();
 
 function computeAge(dob: string): number {
   const birth = new Date(dob);
@@ -95,6 +113,258 @@ function computeAge(dob: string): number {
   const m = today.getMonth() - birth.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
   return age;
+}
+
+function normalizeValue(value?: string): string {
+  return value?.trim().toLowerCase() ?? '';
+}
+
+function incrementValueCount(map: Map<string, number>, value?: string) {
+  const key = normalizeValue(value);
+  if (!key) return;
+  map.set(key, (map.get(key) ?? 0) + 1);
+}
+
+function incrementInterestCounts(map: Map<string, number>, values?: string[]) {
+  if (!values?.length) return;
+  const seen = new Set<string>();
+  for (const value of values) {
+    const key = normalizeValue(value);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    map.set(key, (map.get(key) ?? 0) + 1);
+  }
+}
+
+function addReason(reasons: Map<string, number>, reason: string, points: number) {
+  if (points <= 0) return;
+  reasons.set(reason, (reasons.get(reason) ?? 0) + points);
+}
+
+function scoreValuePreference(
+  candidateValue: string | undefined,
+  weights: Map<string, number>,
+  multiplier: number,
+  reason: string,
+  reasons: Map<string, number>,
+): number {
+  const key = normalizeValue(candidateValue);
+  const weight = key ? (weights.get(key) ?? 0) : 0;
+  if (!weight) return 0;
+  const points = weight * multiplier;
+  addReason(reasons, reason, points);
+  return points;
+}
+
+function average(numbers: number[]): number | null {
+  if (!numbers.length) return null;
+  return numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
+}
+
+function getDayKey(value: string): string {
+  return value.slice(0, 10);
+}
+
+function isActiveWithinWindow(lastActiveAt: string, now: Date, hours: number): boolean {
+  const activeAt = new Date(lastActiveAt).getTime();
+  return Number.isFinite(activeAt) && (now.getTime() - activeAt) <= hours * 60 * 60 * 1000;
+}
+
+function calculateMatchPercentage(myProfile: Profile | undefined, profile: Profile): number {
+  if (!myProfile) return 50;
+
+  let matchScore = 0;
+  let factors = 0;
+
+  if (myProfile.religion) {
+    factors += 15;
+    if (profile.religion === myProfile.religion) matchScore += 15;
+  }
+  if (myProfile.motherTongue) {
+    factors += 10;
+    if (profile.motherTongue === myProfile.motherTongue) matchScore += 10;
+  }
+  if (myProfile.location || myProfile.state) {
+    factors += 10;
+    if (myProfile.location && profile.location === myProfile.location) matchScore += 10;
+    else if (myProfile.state && profile.state === myProfile.state) matchScore += 5;
+  }
+  if (myProfile.education) {
+    factors += 10;
+    if (profile.education === myProfile.education) matchScore += 10;
+  }
+  if (myProfile.diet) {
+    factors += 5;
+    if (profile.diet === myProfile.diet) matchScore += 5;
+  }
+  if (myProfile.interests?.length) {
+    factors += 20;
+    const common = myProfile.interests.filter(interest => profile.interests.includes(interest));
+    matchScore += Math.min(common.length * 5, 20);
+  }
+  if (myProfile.familyType) {
+    factors += 5;
+    if (profile.familyType === myProfile.familyType) matchScore += 5;
+  }
+
+  factors += 25;
+  matchScore += 25;
+
+  return factors > 0 ? Math.min(Math.round((matchScore / factors) * 100), 99) : 50;
+}
+
+function buildRecommendationBatch(userId: string, now: Date = new Date()): RecommendationBatch {
+  const myProfile = profiles.get(userId);
+  const shortlistProfiles = Array.from(shortlists.values())
+    .filter(entry => entry.userId === userId)
+    .map(entry => profiles.get(entry.shortlistedUserId))
+    .filter((profile): profile is Profile => !!profile);
+  const interestProfiles = Array.from(interests.values())
+    .filter(interest => interest.fromUserId === userId)
+    .map(interest => profiles.get(interest.toUserId))
+    .filter((profile): profile is Profile => !!profile);
+
+  const historyProfiles = [...shortlistProfiles, ...interestProfiles];
+  const preferenceProfiles = historyProfiles.length > 0
+    ? historyProfiles
+    : (myProfile ? [myProfile] : []);
+
+  if (preferenceProfiles.length === 0) {
+    return {
+      generatedAt: now.toISOString(),
+      basedOnHistory: false,
+      shortlistedSignals: shortlistProfiles.length,
+      interestSignals: interestProfiles.length,
+      recommendations: [],
+    };
+  }
+
+  const religionWeights = new Map<string, number>();
+  const motherTongueWeights = new Map<string, number>();
+  const stateWeights = new Map<string, number>();
+  const locationWeights = new Map<string, number>();
+  const educationWeights = new Map<string, number>();
+  const professionWeights = new Map<string, number>();
+  const salaryWeights = new Map<string, number>();
+  const dietWeights = new Map<string, number>();
+  const familyTypeWeights = new Map<string, number>();
+  const maritalStatusWeights = new Map<string, number>();
+  const interestWeights = new Map<string, number>();
+  const agePreferences: number[] = [];
+  const heightPreferences: number[] = [];
+
+  for (const profile of preferenceProfiles) {
+    incrementValueCount(religionWeights, profile.religion);
+    incrementValueCount(motherTongueWeights, profile.motherTongue);
+    incrementValueCount(stateWeights, profile.state);
+    incrementValueCount(locationWeights, profile.location);
+    incrementValueCount(educationWeights, profile.education);
+    incrementValueCount(professionWeights, profile.profession);
+    incrementValueCount(salaryWeights, profile.salaryRange);
+    incrementValueCount(dietWeights, profile.diet);
+    incrementValueCount(familyTypeWeights, profile.familyType);
+    incrementValueCount(maritalStatusWeights, profile.maritalStatus);
+    incrementInterestCounts(interestWeights, profile.interests);
+
+    if (profile.age > 0) agePreferences.push(profile.age);
+    if (profile.height > 0) heightPreferences.push(profile.height);
+  }
+
+  const preferredAge = average(agePreferences);
+  const preferredHeight = average(heightPreferences);
+  const excludedUserIds = new Set<string>([userId]);
+
+  for (const entry of shortlists.values()) {
+    if (entry.userId === userId) excludedUserIds.add(entry.shortlistedUserId);
+  }
+  for (const interest of interests.values()) {
+    if (interest.fromUserId === userId) excludedUserIds.add(interest.toUserId);
+  }
+
+  const recommendations = Array.from(profiles.values())
+    .filter(candidate => !excludedUserIds.has(candidate.userId))
+    .map(candidate => {
+      const reasons = new Map<string, number>();
+      let score = 0;
+
+      score += scoreValuePreference(candidate.religion, religionWeights, 7, 'Matches preferred religion', reasons);
+      score += scoreValuePreference(candidate.motherTongue, motherTongueWeights, 6, 'Matches preferred mother tongue', reasons);
+      score += scoreValuePreference(candidate.state, stateWeights, 5, 'Comes from a preferred state', reasons);
+      score += scoreValuePreference(candidate.location, locationWeights, 5, 'Lives in a location you engage with', reasons);
+      score += scoreValuePreference(candidate.education, educationWeights, 5, 'Fits the education patterns in your activity', reasons);
+      score += scoreValuePreference(candidate.profession, professionWeights, 4, 'Matches professions you respond to', reasons);
+      score += scoreValuePreference(candidate.salaryRange, salaryWeights, 4, 'Aligns with salary ranges in your activity', reasons);
+      score += scoreValuePreference(candidate.diet, dietWeights, 3, 'Has a familiar lifestyle preference', reasons);
+      score += scoreValuePreference(candidate.familyType, familyTypeWeights, 3, 'Matches family setup you prefer', reasons);
+      score += scoreValuePreference(candidate.maritalStatus, maritalStatusWeights, 3, 'Shares a preferred marital status', reasons);
+
+      if (interestWeights.size > 0 && candidate.interests.length > 0) {
+        const matchedInterests = candidate.interests.filter(interest => interestWeights.has(normalizeValue(interest)));
+        if (matchedInterests.length > 0) {
+          const interestPoints = Math.min(
+            matchedInterests.reduce(
+              (sum, interest) => sum + Math.min((interestWeights.get(normalizeValue(interest)) ?? 0) * 3, 6),
+              0,
+            ),
+            18,
+          );
+          score += interestPoints;
+          addReason(reasons, 'Shares interests with profiles you liked', interestPoints);
+        }
+      }
+
+      if (preferredAge != null && candidate.age > 0) {
+        const ageDifference = Math.abs(candidate.age - preferredAge);
+        if (ageDifference <= 2) {
+          score += 10;
+          addReason(reasons, 'Falls within your recent age preference', 10);
+        } else if (ageDifference <= 4) {
+          score += 6;
+          addReason(reasons, 'Close to the age range you engage with', 6);
+        } else if (ageDifference <= 7) {
+          score += 3;
+          addReason(reasons, 'Near your usual age range', 3);
+        }
+      }
+
+      if (preferredHeight != null && candidate.height > 0) {
+        const heightDifference = Math.abs(candidate.height - preferredHeight);
+        if (heightDifference <= 4) {
+          score += 4;
+          addReason(reasons, 'Close to your recent height preference', 4);
+        } else if (heightDifference <= 8) {
+          score += 2;
+          addReason(reasons, 'Within the height range you engage with', 2);
+        }
+      }
+
+      const topReasons = [...reasons.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([reason]) => reason);
+
+      return {
+        recommendedUserId: candidate.userId,
+        score,
+        matchPercentage: calculateMatchPercentage(myProfile, candidate),
+        reasons: topReasons,
+        generatedAt: now.toISOString(),
+      };
+    })
+    .filter(recommendation => recommendation.score > 0 || recommendation.matchPercentage >= 60)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.matchPercentage - a.matchPercentage;
+    })
+    .slice(0, 6);
+
+  return {
+    generatedAt: now.toISOString(),
+    basedOnHistory: historyProfiles.length > 0,
+    shortlistedSignals: shortlistProfiles.length,
+    interestSignals: interestProfiles.length,
+    recommendations,
+  };
 }
 
 function seedData() {
@@ -129,7 +399,8 @@ function seedData() {
     const id = uuid();
     userIds.push(id);
     const hashedPassword = bcrypt.hashSync(u.password, 10);
-    users.set(id, { id, email: u.email, password: hashedPassword, createdAt: new Date().toISOString() });
+    const now = new Date().toISOString();
+    users.set(id, { id, email: u.email, password: hashedPassword, createdAt: now, lastActiveAt: now });
     const age = computeAge(u.dob);
     profiles.set(id, {
       userId: id,
@@ -197,13 +468,21 @@ export const store = {
   createUser(email: string, password: string): User {
     const id = uuid();
     const hashedPassword = bcrypt.hashSync(password, 10);
-    const user: User = { id, email, password: hashedPassword, createdAt: new Date().toISOString() };
+    const now = new Date().toISOString();
+    const user: User = { id, email, password: hashedPassword, createdAt: now, lastActiveAt: now };
     users.set(id, user);
     return user;
   },
 
   getUser(id: string): User | undefined {
     return users.get(id);
+  },
+
+  markUserActive(userId: string): User | undefined {
+    const user = users.get(userId);
+    if (!user) return undefined;
+    user.lastActiveAt = new Date().toISOString();
+    return user;
   },
 
   getProfile(userId: string): Profile | undefined {
@@ -404,5 +683,31 @@ export const store = {
       if (s.userId === userId) ids.add(s.shortlistedUserId);
     }
     return ids;
+  },
+
+  refreshRecommendationsForActiveUsers(): number {
+    const now = new Date();
+    let refreshed = 0;
+
+    for (const user of users.values()) {
+      if (!isActiveWithinWindow(user.lastActiveAt, now, 24)) continue;
+      recommendationBatches.set(user.id, buildRecommendationBatch(user.id, now));
+      refreshed++;
+    }
+
+    return refreshed;
+  },
+
+  getRecommendationsForUser(userId: string): RecommendationBatch {
+    const now = new Date();
+    const existing = recommendationBatches.get(userId);
+
+    if (!existing || getDayKey(existing.generatedAt) !== getDayKey(now.toISOString())) {
+      const batch = buildRecommendationBatch(userId, now);
+      recommendationBatches.set(userId, batch);
+      return batch;
+    }
+
+    return existing;
   },
 };

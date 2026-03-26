@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, SlidersHorizontal, X, Heart } from 'lucide-react';
+import { Search, SlidersHorizontal, X, Heart, Sparkles } from 'lucide-react';
 import { api } from '../api';
 import ProfileCard from '../components/ProfileCard';
-import type { Profile, BrowseFilters } from '../types';
+import type { Profile, BrowseFilters, RecommendationResponse } from '../types';
 import { RELIGIONS, EDUCATION_LEVELS, PROFESSIONS, SALARY_RANGES, MOTHER_TONGUES } from '../types';
 import { LoadingSpinner, EmptyState } from '../components/shared';
 
@@ -14,7 +14,9 @@ const defaultFilters: BrowseFilters = {
 
 export default function Browse() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [recommendationFeed, setRecommendationFeed] = useState<RecommendationResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(true);
   const [filters, setFilters] = useState<BrowseFilters>(defaultFilters);
   const [showFilters, setShowFilters] = useState(false);
   const [total, setTotal] = useState(0);
@@ -25,6 +27,22 @@ export default function Browse() {
       .then(data => setShortlistedIds(new Set(data.shortlistedUserIds)))
       .catch(() => {});
   }, []);
+
+  const fetchRecommendations = useCallback(async () => {
+    setRecommendationsLoading(true);
+    try {
+      const data = await api.profiles.getRecommendations();
+      setRecommendationFeed(data);
+    } catch {
+      setRecommendationFeed(null);
+    } finally {
+      setRecommendationsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchRecommendations();
+  }, [fetchRecommendations]);
 
   const toggleShortlist = useCallback(async (userId: string) => {
     const isCurrently = shortlistedIds.has(userId);
@@ -87,6 +105,13 @@ export default function Browse() {
         <h1 className="text-3xl font-bold text-gray-900 font-display">Discover Your Match</h1>
         <p className="text-gray-500 mt-1">Browse profiles and find your soulmate</p>
       </div>
+
+      <RecommendationsSection
+        loading={recommendationsLoading}
+        feed={recommendationFeed}
+        shortlistedIds={shortlistedIds}
+        onToggleShortlist={toggleShortlist}
+      />
 
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="relative flex-1">
@@ -250,5 +275,75 @@ export default function Browse() {
         </div>
       )}
     </div>
+  );
+}
+
+function RecommendationsSection({
+  loading,
+  feed,
+  shortlistedIds,
+  onToggleShortlist,
+}: {
+  loading: boolean;
+  feed: RecommendationResponse | null;
+  shortlistedIds: Set<string>;
+  onToggleShortlist: (userId: string) => void;
+}) {
+  const recommendations = feed?.recommendations ?? [];
+  const hasHistory = !!feed?.basedOnHistory;
+  const refreshedLabel = feed
+    ? new Date(feed.generatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+
+  return (
+    <section className="mb-8 rounded-3xl border border-primary-100 bg-gradient-to-br from-primary-50 via-white to-orange-50 p-5 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-sm font-semibold text-primary-700 shadow-sm">
+            <Sparkles className="h-4 w-4" />
+            Recommended for you
+          </div>
+          <h2 className="mt-3 text-2xl font-bold text-gray-900">Daily picks for active members</h2>
+          <p className="mt-1 max-w-3xl text-sm text-gray-600">
+            {hasHistory
+              ? `Refreshed daily from ${feed?.shortlistedSignals ?? 0} shortlisted and ${feed?.interestSignals ?? 0} interested profiles.`
+              : 'Using your profile as a starting point for now. Shortlist profiles and send interests to personalize tomorrow’s feed.'}
+          </p>
+        </div>
+        {refreshedLabel ? (
+          <div className="rounded-2xl bg-white px-4 py-2 text-sm text-gray-500 shadow-sm">
+            Refreshed {refreshedLabel}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-5">
+        {loading ? (
+          <div className="rounded-2xl bg-white/80 p-8">
+            <LoadingSpinner />
+          </div>
+        ) : recommendations.length === 0 ? (
+          <div className="rounded-2xl bg-white/80">
+            <EmptyState
+              icon={<Sparkles className="h-12 w-12 text-primary-300" />}
+              title="No recommendations available yet"
+              subtitle="Once you become active and build some shortlist or interest history, your daily recommendations will appear here."
+              className="py-12"
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+            {recommendations.map(profile => (
+              <ProfileCard
+                key={profile.userId}
+                profile={profile}
+                isShortlisted={shortlistedIds.has(profile.userId)}
+                onToggleShortlist={onToggleShortlist}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

@@ -1,3 +1,4 @@
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import type { NextFunction, Request, Response } from 'express';
@@ -43,6 +44,15 @@ app.use('/api/shortlist', shortlistRoutes);
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+const staticDir = process.env.SERVE_STATIC;
+if (staticDir) {
+  const resolved = path.resolve(staticDir);
+  app.use(express.static(resolved));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(resolved, 'index.html'));
+  });
+}
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err);

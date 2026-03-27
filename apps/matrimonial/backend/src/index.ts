@@ -1,6 +1,7 @@
 import path from 'path';
 import express from 'express';
 import cors from 'cors';
+import { schedule, type ScheduledTask } from 'node-cron';
 import type { NextFunction, Request, Response } from 'express';
 import authRoutes from './routes/auth.js';
 import profileRoutes from './routes/profiles.js';
@@ -11,26 +12,16 @@ import { store } from './data/store.js';
 const app = express();
 const PORT = process.env.PORT || 3100;
 
-function msUntilNextRefresh(now: Date = new Date()): number {
-  const next = new Date(now);
-  next.setHours(24, 0, 0, 0);
-  return next.getTime() - now.getTime();
-}
-
-function scheduleRecommendationRefresh() {
-  const run = async () => {
+function scheduleRecommendationRefresh(): ScheduledTask {
+  return schedule('0 0 * * *', async () => {
     try {
+      console.log('Running daily recommendation refresh…');
       await store.refreshRecommendationsForActiveUsers();
+      console.log('Daily recommendation refresh completed.');
     } catch (error) {
       console.error('Failed to refresh recommendations', error);
-    } finally {
-      setTimeout(() => {
-        void run();
-      }, msUntilNextRefresh());
     }
-  };
-
-  void run();
+  }, { timezone: 'UTC' });
 }
 
 app.use(cors());

@@ -1,6 +1,6 @@
 # AI Projects Monorepo (Nx)
 
-This monorepo is now orchestrated by [Nx](https://nx.dev/) so multiple independent projects can be developed, tested, built, and deployed consistently with caching and affected-only execution.
+This monorepo is orchestrated by [Nx](https://nx.dev/) so multiple independent projects can be developed, tested, built, and deployed consistently with caching and affected-only execution.
 
 ## What Nx Adds
 
@@ -9,6 +9,38 @@ This monorepo is now orchestrated by [Nx](https://nx.dev/) so multiple independe
 - A dependency graph for understanding project relationships
 - A clean path for shared libraries under `libs/`
 - Easier onboarding for new projects that follow workspace conventions
+
+## Projects
+
+| Project | Description | Packages |
+|---------|-------------|----------|
+| [alphabet-tracer](apps/alphabet-tracer) | Multi-app learning platform for kids with per-app reward tracking | single package |
+| [buggy-task-system](apps/buggy-task-system) | Intentional complex concurrency bug for debugging practice | single package |
+| [click-analytics](apps/click-analytics) | High-throughput click analytics with Redis Streams and ClickHouse | root + admin-portal |
+| [collab-doc-editor](apps/collab-doc-editor) | Real-time collaborative document editor with Yjs CRDTs | backend, frontend |
+| [content-cms](apps/content-cms) | Content management system | single package |
+| [csv-merger](apps/csv-merger) | Upload, analyze, and merge multiple CSV files into a single output | backend, frontend |
+| [data-export-service](apps/data-export-service) | Serverless CSV export — paginated API fetch, S3 upload, and email delivery | single package |
+| [ecommerce](apps/ecommerce) | E-commerce application with React frontend and microservice backend | root + backend, frontend |
+| [floor-plan-3d](apps/floor-plan-3d) | 3D floor plan visualization | backend, frontend |
+| [image-annotator](apps/image-annotator) | Collaborative image annotation for manufacturing quality control | backend, frontend |
+| [invoice-processor](apps/invoice-processor) | Production-ready invoice processing API with async PDF extraction | root + ui |
+| [matrimonial](apps/matrimonial) | Matrimonial platform with advanced matching and family profile sharing | root + backend, frontend |
+| [onboarding-doc-tracker](apps/onboarding-doc-tracker) | Monitors HR emails for onboarding docs, uploads to OneDrive, and notifies HR | single package |
+| [org-chart-generator](apps/org-chart-generator) | AI-powered org chart generation from handwritten screenshots via GPT-4o Vision | single package |
+| [photo-share](apps/photo-share) | Instagram-like photo sharing platform with filters and geo-recommendations | backend, frontend |
+| [ppt-analyzer](apps/ppt-analyzer) | PowerPoint presentation analyzer | root + backend, frontend |
+| [product-listing](apps/product-listing) | Product listing application | single package |
+| [smart-task-manager](apps/smart-task-manager) | Smart task management application | backend, frontend |
+| [training-content-generator](apps/training-content-generator) | Turn source material into employee training assets and questionnaires | single package |
+| [url-shortener](apps/url-shortener) | Production-ready, cost-optimized URL shortening service with Fastify and SQLite | single package |
+| [video-merger](apps/video-merger) | Merges timestamped video chunks from S3, filling gaps with black frames | single package |
+
+### Shared Libraries
+
+| Library | Description |
+|---------|-------------|
+| [logger](libs/logger) | Shared logging utility |
 
 ## Workspace Layout
 
@@ -80,6 +112,8 @@ The workspace includes a default alias pattern in `tsconfig.base.json`:
 4. Run `make install-all`.
 5. Verify discovery with `make projects`.
 6. Prefer the root GitHub Actions workflow in `.github/workflows/ci.yml` for validation and keep deploy workflows project-specific.
+
+> **Note:** The Husky pre-commit hook automatically discovers all `package.json` files under `apps/` and `libs/`, so no manual registration is needed when adding new projects.
 
 ## Deployment Strategy
 

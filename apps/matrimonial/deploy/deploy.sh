@@ -2,14 +2,17 @@
 #
 # Build and deploy the Matrimonial app to GCP Cloud Run.
 #
+# Reads infrastructure config from Terraform outputs.
+#
 # Usage:
-#   ./deploy/deploy.sh              # uses .env.production for config
+#   ./deploy/deploy.sh              # deploy latest build
 #   ./deploy/deploy.sh --tag v1.2   # deploy a specific tag
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(dirname "$SCRIPT_DIR")"
+TF_DIR="${SCRIPT_DIR}/terraform"
 cd "$APP_DIR"
 
 RED='\033[0;31m'
@@ -21,15 +24,19 @@ info()  { echo -e "${CYAN}[INFO]${NC}  $*"; }
 ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
-# ── Load config ──────────────────────────────────────────────────────
-ENV_FILE="${APP_DIR}/.env.production"
-if [ ! -f "$ENV_FILE" ]; then
-  error ".env.production not found. Run ./deploy/setup-gcp.sh first."
+# ── Read Terraform outputs ────────────────────────────────────────────
+if [ ! -d "${TF_DIR}/.terraform" ]; then
+  error "Terraform not initialised. Run: cd deploy/terraform && terraform init && terraform apply"
 fi
 
-set -a
-source "$ENV_FILE"
-set +a
+tf_out() { terraform -chdir="$TF_DIR" output -raw "$1" 2>/dev/null; }
+
+GCP_PROJECT_ID="$(tf_out project_id)"
+GCP_REGION="$(tf_out region)"
+GCP_SERVICE_NAME="$(tf_out service_name)"
+GCP_REPO="$(tf_out repo_name)"
+GCP_DB_CONNECTION="$(tf_out db_connection_name)"
+DATABASE_URL="$(tf_out database_url)"
 
 TAG="${TAG:-latest}"
 while [[ $# -gt 0 ]]; do

@@ -1,0 +1,13 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is gitignored — never commit it.
+
+project_id = "my-gcp-project"
+region     = "asia-south1"
+
+# Override defaults if needed:
+# service_name    = "matrimonial"
+# db_instance_name = "matrimonial-db"
+# db_name         = "matrimonial"
+# db_user         = "matrimonial_app"
+# db_tier         = "db-f1-micro"   # bump to "db-g1-small" (~$25/mo) for more headroom
+# repo_name       = "matrimonial"

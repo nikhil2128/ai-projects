@@ -17,7 +17,9 @@
     "docker:down": "./dev.sh down",
     "docker:logs": "./dev.sh logs",
     "docker:reset": "./dev.sh reset",
-    "deploy:setup": "./deploy/setup-gcp.sh",
+    "deploy:init": "cd deploy/terraform && terraform init",
+    "deploy:plan": "cd deploy/terraform && terraform plan",
+    "deploy:apply": "cd deploy/terraform && terraform apply",
     "deploy": "./deploy/deploy.sh"
   },
   "devDependencies": {

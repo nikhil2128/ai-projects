@@ -5,3 +5,10 @@ dist/
 .env.local
 *.log
 .DS_Store
+
+# Terraform
+deploy/terraform/.terraform/
+deploy/terraform/.terraform.lock.hcl
+deploy/terraform/*.tfstate
+deploy/terraform/*.tfstate.backup
+deploy/terraform/terraform.tfvars
